@@ -109,8 +109,8 @@ class StartupCheckViewModel @Inject constructor(
         report(
             "In-memory index",
             if (timing.totalMillis <= INDEX_BUDGET_MILLIS) Status.PASS else Status.WARN,
-            "%,d airports in %d ms\n  read %d ms, sort and trig %d ms".format(
-                timing.airports, timing.totalMillis, timing.readMillis, timing.buildMillis,
+            "%,d airports in %d ms\n  read %d ms, decode %d ms".format(
+                timing.airports, timing.totalMillis, timing.readMillis, timing.decodeMillis,
             ),
         )
         loaded.index
@@ -149,11 +149,9 @@ class StartupCheckViewModel @Inject constructor(
             var ok = true
             for (aircraft in listOf(shortest, longest)) {
                 var routes: List<com.github.daanbouwman.flightplanner.routing.GeneratedRoute>
+                val request = RouteRequest(RouteMode.AllAircraft, listOf(aircraft), amount = 50)
                 val millis = measureTimeMillis {
-                    routes = generator.generate(
-                        RouteRequest(RouteMode.AllAircraft, listOf(aircraft), amount = 50),
-                        Random(20260816),
-                    )
+                    routes = generator.generate(request, Random(20260816))
                 }
                 if (routes.isEmpty()) {
                     ok = false
@@ -195,7 +193,13 @@ class StartupCheckViewModel @Inject constructor(
     }
 
     private companion object {
-        /** Above this, the index would be visible as a stall behind the splash screen. */
-        const val INDEX_BUDGET_MILLIS = 150L
+        /**
+         * Loading the prebuilt blob is a file read plus a dozen array copies and
+         * measures in single-digit milliseconds. The budget is set close to that
+         * rather than to what a user would notice, so that reintroducing *any*
+         * per-airport work on the startup path shows up here immediately instead
+         * of being absorbed silently.
+         */
+        const val INDEX_BUDGET_MILLIS = 40L
     }
 }

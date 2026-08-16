@@ -11,7 +11,11 @@ gradlew text eol=lf
 *.db binary
 *.zip binary
 *.filamat binary
+# The prebuilt airport index is read back byte for byte at startup, so it must
+# never be subject to the `text=auto` end-of-line heuristics above.
+*.index binary
 
 # Generated data assets: large, and a diff is never meaningful.
 app/src/main/assets/databases/*.db binary
+app/src/main/assets/databases/*.index binary
 tools/airportdb/data/*.csv -diff

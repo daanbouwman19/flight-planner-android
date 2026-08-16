@@ -4,7 +4,7 @@ import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.model.FleetCsv
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
-import com.github.daanbouwman.flightplanner.routing.AirportIndexBuilder
+import com.github.daanbouwman.flightplanner.routing.AirportIndexCodec
 import com.github.daanbouwman.flightplanner.routing.IcaoCode
 import com.github.daanbouwman.flightplanner.routing.RouteGenerator
 import com.github.daanbouwman.flightplanner.routing.RouteMode
@@ -163,9 +163,29 @@ private fun smokeTestRouteGeneration(
 ): List<String> {
     val failures = mutableListOf<String>()
 
-    val index = loadIndex(conn)
+    // Route generation runs against the *shipped blob*, not a fresh rebuild, so
+    // this proves the exact bytes the app will load are usable.
+    val indexFile = File(opts.output.parentFile, INDEX_ASSET_NAME)
+    if (!indexFile.isFile) {
+        return listOf("Prebuilt index missing: $indexFile. Run ./gradlew :tools:airportdb:run")
+    }
+    val index = runCatching { AirportIndexCodec.decode(indexFile.readBytes()) }
+        .getOrElse { return listOf("Prebuilt index could not be decoded: ${it.message}") }
+
+    val fromDatabase = loadIndexFrom(conn)
+    if (index.size != fromDatabase.size) {
+        failures += "prebuilt index holds ${index.size} airports but the database yields ${fromDatabase.size}"
+    } else {
+        val mismatched = (0 until index.size).count {
+            index.codes[it] != fromDatabase.codes[it] ||
+                index.longestRunwayFt[it] != fromDatabase.longestRunwayFt[it] ||
+                index.flags[it] != fromDatabase.flags[it]
+        }
+        if (mismatched > 0) failures += "$mismatched index entries disagree with the database"
+    }
+
     val fleet = readSeedFleet(opts) ?: run {
-        return listOf("Could not read the seed fleet; route generation was not exercised.")
+        return failures + "Could not read the seed fleet; route generation was not exercised."
     }
 
     val generator = RouteGenerator(index)
@@ -203,41 +223,6 @@ private fun smokeTestRouteGeneration(
     }
 
     return failures
-}
-
-private fun loadIndex(conn: java.sql.Connection): AirportIndex {
-    val count = conn.createStatement().use { st ->
-        st.executeQuery("SELECT COUNT(*) FROM airports").use { if (it.next()) it.getInt(1) else 0 }
-    }
-    val builder = AirportIndexBuilder(count)
-
-    conn.createStatement().use { st ->
-        st.executeQuery(
-            """
-            SELECT id, code_packed, lat, lon, longest_runway_ft, has_icao, has_hard_surface,
-                   has_lighting, size_class
-            FROM airports
-            """.trimIndent(),
-        ).use { rs ->
-            val sizeClasses = AirportSizeClass.entries.toTypedArray()
-            while (rs.next()) {
-                builder.add(
-                    id = rs.getInt(1),
-                    packedCode = rs.getInt(2),
-                    latitude = rs.getDouble(3),
-                    longitude = rs.getDouble(4),
-                    longestRunway = rs.getInt(5),
-                    packedFlags = AirportIndex.packFlags(
-                        hasIcao = rs.getInt(6) == 1,
-                        hardSurface = rs.getInt(7) == 1,
-                        lighting = rs.getInt(8) == 1,
-                        sizeClass = sizeClasses[rs.getInt(9).coerceIn(0, sizeClasses.lastIndex)],
-                    ),
-                )
-            }
-        }
-    }
-    return builder.build()
 }
 
 private fun readSeedFleet(opts: Options): List<AircraftSpec>? {

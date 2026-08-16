@@ -6,7 +6,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.random.Random
 
 /** How many routes a batch produces, matching the desktop app's `GENERATE_AMOUNT`. */
@@ -185,20 +187,25 @@ class RouteGenerator(
      *
      * For long-range aircraft, rejection sampling over the runway-filtered tail
      * is O(1) expected and beats enumerating a large neighbourhood. For short
-     * range — or when sampling fails — it falls back to scanning the latitude
-     * bands, choosing uniformly by reservoir sampling so nothing is allocated.
+     * range — or when sampling fails — it falls back to a latitude/longitude
+     * window query, choosing uniformly by reservoir sampling so nothing is
+     * allocated.
      *
-     * Two defects in the original are fixed here:
+     * Three defects in the original are fixed here:
      *
      *  1. **Antimeridian.** The Rust version builds the longitude window as
      *     `[lon - r, lon + r]` and hands it straight to the R-tree, with no
      *     wrapping. Near ±180° that window is half empty, so destinations from
-     *     places like Fiji or western Alaska are silently skewed. [longitudeWithin]
-     *     compares wrapped deltas instead.
+     *     places like Fiji or western Alaska are silently skewed.
+     *     [LatBandIndex.forEachInWindow] splits a wrapping window in two.
      *  2. **Poles.** The original divides the longitude radius by `cos(lat)`
      *     clamped to 0.001, which near the pole produces a half-width of up to
      *     1000°. Here a half-width that reaches 180° simply disables the
      *     longitude test, leaving the exact distance check to do the work.
+     *  3. **Window too narrow.** The original scales by the *departure's*
+     *     cosine, but a destination nearer the pole spans more longitude for the
+     *     same ground distance, so corner destinations were being excluded. See
+     *     [scanForDestination].
      *
      * @return a destination slot, or -1.
      */
@@ -241,19 +248,29 @@ class RouteGenerator(
         val depLat = index.latDeg[departureSlot]
         val depLon = index.lonDeg[departureSlot]
 
-        // One degree of longitude shrinks as cos(latitude). Guard against the
-        // pole by widening to "everything" rather than dividing by ~zero.
-        val cosLat = abs(index.cosLat[departureSlot].toDouble())
-        val lonHalfWidth = if (cosLat < 1e-3) 180.0 else max(latHalfWidth / cosLat, latHalfWidth)
+        // One degree of longitude shrinks as cos(latitude), and a destination
+        // may sit a whole latHalfWidth closer to the pole than the departure —
+        // so the bound has to use the *widest* latitude the window reaches, not
+        // the departure's own. Using cos(depLat) makes the window marginally too
+        // narrow and silently drops corner destinations, which is a defect the
+        // desktop app has. Near the pole, widen to "everything" rather than
+        // dividing by ~zero and let the exact distance test do the work.
+        val worstLat = min(abs(depLat) + latHalfWidth, 90.0)
+        val cosWorst = cos(Math.toRadians(worstLat))
+        val lonHalfWidth = if (cosWorst < 1e-3) 180.0 else min(max(latHalfWidth / cosWorst, latHalfWidth), 180.0)
 
         val start = candidate.startSlot
         var chosen = -1
         var seen = 0
 
-        index.bands.forEachInLatRange(depLat - latHalfWidth, depLat + latHalfWidth) { slot ->
+        index.bands.forEachInWindow(
+            depLat - latHalfWidth,
+            depLat + latHalfWidth,
+            depLon,
+            lonHalfWidth,
+        ) { slot ->
             if (slot >= start &&
                 slot != departureSlot &&
-                longitudeWithin(index.lonDeg[slot], depLon, lonHalfWidth) &&
                 GreatCircle.withinThreshold(index, departureSlot, slot, candidate.threshold) &&
                 slot.satisfies(request)
             ) {

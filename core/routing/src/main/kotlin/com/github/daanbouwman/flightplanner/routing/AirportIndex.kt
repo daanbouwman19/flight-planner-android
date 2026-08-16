@@ -35,18 +35,41 @@ class AirportIndex internal constructor(
     val cosLon: FloatArray,
     val longestRunwayFt: IntArray,
     val flags: IntArray,
-    /** Codes sorted ascending, for lookup. */
-    private val sortedCodes: IntArray,
-    /** Slot for the code at the same position in [sortedCodes]. */
-    private val sortedCodeSlots: IntArray,
     internal val bands: LatBandIndex,
 ) {
+
+    /**
+     * Code-to-slot lookup, built on first use.
+     *
+     * Deliberately lazy: nothing in route generation looks an airport up by
+     * code — only a locked departure and the detail screens do — so building it
+     * eagerly would put work on the startup path that most launches never need.
+     *
+     * Each entry packs the code into the high 32 bits and the slot into the low
+     * 32, so sorting a `LongArray` orders by code with no boxing and no
+     * comparator, and a binary search on the high half recovers the slot.
+     */
+    private val codeLookup: LongArray by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        LongArray(size) { slot -> (codes[slot].toLong() shl 32) or slot.toLong() }
+            .also { it.sort() }
+    }
 
     /** Slot for a packed code, or -1. */
     fun slotOfCode(packedCode: Int): Int {
         if (packedCode < 0) return -1
-        val position = sortedCodes.binarySearch(packedCode)
-        return if (position >= 0) sortedCodeSlots[position] else -1
+        val table = codeLookup
+        var low = 0
+        var high = table.size - 1
+        while (low <= high) {
+            val mid = (low + high) ushr 1
+            val code = (table[mid] ushr 32).toInt()
+            when {
+                code < packedCode -> low = mid + 1
+                code > packedCode -> high = mid - 1
+                else -> return (table[mid] and 0xFFFFFFFFL).toInt()
+            }
+        }
+        return -1
     }
 
     /** Slot for an ICAO code, or -1. Case-insensitive. */
@@ -176,18 +199,6 @@ class AirportIndexBuilder(expectedSize: Int) {
             cosLon[slot] = cos(rLon)
         }
 
-        // Lookup table: codes ascending with their slots alongside. A sorted
-        // IntArray plus a binary search costs two arrays and no boxing, where a
-        // HashMap<String, Int> would allocate 24,000 entries and box every value.
-        val lookupOrder = (0 until n).sortedBy { sortedCodesBySlot[it] }
-        val sortedCodes = IntArray(n)
-        val sortedCodeSlots = IntArray(n)
-        for (i in 0 until n) {
-            val slot = lookupOrder[i]
-            sortedCodes[i] = sortedCodesBySlot[slot]
-            sortedCodeSlots[i] = slot
-        }
-
         return AirportIndex(
             size = n,
             ids = sortedIds,
@@ -201,9 +212,7 @@ class AirportIndexBuilder(expectedSize: Int) {
             cosLon = cosLon,
             longestRunwayFt = sortedRunway,
             flags = sortedFlags,
-            sortedCodes = sortedCodes,
-            sortedCodeSlots = sortedCodeSlots,
-            bands = LatBandIndex.build(sortedLat, n),
+            bands = LatBandIndex.build(sortedLat, sortedLon, n),
         )
     }
 

@@ -1,10 +1,14 @@
 package com.github.daanbouwman.flightplanner.airportdb
 
 import com.github.daanbouwman.flightplanner.model.DatasetMetaKeys
+import com.github.daanbouwman.flightplanner.routing.AirportIndexCodec
 import java.io.File
 import kotlin.system.exitProcess
 
 private const val SOURCE_URL = "https://davidmegginson.github.io/ourairports-data/"
+
+/** Name of the prebuilt index asset, shared with the app. */
+const val INDEX_ASSET_NAME = "airports.index"
 
 /**
  * Builds the shipped airport database from the OurAirports snapshots.
@@ -53,6 +57,14 @@ fun main(args: Array<String>) {
         report = report,
     )
 
+    // Prebuilt in-memory index. Rebuilding this from rows on the device costs
+    // ~150,000 JNI crossings; reading it back as bulk array copies costs about a
+    // dozen. It is derived entirely from the database written above, so building
+    // it here is free and startup gets it for nothing.
+    val indexFile = File(opts.output.parentFile, INDEX_ASSET_NAME)
+    val index = java.sql.DriverManager.getConnection("jdbc:sqlite:${opts.output.path}").use { loadIndexFrom(it) }
+    indexFile.writeBytes(AirportIndexCodec.encode(index))
+
     // Version sidecar read by AirportAssetInstaller to decide whether the copy
     // on the device is stale. The identity hash changes when the entities change
     // and the file is rewritten whenever the data is regenerated, so it covers
@@ -63,6 +75,7 @@ fun main(args: Array<String>) {
     println()
     println(report.render())
     println("Wrote %s (%,.1f MiB)".format(opts.output, opts.output.length() / 1024.0 / 1024.0))
+    println("Wrote %s (%,.1f MiB, %,d airports)".format(indexFile, indexFile.length() / 1024.0 / 1024.0, index.size))
     println("Wrote %s (%s)".format(versionFile, schema.identityHash))
 
     // A dataset that silently collapses is worse than a failed build.

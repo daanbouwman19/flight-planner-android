@@ -1,6 +1,7 @@
 package com.github.daanbouwman.flightplanner.routing
 
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.ints.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import kotlin.random.Random
 import kotlin.test.Test
@@ -83,5 +84,82 @@ class LatBandIndexTest {
         var visits = 0
         index.bands.forEachInLatRange(40.0, 45.0) { visits++ }
         visits shouldBe 0
+    }
+
+    /**
+     * The whole point of sorting bands by longitude is that the window query
+     * skips airports a latitude-only scan would visit — so it is exactly the
+     * query that could start *missing* airports. Brute force is the oracle.
+     */
+    @Test
+    fun `a longitude window returns a superset of the exact matches`() {
+        val index = randomWorld(3_000, seed = 46)
+        val random = Random(101)
+
+        repeat(2_000) {
+            val centreLat = random.nextDouble(-89.0, 89.0)
+            val centreLon = random.nextDouble(-180.0, 180.0)
+            val latHalfWidth = random.nextDouble(0.1, 20.0)
+            val lonHalfWidth = random.nextDouble(0.1, 200.0)
+            val min = centreLat - latHalfWidth
+            val max = centreLat + latHalfWidth
+
+            val visited = mutableSetOf<Int>()
+            index.bands.forEachInWindow(min, max, centreLon, lonHalfWidth) { visited += it }
+
+            val expected = (0 until index.size).filter {
+                index.latDeg[it] in min..max &&
+                    longitudeWithin(index.lonDeg[it], centreLon, lonHalfWidth)
+            }
+            visited shouldContainAll expected
+        }
+    }
+
+    @Test
+    fun `a window spanning the antimeridian finds both sides of it`() {
+        val index = buildIndex(
+            listOf(
+                TestAirport("EAST", 0.0, 179.0, 5_000),
+                TestAirport("WEST", 0.0, -179.0, 5_000),
+                TestAirport("AWAY", 0.0, 0.0, 5_000),
+            ),
+        )
+
+        val visited = mutableSetOf<Int>()
+        index.bands.forEachInWindow(-1.0, 1.0, centreLon = 180.0, lonHalfWidth = 3.0) { visited += it }
+
+        visited shouldContainAll listOf(index.slotOf("EAST"), index.slotOf("WEST"))
+        visited.contains(index.slotOf("AWAY")) shouldBe false
+
+        // The mirrored window, expressed from the other side of the seam.
+        val mirrored = mutableSetOf<Int>()
+        index.bands.forEachInWindow(-1.0, 1.0, centreLon = -180.0, lonHalfWidth = 3.0) { mirrored += it }
+        mirrored shouldContainAll listOf(index.slotOf("EAST"), index.slotOf("WEST"))
+    }
+
+    @Test
+    fun `a full-width window degenerates to the latitude scan`() {
+        val index = randomWorld(500, seed = 47)
+        val visited = mutableSetOf<Int>()
+        index.bands.forEachInWindow(-90.0, 90.0, centreLon = 0.0, lonHalfWidth = 180.0) { visited += it }
+        visited.size shouldBe index.size
+    }
+
+    /**
+     * The narrow window has to be genuinely selective, not merely correct: a
+     * superset check alone would pass an implementation that ignored longitude.
+     */
+    @Test
+    fun `a narrow window visits far fewer slots than the latitude band holds`() {
+        val index = randomWorld(20_000, seed = 48)
+
+        var windowVisits = 0
+        index.bands.forEachInWindow(39.0, 41.0, centreLon = 0.0, lonHalfWidth = 2.0) { windowVisits++ }
+
+        var bandVisits = 0
+        index.bands.forEachInLatRange(39.0, 41.0) { bandVisits++ }
+
+        // 4° of 360° is about 1%; allow generous slack for band granularity.
+        (windowVisits * 10) shouldBeLessThan bandVisits
     }
 }
