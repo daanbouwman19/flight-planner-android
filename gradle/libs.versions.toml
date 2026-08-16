@@ -51,6 +51,11 @@ okhttp = "5.4.0"
 coil = "3.5.0"
 # --- rendering ---
 filament = "1.75.0"
+# graphics-shapes is the library `MaterialShapes` is built on. That catalogue is
+# absent from material3 1.4.0 (see docs/API-GROUND-TRUTH.md), but the primitives
+# -- RoundedPolygon, Morph -- are public and stable here, so the design system
+# defines the few shapes it actually uses instead of importing forty.
+graphicsShapes = "1.1.0"
 # --- etl (jvm tool, never shipped) ---
 sqliteJdbc = "3.53.2.1"
 kotlinCsv = "1.10.0"
@@ -126,6 +131,7 @@ coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref 
 # --- rendering ---
 filament-android = { group = "com.google.android.filament", name = "filament-android", version.ref = "filament" }
 filament-utils-android = { group = "com.google.android.filament", name = "filament-utils-android", version.ref = "filament" }
+androidx-graphics-shapes = { group = "androidx.graphics", name = "graphics-shapes", version.ref = "graphicsShapes" }
 
 # --- etl tool (jvm only, never on the app classpath) ---
 sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqliteJdbc" }

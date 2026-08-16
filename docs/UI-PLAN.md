@@ -65,9 +65,16 @@ quieter, not longer.
 
 ### Visual language
 
-- **Material 3 Expressive** as the base — expressive shape scale, `ButtonGroup`
-  for the mode selector, `FloatingToolbar` for primary actions, the expressive
-  `LoadingIndicator` rather than a spinner.
+- **Material 3, with an expressive layer this project owns.** The `MaterialShapes`,
+  `ButtonGroup`, `FloatingToolbar` and `LoadingIndicator` that Material 3
+  Expressive advertises **do not exist in material3 1.4.0**, and the `MotionScheme`
+  behind them is `internal` — see [API-GROUND-TRUTH.md](API-GROUND-TRUTH.md), which
+  records what actually compiles. `:core:designsystem` supplies the gap: motion
+  tokens carrying the real expressive spring constants, shape morphing on the
+  stable `androidx.graphics:graphics-shapes`, a morphing loading indicator, and
+  `SingleChoiceSegmentedButtonRow` for the mode selector. The expressive
+  *navigation* components — `ShortNavigationBar`, `WideNavigationRail`,
+  `NavigationSuiteScaffold` — are public and are used directly.
 - **Dynamic colour** from wallpaper, with a brand fallback seeded from avgas
   blue and runway-marking amber.
 - **A "Cockpit" theme** — near-black with amber accents, for night flying. Not a
@@ -83,8 +90,8 @@ quieter, not longer.
 
 | Token | Use | Spec |
 | --- | --- | --- |
-| `spatial` | Anything that moves or resizes | `MotionScheme.expressive()` spatial spring — physics, interruptible |
-| `effects` | Fades, colour, alpha | Expressive effects spring — no overshoot |
+| `spatial` | Anything that moves or resizes | Spring, damping 0.8 / stiffness 380 — interruptible, slight overshoot |
+| `effects` | Fades, colour, alpha | Spring, damping 1.0 / stiffness 1600 — critically damped, no overshoot |
 | `enter` | List items appearing | 30 ms stagger, capped at 8 items, then instant |
 | `emphasis` | Value changed, action landed | Count-up or pulse, ≤ 500 ms, once |
 | `nav` | Screen to screen | Shared bounds where a real element persists, else fade-through |
