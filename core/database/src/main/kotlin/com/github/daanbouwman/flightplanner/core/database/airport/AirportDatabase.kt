@@ -34,5 +34,8 @@ abstract class AirportDatabase : RoomDatabase() {
         const val VERSION = 1
         const val NAME = "airports.db"
         const val ASSET_PATH = "databases/airports.db"
+
+        /** Sidecar holding the schema identity hash; see [AirportAssetInstaller]. */
+        const val ASSET_VERSION_PATH = "databases/airports.db.version"
     }
 }

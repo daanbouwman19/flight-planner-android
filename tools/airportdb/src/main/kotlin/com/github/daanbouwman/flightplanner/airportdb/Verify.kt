@@ -32,6 +32,21 @@ fun main(args: Array<String>) {
         fail("Airport asset missing: ${opts.output}. Run ./gradlew :tools:airportdb:run")
     }
 
+    // The device-side installer decides staleness from this file alone, so a
+    // missing or stale sidecar means devices keep an out-of-date database.
+    val versionFile = File(opts.output.parentFile, "${opts.output.name}.version")
+    if (!versionFile.isFile) {
+        fail("Version sidecar missing: $versionFile. Run ./gradlew :tools:airportdb:run")
+    }
+    if (versionFile.readText().trim() != schema.identityHash) {
+        fail(
+            "Version sidecar is stale.\n" +
+                "  sidecar: ${versionFile.readText().trim()}\n" +
+                "  schema : ${schema.identityHash}\n" +
+                "  Fix: ./gradlew :tools:airportdb:run",
+        )
+    }
+
     val failures = mutableListOf<String>()
     fun check(condition: Boolean, message: String) {
         if (!condition) failures += message

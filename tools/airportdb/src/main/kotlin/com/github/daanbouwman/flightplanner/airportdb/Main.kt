@@ -53,9 +53,17 @@ fun main(args: Array<String>) {
         report = report,
     )
 
+    // Version sidecar read by AirportAssetInstaller to decide whether the copy
+    // on the device is stale. The identity hash changes when the entities change
+    // and the file is rewritten whenever the data is regenerated, so it covers
+    // both kinds of drift with one value.
+    val versionFile = File(opts.output.parentFile, "${opts.output.name}.version")
+    versionFile.writeText(schema.identityHash)
+
     println()
     println(report.render())
     println("Wrote %s (%,.1f MiB)".format(opts.output, opts.output.length() / 1024.0 / 1024.0))
+    println("Wrote %s (%s)".format(versionFile, schema.identityHash))
 
     // A dataset that silently collapses is worse than a failed build.
     if (report.airportsWritten < opts.minAirports) {
