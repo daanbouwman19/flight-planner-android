@@ -15,6 +15,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Filament and bundled SQLite ship native libraries for four ABIs,
+            // which is ~32 MB of the debug APK. Local builds only ever run on a
+            // real phone (arm64) or an emulator (x86_64), so drop the rest and
+            // make install-and-iterate noticeably faster. Release keeps them all.
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

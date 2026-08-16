@@ -12,6 +12,10 @@ dependencies {
     api(libs.compose.material3.adaptive.layout)
     api(libs.compose.material3.adaptive.navigation)
     api(libs.compose.material3.adaptive.navigation.suite)
-    api(libs.compose.material.icons.extended)
+    // material-icons-extended is deliberately absent. Nothing uses it yet, and it
+    // carries ~10,000 vector icons, so pulling it in "just in case" is a habit
+    // worth not starting. (Removing it did not measurably shrink the debug APK
+    // here -- the bulk is Compose, Filament and Hilt -- but an unused dependency
+    // of that size should not sit on the classpath.)
     implementation(libs.androidx.core.ktx)
 }
