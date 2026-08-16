@@ -143,8 +143,17 @@ it lives on Android.
 New repo `J:\projects\flight-planner-android` → `git@github.com:daanbouwman19/flight-planner-android.git`,
 MIT, appId `com.github.daanbouwman.flightplanner`. Git LFS for `*.db` and screenshot goldens.
 
-**SDK levels**: `minSdk 28` (native `java.time`, no desugaring, TLS 1.3, Vulkan 1.1 everywhere on
-64-bit), `targetSdk 36` (Play requires it from 31 Aug 2026), `compileSdk 37`.
+**SDK levels**: `minSdk 36` (**Android 16**), `targetSdk 36` (Play requires it from 31 Aug 2026),
+`compileSdk 37`.
+
+The floor was originally 28 to maximise reach. It is now 36 because this is a new app for modern
+devices with a small user base, built in a design language that assumes a modern platform. The
+trade is install base for a simpler app: dynamic colour, predictive back, edge-to-edge
+enforcement, per-app language, Vulkan 1.3 and all of `java.time` are unconditionally present, so
+none of them needs a `Build.VERSION.SDK_INT` guard, a compat wrapper or a fallback branch. That
+matters more than it sounds — a guard for an API level below `minSdk` is not merely redundant, it
+is a branch no device this app can run on will ever take, so it cannot be tested and quietly rots.
+Raising the floor later would be a breaking change for installed users; doing it now costs nothing.
 
 **Toolchain** — pin every one of these from live Maven metadata on day one rather than trusting
 this table: AGP 9.2.x · Gradle 9.x with configuration cache · Kotlin 2.3.x (JVM target 17) · KSP

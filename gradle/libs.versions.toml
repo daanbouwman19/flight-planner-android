@@ -23,7 +23,15 @@ ksp = "2.3.11"
 # --- sdk ---
 compileSdk = "37"
 targetSdk = "36"
-minSdk = "28"
+# Android 16. This is a new app for modern devices with a small user base, so the
+# floor is set at the platform the design language actually assumes rather than at
+# the widest reach. It is a deliberate trade of install base for a simpler app:
+# dynamic colour, predictive back, edge-to-edge enforcement, per-app language,
+# Vulkan 1.3 and the whole java.time surface are all unconditionally present, so
+# none of them needs a Build.VERSION.SDK_INT guard, a compat wrapper or a fallback
+# branch. Every such guard is a code path that cannot be exercised on any device
+# this app runs on, which makes it untestable rather than merely redundant.
+minSdk = "36"
 # --- androidx / compose ---
 composeBom = "2026.08.00"
 # material3 is pinned ABOVE the BOM on purpose. The BOM resolves 1.4.0, and the

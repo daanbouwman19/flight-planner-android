@@ -6,6 +6,15 @@ by reading documentation. Documentation for Compose Material 3 in this era
 describes several release trains at once, so it cannot tell you whether a symbol
 exists *in the version you resolve*. Only the compiler can.
 
+**Platform floor: `minSdk 36` (Android 16).** Everything below assumes it. Because
+the floor is the platform the design language targets, there are **no
+`Build.VERSION.SDK_INT` guards anywhere in this app** — dynamic colour, predictive
+back, edge-to-edge enforcement and per-app language are all unconditionally
+available. A guard for an API level below `minSdk` is a branch no supported device
+can take, so it is untestable rather than merely redundant; lint reports it as
+`ObsoleteSdkInt`. If you are about to write one, the answer is that you do not need
+it.
+
 | Artifact | Version |
 | --- | --- |
 | `androidx.compose.ui:ui` | 1.12.0 (from BOM `2026.08.00`) |
