@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "698001760288d4b321086f1bbd3ea57e",
+    "identityHash": "c1fbdd8176e83304f69301773eeff89d",
     "entities": [
       {
         "tableName": "airports",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `icao` TEXT NOT NULL, `has_icao` INTEGER NOT NULL, `ident` TEXT NOT NULL, `name` TEXT NOT NULL, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `elevation_ft` INTEGER NOT NULL, `country` TEXT NOT NULL, `municipality` TEXT, `size_class` INTEGER NOT NULL, `scheduled_service` INTEGER NOT NULL, `longest_runway_ft` INTEGER NOT NULL, `runway_count` INTEGER NOT NULL, `has_hard_surface` INTEGER NOT NULL, `has_lighting` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `icao` TEXT NOT NULL, `code_packed` INTEGER NOT NULL, `has_icao` INTEGER NOT NULL, `ident` TEXT NOT NULL, `name` TEXT NOT NULL, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `elevation_ft` INTEGER NOT NULL, `country` TEXT NOT NULL, `municipality` TEXT, `size_class` INTEGER NOT NULL, `scheduled_service` INTEGER NOT NULL, `longest_runway_ft` INTEGER NOT NULL, `runway_count` INTEGER NOT NULL, `has_hard_surface` INTEGER NOT NULL, `has_lighting` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -18,6 +18,12 @@
             "fieldPath": "icao",
             "columnName": "icao",
             "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "codePacked",
+            "columnName": "code_packed",
+            "affinity": "INTEGER",
             "notNull": true
           },
           {
@@ -268,7 +274,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '698001760288d4b321086f1bbd3ea57e')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c1fbdd8176e83304f69301773eeff89d')"
     ]
   }
 }

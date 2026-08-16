@@ -214,7 +214,7 @@ class AirportIndexInvariantTest {
             ),
         )
         index.slotOf("eham") shouldBe index.slotOf("EHAM")
-        index.icao[index.slotOf("EHAM")] shouldBe "EHAM"
+        index.icaoOf(index.slotOf("EHAM")) shouldBe "EHAM"
         index.slotOf("ZZZZ") shouldBe -1
     }
 

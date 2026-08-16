@@ -3,6 +3,7 @@ package com.github.daanbouwman.flightplanner.startup
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.daanbouwman.flightplanner.core.database.airport.AirportDao
+import com.github.daanbouwman.flightplanner.core.database.airport.AirportIndexLoader
 import com.github.daanbouwman.flightplanner.core.database.airport.DatasetMetaDao
 import com.github.daanbouwman.flightplanner.core.database.airport.RunwayDao
 import com.github.daanbouwman.flightplanner.core.database.user.AircraftDao
@@ -11,7 +12,6 @@ import com.github.daanbouwman.flightplanner.core.database.user.toSpec
 import com.github.daanbouwman.flightplanner.feature.globe.FilamentProbe
 import com.github.daanbouwman.flightplanner.model.DatasetMetaKeys
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
-import com.github.daanbouwman.flightplanner.routing.AirportIndexBuilder
 import com.github.daanbouwman.flightplanner.routing.RouteGenerator
 import com.github.daanbouwman.flightplanner.routing.RouteMode
 import com.github.daanbouwman.flightplanner.routing.RouteRequest
@@ -45,6 +45,7 @@ class StartupCheckViewModel @Inject constructor(
     private val datasetMetaDao: DatasetMetaDao,
     private val aircraftDao: AircraftDao,
     private val fleetSeeder: FleetSeeder,
+    private val indexLoader: AirportIndexLoader,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(StartupUiState())
@@ -103,40 +104,16 @@ class StartupCheckViewModel @Inject constructor(
     }
 
     private suspend fun buildIndex(expected: Int): AirportIndex? = try {
-        var index: AirportIndex? = null
-        val millis = measureTimeMillis {
-            index = withContext(Dispatchers.Default) {
-                val rows = airportDao.loadAllForIndex()
-                val builder = AirportIndexBuilder(rows.size)
-                for (row in rows) {
-                    builder.add(
-                        id = row.id,
-                        icaoCode = row.icao,
-                        name = row.name,
-                        latitude = row.lat,
-                        longitude = row.lon,
-                        elevation = row.elevationFt,
-                        longestRunway = row.longestRunwayFt,
-                        runways = row.runwayCount,
-                        country = row.country,
-                        municipality = row.municipality,
-                        packedFlags = AirportIndex.packFlags(
-                            hasIcao = row.hasIcao,
-                            hardSurface = row.hasHardSurface,
-                            lighting = row.hasLighting,
-                            sizeClass = SIZE_CLASSES[row.sizeClass.coerceIn(0, SIZE_CLASSES.lastIndex)],
-                        ),
-                    )
-                }
-                builder.build()
-            }
-        }
+        val loaded = indexLoader.load()
+        val timing = loaded.timing
         report(
             "In-memory index",
-            Status.PASS,
-            "built %,d airports in %d ms".format(index?.size ?: 0, millis),
+            if (timing.totalMillis <= INDEX_BUDGET_MILLIS) Status.PASS else Status.WARN,
+            "%,d airports in %d ms\n  read %d ms, sort and trig %d ms".format(
+                timing.airports, timing.totalMillis, timing.readMillis, timing.buildMillis,
+            ),
         )
-        index
+        loaded.index
     } catch (t: Throwable) {
         report("In-memory index", Status.FAIL, t.message ?: t::class.java.simpleName)
         null
@@ -190,8 +167,8 @@ class StartupCheckViewModel @Inject constructor(
                         aircraft.rangeNm,
                         routes.size,
                         millis,
-                        index.icao[example.departureSlot],
-                        index.icao[example.destinationSlot],
+                        index.icaoOf(example.departureSlot),
+                        index.icaoOf(example.destinationSlot),
                         example.distanceNm,
                     ),
                 )
@@ -218,6 +195,7 @@ class StartupCheckViewModel @Inject constructor(
     }
 
     private companion object {
-        val SIZE_CLASSES = com.github.daanbouwman.flightplanner.model.AirportSizeClass.entries.toTypedArray()
+        /** Above this, the index would be visible as a stall behind the splash screen. */
+        const val INDEX_BUDGET_MILLIS = 150L
     }
 }

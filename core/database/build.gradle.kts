@@ -10,6 +10,10 @@ android {
 
 dependencies {
     api(projects.core.model)
+    // The loader builds the in-memory index directly from a cursor, so it needs
+    // the index type; keeping that here avoids materialising entity objects
+    // purely to hand them to another layer.
+    api(projects.core.routing)
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.kotlin.test)

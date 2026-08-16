@@ -1,6 +1,7 @@
 package com.github.daanbouwman.flightplanner.airportdb
 
 import com.github.daanbouwman.flightplanner.airportdb.RoomSchema.ddl
+import com.github.daanbouwman.flightplanner.routing.IcaoCode
 import java.io.File
 import java.sql.Connection
 import java.sql.DriverManager
@@ -59,29 +60,35 @@ object Writer {
     private fun insertAirports(conn: Connection, airports: List<AirportRow>, report: BuildReport) {
         val sql = """
             INSERT INTO airports
-              (id, icao, has_icao, ident, name, lat, lon, elevation_ft, country, municipality,
+              (id, icao, code_packed, has_icao, ident, name, lat, lon, elevation_ft, country, municipality,
                size_class, scheduled_service, longest_runway_ft, runway_count, has_hard_surface, has_lighting)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """.trimIndent()
 
         conn.prepareStatement(sql).use { ps ->
             for (a in airports) {
+                // Packed here rather than on the device: it removes the only text
+                // column from the startup index read.
+                val packed = IcaoCode.encode(a.icao)
+                check(packed >= 0) { "Code '${a.icao}' cannot be packed; the filter should have excluded it" }
+
                 ps.setInt(1, a.id)
                 ps.setString(2, a.icao)
-                ps.setInt(3, if (a.hasIcao) 1 else 0)
-                ps.setString(4, a.ident)
-                ps.setString(5, a.name)
-                ps.setDouble(6, a.lat)
-                ps.setDouble(7, a.lon)
-                ps.setInt(8, a.elevationFt)
-                ps.setString(9, a.country)
-                if (a.municipality == null) ps.setNull(10, java.sql.Types.VARCHAR) else ps.setString(10, a.municipality)
-                ps.setInt(11, a.sizeClass)
-                ps.setInt(12, if (a.scheduledService) 1 else 0)
-                ps.setInt(13, a.longestRunwayFt)
-                ps.setInt(14, a.runwayCount)
-                ps.setInt(15, if (a.hasHardSurface) 1 else 0)
-                ps.setInt(16, if (a.hasLighting) 1 else 0)
+                ps.setInt(3, packed)
+                ps.setInt(4, if (a.hasIcao) 1 else 0)
+                ps.setString(5, a.ident)
+                ps.setString(6, a.name)
+                ps.setDouble(7, a.lat)
+                ps.setDouble(8, a.lon)
+                ps.setInt(9, a.elevationFt)
+                ps.setString(10, a.country)
+                if (a.municipality == null) ps.setNull(11, java.sql.Types.VARCHAR) else ps.setString(11, a.municipality)
+                ps.setInt(12, a.sizeClass)
+                ps.setInt(13, if (a.scheduledService) 1 else 0)
+                ps.setInt(14, a.longestRunwayFt)
+                ps.setInt(15, a.runwayCount)
+                ps.setInt(16, if (a.hasHardSurface) 1 else 0)
+                ps.setInt(17, if (a.hasLighting) 1 else 0)
                 ps.addBatch()
                 report.airportsWritten++
                 if (a.hasIcao) report.airportsWithIcao++

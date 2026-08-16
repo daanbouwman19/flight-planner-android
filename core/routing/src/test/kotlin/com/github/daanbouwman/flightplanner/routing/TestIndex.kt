@@ -20,15 +20,10 @@ fun buildIndex(airports: List<TestAirport>): AirportIndex {
     airports.forEachIndexed { i, a ->
         builder.add(
             id = i + 1,
-            icaoCode = a.icao,
-            name = a.name,
+            icao = a.icao,
             latitude = a.lat,
             longitude = a.lon,
-            elevation = 0,
             longestRunway = a.longestRunwayFt,
-            runways = 1,
-            country = "XX",
-            municipality = null,
             packedFlags = AirportIndex.packFlags(
                 hasIcao = a.hasIcao,
                 hardSurface = a.hardSurface,
@@ -51,7 +46,9 @@ fun randomWorld(count: Int, seed: Int = 1): AirportIndex {
     val random = Random(seed)
     val airports = (0 until count).map { i ->
         TestAirport(
-            icao = "T%04d".format(i),
+            // Decoding the row number yields a distinct, valid four-character
+            // code, which is what the index requires.
+            icao = IcaoCode.decode(i),
             lat = random.nextDouble(-89.5, 89.5),
             lon = random.nextDouble(-180.0, 180.0),
             longestRunwayFt = random.nextInt(1_000, 15_000),

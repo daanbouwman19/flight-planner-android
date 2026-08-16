@@ -31,6 +31,15 @@ data class AirportEntity(
     val icao: String,
 
     /**
+     * [icao] packed into an integer by `IcaoCode`, precomputed here so the
+     * startup index read fetches no text at all. Deriving it in SQL would move
+     * the cost rather than remove it: it needs four `SUBSTR` and four `INSTR`
+     * calls per row.
+     */
+    @ColumnInfo(name = "code_packed")
+    val codePacked: Int,
+
+    /**
      * 1 when [icao] is a real ICAO code, 0 when it came from the OurAirports
      * `ident` column. Flight-planning tools only accept real ICAO codes, so this
      * backs the "ICAO airports only" preference.

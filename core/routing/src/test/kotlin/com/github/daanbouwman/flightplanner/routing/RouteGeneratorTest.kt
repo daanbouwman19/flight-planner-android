@@ -77,14 +77,14 @@ class RouteGeneratorInvariantTest {
 
     @Test
     fun `a locked departure is honoured for every route`() = runTest {
-        val icao = world.icao[world.size / 2]
+        val icao = world.icaoOf(world.size / 2)
         val fleet = listOf(aircraft(id = 1, rangeNm = 3_000, takeoffMeters = 1_000))
         val routes = generator.generate(
             RouteRequest(RouteMode.AllAircraft, fleet, amount = 100, lockedDepartureIcao = icao),
             Random(4),
         )
         routes.size shouldBeGreaterThan 0
-        routes.forEach { world.icao[it.departureSlot] shouldBe icao }
+        routes.forEach { world.icaoOf(it.departureSlot) shouldBe icao }
     }
 
     @Test
@@ -247,7 +247,7 @@ class RouteGeneratorGeographyTest {
 
         routes.size shouldBeGreaterThan 0
         routes.forEach {
-            (index.icao[it.destinationSlot] in setOf("EAST", "EAS2")) shouldBe true
+            (index.icaoOf(it.destinationSlot) in setOf("EAST", "EAS2")) shouldBe true
         }
     }
 

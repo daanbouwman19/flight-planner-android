@@ -5,6 +5,7 @@ import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.model.FleetCsv
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.AirportIndexBuilder
+import com.github.daanbouwman.flightplanner.routing.IcaoCode
 import com.github.daanbouwman.flightplanner.routing.RouteGenerator
 import com.github.daanbouwman.flightplanner.routing.RouteMode
 import com.github.daanbouwman.flightplanner.routing.RouteRequest
@@ -105,6 +106,27 @@ fun main(args: Array<String>) {
         ) { it.getInt(1) } ?: 0
         check(badCoords == 0, "$badCoords airports have out-of-range coordinates")
 
+        // The packed code is what the app looks airports up by, so a code that
+        // does not round-trip is an airport that can never be found.
+        var packingFailures = 0
+        var firstFailure: String? = null
+        conn.createStatement().use { st ->
+            st.executeQuery("SELECT icao, code_packed FROM airports").use { rs ->
+                while (rs.next()) {
+                    val icao = rs.getString(1)
+                    val packed = rs.getInt(2)
+                    if (IcaoCode.encode(icao) != packed || IcaoCode.decode(packed) != icao) {
+                        packingFailures++
+                        if (firstFailure == null) firstFailure = "$icao -> $packed -> ${IcaoCode.decode(packed)}"
+                    }
+                }
+            }
+        }
+        check(
+            packingFailures == 0,
+            "$packingFailures codes do not round-trip through IcaoCode (first: $firstFailure)",
+        )
+
         failures += smokeTestRouteGeneration(conn, opts)
 
         if (failures.isEmpty()) {
@@ -192,8 +214,8 @@ private fun loadIndex(conn: java.sql.Connection): AirportIndex {
     conn.createStatement().use { st ->
         st.executeQuery(
             """
-            SELECT id, icao, has_icao, name, lat, lon, elevation_ft, country, municipality,
-                   size_class, longest_runway_ft, runway_count, has_hard_surface, has_lighting
+            SELECT id, code_packed, lat, lon, longest_runway_ft, has_icao, has_hard_surface,
+                   has_lighting, size_class
             FROM airports
             """.trimIndent(),
         ).use { rs ->
@@ -201,20 +223,15 @@ private fun loadIndex(conn: java.sql.Connection): AirportIndex {
             while (rs.next()) {
                 builder.add(
                     id = rs.getInt(1),
-                    icaoCode = rs.getString(2),
-                    name = rs.getString(4),
-                    latitude = rs.getDouble(5),
-                    longitude = rs.getDouble(6),
-                    elevation = rs.getInt(7),
-                    longestRunway = rs.getInt(11),
-                    runways = rs.getInt(12),
-                    country = rs.getString(8) ?: "",
-                    municipality = rs.getString(9),
+                    packedCode = rs.getInt(2),
+                    latitude = rs.getDouble(3),
+                    longitude = rs.getDouble(4),
+                    longestRunway = rs.getInt(5),
                     packedFlags = AirportIndex.packFlags(
-                        hasIcao = rs.getInt(3) == 1,
-                        hardSurface = rs.getInt(13) == 1,
-                        lighting = rs.getInt(14) == 1,
-                        sizeClass = sizeClasses[rs.getInt(10).coerceIn(0, sizeClasses.lastIndex)],
+                        hasIcao = rs.getInt(6) == 1,
+                        hardSurface = rs.getInt(7) == 1,
+                        lighting = rs.getInt(8) == 1,
+                        sizeClass = sizeClasses[rs.getInt(9).coerceIn(0, sizeClasses.lastIndex)],
                     ),
                 )
             }
