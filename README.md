@@ -19,8 +19,8 @@ Under construction. See `docs/` for the milestone plan.
 | Milestone | State |
 | --- | --- |
 | M0 — build skeleton | done |
-| M1 — airport database ETL + Room storage | in progress |
-| M2 — route generation engine | not started |
+| M1 — airport database ETL + Room storage | done |
+| M2 — route generation engine | done |
 | M3 — end-to-end usable app | not started |
 | M4 — fleet / airports / statistics screens | not started |
 | M5 — METAR weather | not started |
@@ -63,10 +63,33 @@ plain JVM in milliseconds, and no `Context` can leak into the domain layer.
 The 3D globe uses [Filament](https://github.com/google/filament) on its Vulkan backend. Filament
 ships prebuilt native libraries, so this project contains no C or C++ and needs no NDK.
 
+## The bundled airport database
+
+`:tools:airportdb` turns the checked-in OurAirports snapshots into
+`app/src/main/assets/databases/airports.db`. From 85,912 upstream airport rows and 48,165 runway
+rows, **24,321 airports survive** (8,185 with a real ICAO code) with 58,221 runway ends — 6.1 MB
+on disk, 3.3 MB compressed into the APK.
+
+An airport is kept when it is a real airport (not a heliport, seaplane base, balloonport or a
+closed field), has a four-character code, has valid coordinates, and has at least one open runway
+of known length. That last condition is by far the strictest.
+
+```bash
+./gradlew :tools:airportdb:run                    # regenerate the database
+./gradlew :tools:airportdb:verifyAirportAsset     # also runs as part of `check`
+```
+
+The verifier is not optional ceremony. Room validates a prepackaged database against an identity
+hash derived from the entity definitions; if the two drift, Room refuses to open the database on
+first launch, on every device, with no recovery path. The ETL therefore emits its DDL from Room's
+own exported schema JSON, and the verifier fails the build if the shipped file no longer matches.
+It also generates real routes for the shortest- and longest-range aircraft in the fleet, so the
+dataset and the route generator cannot silently stop agreeing.
+
 ## Data and attribution
 
 - Airport and runway data: [OurAirports](https://ourairports.com/data/) — released to the public
-  domain. Regenerate the bundled database with `./gradlew :tools:airportdb:run`.
+  domain.
 - Weather: [NOAA Aviation Weather Center](https://aviationweather.gov/data/api/) — no API key
   required. [AVWX](https://avwx.rest/) is available as an alternative provider.
 - Satellite imagery: attribution is rendered on the globe and depends on the selected tile
