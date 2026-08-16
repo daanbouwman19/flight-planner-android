@@ -1,0 +1,17 @@
+# Normalise to LF in the repository. gradlew in particular must keep LF or it
+# is not executable on Unix checkouts.
+* text=auto eol=lf
+*.bat text eol=crlf
+gradlew text eol=lf
+
+*.jar binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.db binary
+*.zip binary
+*.filamat binary
+
+# Generated data assets: large, and a diff is never meaningful.
+app/src/main/assets/databases/*.db binary
+tools/airportdb/data/*.csv -diff

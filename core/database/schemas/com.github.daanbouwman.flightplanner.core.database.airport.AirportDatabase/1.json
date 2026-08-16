@@ -1,0 +1,274 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "698001760288d4b321086f1bbd3ea57e",
+    "entities": [
+      {
+        "tableName": "airports",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `icao` TEXT NOT NULL, `has_icao` INTEGER NOT NULL, `ident` TEXT NOT NULL, `name` TEXT NOT NULL, `lat` REAL NOT NULL, `lon` REAL NOT NULL, `elevation_ft` INTEGER NOT NULL, `country` TEXT NOT NULL, `municipality` TEXT, `size_class` INTEGER NOT NULL, `scheduled_service` INTEGER NOT NULL, `longest_runway_ft` INTEGER NOT NULL, `runway_count` INTEGER NOT NULL, `has_hard_surface` INTEGER NOT NULL, `has_lighting` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "icao",
+            "columnName": "icao",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hasIcao",
+            "columnName": "has_icao",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ident",
+            "columnName": "ident",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lat",
+            "columnName": "lat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lon",
+            "columnName": "lon",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "elevationFt",
+            "columnName": "elevation_ft",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "country",
+            "columnName": "country",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "municipality",
+            "columnName": "municipality",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sizeClass",
+            "columnName": "size_class",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scheduledService",
+            "columnName": "scheduled_service",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "longestRunwayFt",
+            "columnName": "longest_runway_ft",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "runwayCount",
+            "columnName": "runway_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hasHardSurface",
+            "columnName": "has_hard_surface",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hasLighting",
+            "columnName": "has_lighting",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_airports_icao",
+            "unique": true,
+            "columnNames": [
+              "icao"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_airports_icao` ON `${TABLE_NAME}` (`icao`)"
+          },
+          {
+            "name": "index_airports_longest_runway_ft",
+            "unique": false,
+            "columnNames": [
+              "longest_runway_ft"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_airports_longest_runway_ft` ON `${TABLE_NAME}` (`longest_runway_ft`)"
+          },
+          {
+            "name": "index_airports_lat",
+            "unique": false,
+            "columnNames": [
+              "lat"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_airports_lat` ON `${TABLE_NAME}` (`lat`)"
+          },
+          {
+            "name": "index_airports_size_class",
+            "unique": false,
+            "columnNames": [
+              "size_class"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_airports_size_class` ON `${TABLE_NAME}` (`size_class`)"
+          }
+        ]
+      },
+      {
+        "tableName": "runways",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `airport_id` INTEGER NOT NULL, `ident` TEXT NOT NULL, `true_heading` REAL, `length_ft` INTEGER NOT NULL, `width_ft` INTEGER NOT NULL, `surface` TEXT NOT NULL, `surface_kind` INTEGER NOT NULL, `lat` REAL, `lon` REAL, `elevation_ft` INTEGER NOT NULL, `lighted` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "airportId",
+            "columnName": "airport_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ident",
+            "columnName": "ident",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trueHeading",
+            "columnName": "true_heading",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "lengthFt",
+            "columnName": "length_ft",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "widthFt",
+            "columnName": "width_ft",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "surface",
+            "columnName": "surface",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "surfaceKind",
+            "columnName": "surface_kind",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lat",
+            "columnName": "lat",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "lon",
+            "columnName": "lon",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "elevationFt",
+            "columnName": "elevation_ft",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lighted",
+            "columnName": "lighted",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_runways_airport_id",
+            "unique": false,
+            "columnNames": [
+              "airport_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_runways_airport_id` ON `${TABLE_NAME}` (`airport_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "dataset_meta",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '698001760288d4b321086f1bbd3ea57e')"
+    ]
+  }
+}

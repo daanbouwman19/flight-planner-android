@@ -23,6 +23,16 @@ class JvmLibraryConventionPlugin : Plugin<Project> {
 
         configureKotlinJvm()
 
+        // kotlin-test resolves to its JUnit 5 variant automatically once
+        // useJUnitPlatform() is set, but the engine itself still has to be on the
+        // runtime classpath or the suite silently reports zero tests.
+        dependencies.add(
+            "testRuntimeOnly",
+            dependencies.platform(libs.findLibrary("junit5-bom").get()),
+        )
+        dependencies.add("testRuntimeOnly", libs.findLibrary("junit5-jupiter-engine").get())
+        dependencies.add("testRuntimeOnly", libs.findLibrary("junit5-platform-launcher").get())
+
         tasks.withType(Test::class.java).configureEach {
             useJUnitPlatform()
             testLogging {

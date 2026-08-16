@@ -1,0 +1,239 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "e6a0be22a02ff6b1f2d0b604e22c4066",
+    "entities": [
+      {
+        "tableName": "aircraft",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `manufacturer` TEXT NOT NULL, `variant` TEXT NOT NULL, `icao_code` TEXT NOT NULL, `flown` INTEGER NOT NULL, `range_nm` INTEGER NOT NULL, `category` TEXT NOT NULL, `cruise_speed_kt` INTEGER NOT NULL, `date_flown` TEXT, `takeoff_distance_m` INTEGER, `is_custom` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "manufacturer",
+            "columnName": "manufacturer",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "variant",
+            "columnName": "variant",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "icaoCode",
+            "columnName": "icao_code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flown",
+            "columnName": "flown",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rangeNm",
+            "columnName": "range_nm",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cruiseSpeedKt",
+            "columnName": "cruise_speed_kt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateFlown",
+            "columnName": "date_flown",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "takeoffDistanceM",
+            "columnName": "takeoff_distance_m",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isCustom",
+            "columnName": "is_custom",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_aircraft_flown",
+            "unique": false,
+            "columnNames": [
+              "flown"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_aircraft_flown` ON `${TABLE_NAME}` (`flown`)"
+          },
+          {
+            "name": "index_aircraft_category",
+            "unique": false,
+            "columnNames": [
+              "category"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_aircraft_category` ON `${TABLE_NAME}` (`category`)"
+          }
+        ]
+      },
+      {
+        "tableName": "flight_log",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `departure_icao` TEXT NOT NULL, `arrival_icao` TEXT NOT NULL, `aircraft_id` INTEGER NOT NULL, `date` TEXT NOT NULL, `distance_nm` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "departureIcao",
+            "columnName": "departure_icao",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "arrivalIcao",
+            "columnName": "arrival_icao",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aircraftId",
+            "columnName": "aircraft_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "distanceNm",
+            "columnName": "distance_nm",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_flight_log_aircraft_id",
+            "unique": false,
+            "columnNames": [
+              "aircraft_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_flight_log_aircraft_id` ON `${TABLE_NAME}` (`aircraft_id`)"
+          },
+          {
+            "name": "index_flight_log_date",
+            "unique": false,
+            "columnNames": [
+              "date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_flight_log_date` ON `${TABLE_NAME}` (`date`)"
+          },
+          {
+            "name": "index_flight_log_departure_icao",
+            "unique": false,
+            "columnNames": [
+              "departure_icao"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_flight_log_departure_icao` ON `${TABLE_NAME}` (`departure_icao`)"
+          },
+          {
+            "name": "index_flight_log_arrival_icao",
+            "unique": false,
+            "columnNames": [
+              "arrival_icao"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_flight_log_arrival_icao` ON `${TABLE_NAME}` (`arrival_icao`)"
+          }
+        ]
+      },
+      {
+        "tableName": "metar_cache",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`station` TEXT NOT NULL, `raw` TEXT NOT NULL, `flight_rules` TEXT, `observation_time` TEXT, `observation_instant` TEXT, `fetched_at` INTEGER NOT NULL, PRIMARY KEY(`station`))",
+        "fields": [
+          {
+            "fieldPath": "station",
+            "columnName": "station",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "raw",
+            "columnName": "raw",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightRules",
+            "columnName": "flight_rules",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "observationTime",
+            "columnName": "observation_time",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "observationInstant",
+            "columnName": "observation_instant",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fetchedAt",
+            "columnName": "fetched_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "station"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e6a0be22a02ff6b1f2d0b604e22c4066')"
+    ]
+  }
+}
