@@ -1,7 +1,16 @@
 package com.github.daanbouwman.flightplanner.airportdb
 
+import com.github.daanbouwman.flightplanner.model.AircraftSpec
+import com.github.daanbouwman.flightplanner.model.AirportSizeClass
+import com.github.daanbouwman.flightplanner.model.FleetCsv
+import com.github.daanbouwman.flightplanner.routing.AirportIndex
+import com.github.daanbouwman.flightplanner.routing.AirportIndexBuilder
+import com.github.daanbouwman.flightplanner.routing.RouteGenerator
+import com.github.daanbouwman.flightplanner.routing.RouteMode
+import com.github.daanbouwman.flightplanner.routing.RouteRequest
 import java.io.File
 import java.sql.DriverManager
+import kotlin.random.Random
 import kotlin.system.exitProcess
 
 /**
@@ -81,6 +90,8 @@ fun main(args: Array<String>) {
         ) { it.getInt(1) } ?: 0
         check(badCoords == 0, "$badCoords airports have out-of-range coordinates")
 
+        failures += smokeTestRouteGeneration(conn, opts)
+
         if (failures.isEmpty()) {
             println(
                 "Airport asset OK: %,d airports, %,d runway ends, identityHash %s"
@@ -99,4 +110,106 @@ fun main(args: Array<String>) {
 private fun fail(message: String): Nothing {
     System.err.println(message)
     exitProcess(1)
+}
+
+/**
+ * Generates real routes from the shipped dataset using the shipped fleet.
+ *
+ * The structural checks above prove the file is well-formed; this proves it is
+ * *useful*. A dataset can satisfy every integrity constraint and still be unable
+ * to produce a flyable route for a short-range aircraft — and that failure would
+ * otherwise only surface in the user's hands.
+ */
+private fun smokeTestRouteGeneration(
+    conn: java.sql.Connection,
+    opts: Options,
+): List<String> {
+    val failures = mutableListOf<String>()
+
+    val index = loadIndex(conn)
+    val fleet = readSeedFleet(opts) ?: run {
+        return listOf("Could not read the seed fleet; route generation was not exercised.")
+    }
+
+    val generator = RouteGenerator(index)
+    val shortest = fleet.minBy { it.rangeNm }
+    val longest = fleet.maxBy { it.rangeNm }
+
+    for (aircraft in listOf(shortest, longest)) {
+        val routes = kotlinx.coroutines.runBlocking {
+            generator.generate(
+                RouteRequest(RouteMode.AllAircraft, listOf(aircraft), amount = 50),
+                Random(20260816),
+            )
+        }
+        val label = "${aircraft.displayName} (${aircraft.rangeNm} NM, ${aircraft.requiredRunwayFt} ft)"
+
+        if (routes.isEmpty()) {
+            failures += "no routes could be generated for $label"
+            continue
+        }
+
+        val outOfRange = routes.count { it.distanceNm > aircraft.rangeNm }
+        if (outOfRange > 0) failures += "$outOfRange routes exceed the range of $label"
+
+        val tooShort = routes.count {
+            it.departureRunwayFt < aircraft.requiredRunwayFt ||
+                it.destinationRunwayFt < aircraft.requiredRunwayFt
+        }
+        if (tooShort > 0) failures += "$tooShort routes use a runway too short for $label"
+
+        val longestLeg = routes.maxOf { it.distanceNm }
+        println(
+            "  route smoke test: %-34s %2d/50 routes, longest %,5d NM"
+                .format(aircraft.displayName, routes.size, longestLeg),
+        )
+    }
+
+    return failures
+}
+
+private fun loadIndex(conn: java.sql.Connection): AirportIndex {
+    val count = conn.createStatement().use { st ->
+        st.executeQuery("SELECT COUNT(*) FROM airports").use { if (it.next()) it.getInt(1) else 0 }
+    }
+    val builder = AirportIndexBuilder(count)
+
+    conn.createStatement().use { st ->
+        st.executeQuery(
+            """
+            SELECT id, icao, has_icao, name, lat, lon, elevation_ft, country, municipality,
+                   size_class, longest_runway_ft, runway_count, has_hard_surface, has_lighting
+            FROM airports
+            """.trimIndent(),
+        ).use { rs ->
+            val sizeClasses = AirportSizeClass.entries.toTypedArray()
+            while (rs.next()) {
+                builder.add(
+                    id = rs.getInt(1),
+                    icaoCode = rs.getString(2),
+                    name = rs.getString(4),
+                    latitude = rs.getDouble(5),
+                    longitude = rs.getDouble(6),
+                    elevation = rs.getInt(7),
+                    longestRunway = rs.getInt(11),
+                    runways = rs.getInt(12),
+                    country = rs.getString(8) ?: "",
+                    municipality = rs.getString(9),
+                    packedFlags = AirportIndex.packFlags(
+                        hasIcao = rs.getInt(3) == 1,
+                        hardSurface = rs.getInt(13) == 1,
+                        lighting = rs.getInt(14) == 1,
+                        sizeClass = sizeClasses[rs.getInt(10).coerceIn(0, sizeClasses.lastIndex)],
+                    ),
+                )
+            }
+        }
+    }
+    return builder.build()
+}
+
+private fun readSeedFleet(opts: Options): List<AircraftSpec>? {
+    val file = File(opts.output.parentFile.parentFile, "seed/aircrafts.csv")
+    if (!file.isFile) return null
+    return FleetCsv.parse(file.readText()).aircraft.takeIf { it.isNotEmpty() }
 }

@@ -51,6 +51,10 @@ tasks.named("check") { dependsOn(verifyAirportAsset) }
 
 dependencies {
     implementation(projects.core.model)
+    // The verifier generates real routes from the shipped dataset, which is the
+    // only check that proves the data and the generator actually agree.
+    implementation(projects.core.routing)
+    implementation(libs.kotlinx.coroutines.core)
     implementation(libs.sqlite.jdbc)
     implementation(libs.kotlin.csv.jvm)
     implementation(libs.kotlinx.serialization.json)
