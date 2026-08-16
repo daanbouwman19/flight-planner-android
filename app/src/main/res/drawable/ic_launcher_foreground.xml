@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher glyph: a great-circle arc across a globe, which is the single image
+  that best describes what this app does.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Globe disc -->
+    <path
+        android:fillColor="#1B4A7A"
+        android:pathData="M54,27 m-25,0 a25,25 0 1,0 50,0 a25,25 0 1,0 -50,0" />
+
+    <!-- Equator and meridian, to read as a sphere rather than a circle -->
+    <path
+        android:strokeColor="#4F8FC0"
+        android:strokeWidth="1.4"
+        android:pathData="M29,54 L79,54" />
+    <path
+        android:strokeColor="#4F8FC0"
+        android:strokeWidth="1.4"
+        android:pathData="M54,29 a11,25 0 0,1 0,50 a11,25 0 0,1 0,-50" />
+
+    <!-- Great-circle route arc with endpoint markers -->
+    <path
+        android:strokeColor="#FFC048"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M36,64 Q54,38 72,58" />
+    <path
+        android:fillColor="#FFC048"
+        android:pathData="M36,64 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,58 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+</vector>

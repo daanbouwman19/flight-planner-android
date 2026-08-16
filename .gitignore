@@ -1,0 +1,16 @@
+*.iml
+.gradle/
+.kotlin/
+build/
+local.properties
+.idea/
+.cxx/
+*.apk
+*.aab
+*.hprof
+captures/
+.DS_Store
+
+# Roborazzi writes actual/diff images next to the goldens; only goldens are tracked.
+**/src/test/screenshots/*_actual.png
+**/src/test/screenshots/*_compare.png
