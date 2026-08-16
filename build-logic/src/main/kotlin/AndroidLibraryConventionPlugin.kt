@@ -29,5 +29,6 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
         }
 
         configureKotlinAndroid()
+        configureUnitTestPlatform()
     }
 }

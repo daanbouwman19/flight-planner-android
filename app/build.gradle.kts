@@ -14,6 +14,13 @@ android {
         versionName = "0.1.0"
     }
 
+    androidResources {
+        // The prebuilt index is read on every launch and its whole point is to be
+        // fast, so store it uncompressed rather than paying an inflate each time.
+        // The database is the opposite case: extracted once, so compression wins.
+        noCompress += "index"
+    }
+
     buildTypes {
         debug {
             // Filament and bundled SQLite ship native libraries for four ABIs,
@@ -26,6 +33,20 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        create("benchmark") {
+            // A release build that can be installed without release keys.
+            //
+            // This exists because a debug APK is `debuggable`, and a debuggable
+            // process runs largely interpreted: measured here, fifty short-range
+            // routes cost 110 ms on device against 2 ms on a warm JVM, entirely
+            // because ART never compiles the code. Any startup or throughput
+            // number taken from a debug build is measuring the debugger, not the
+            // app, so timings are only meaningful on this variant.
+            initWith(buildTypes.getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
     }
 }

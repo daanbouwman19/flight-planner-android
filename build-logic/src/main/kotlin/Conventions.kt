@@ -2,6 +2,8 @@ import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.artifacts.VersionCatalog
 import org.gradle.api.artifacts.VersionCatalogsExtension
+import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.kotlin.dsl.getByType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
@@ -35,5 +37,36 @@ internal fun Project.configureKotlinAndroid() {
 internal fun Project.configureKotlinJvm() {
     extensions.getByType<KotlinJvmProjectExtension>().compilerOptions {
         jvmTarget.set(JVM_TARGET)
+    }
+}
+
+/**
+ * Puts unit tests on JUnit 5 and, crucially, on the runtime classpath.
+ *
+ * `kotlin-test` resolves to its JUnit 5 variant once `useJUnitPlatform()` is
+ * set, but the engine itself is not pulled in transitively. Without it a module
+ * does not fail — it reports zero tests and passes, which is the worst possible
+ * outcome for a test suite. Gradle's `failOnNoDiscoveredTests` turns that
+ * silence into an error, and this makes sure it never has to.
+ */
+internal fun Project.configureUnitTestPlatform() {
+    dependencies.add("testRuntimeOnly", dependencies.platform(libs.findLibrary("junit5-bom").get()))
+    dependencies.add("testRuntimeOnly", libs.findLibrary("junit5-jupiter-engine").get())
+    dependencies.add("testRuntimeOnly", libs.findLibrary("junit5-platform-launcher").get())
+
+    // Gradle treats "sources exist but nothing ran" as a misconfiguration, which
+    // is exactly the failure the engine dependency above prevents — so keep it
+    // armed. AGP generates test sources even for a module that has none of its
+    // own, though, so ask the source tree directly rather than trusting that.
+    val hasTestSources = file("src/test").walkTopDown()
+        .any { it.isFile && (it.extension == "kt" || it.extension == "java") }
+
+    tasks.withType(Test::class.java).configureEach {
+        useJUnitPlatform()
+        failOnNoDiscoveredTests.set(hasTestSources)
+        testLogging {
+            events("failed")
+            exceptionFormat = TestExceptionFormat.FULL
+        }
     }
 }
