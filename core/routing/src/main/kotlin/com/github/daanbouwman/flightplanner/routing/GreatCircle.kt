@@ -30,11 +30,19 @@ object GreatCircle {
      * Haversine `a`, i.e. sin²(c/2), from the differences and the two cosines.
      *
      * `a = sin²(Δlat/2) + cos(lat₁)·cos(lat₂)·sin²(Δlon/2)`
+     *
+     * Written as a plain multiply-add rather than [Math.fma]. HotSpot compiles
+     * `fma` to a single instruction, but ART does not intrinsify it, so on a
+     * phone it is a branchy static call — twice per candidate in the loop that
+     * dominates short-range generation. It is also the more portable of the two:
+     * `fma` rounds once and the fallback rounds twice, so the same index could
+     * otherwise resolve a borderline comparison differently on desktop and on
+     * device.
      */
     private fun haversineFactor(latDiff: Float, lonDiff: Float, cosLat1: Float, cosLat2: Float): Float {
         val halfLat = sin(latDiff / 2.0f)
         val halfLon = sin(lonDiff / 2.0f)
-        return Math.fma(cosLat1 * cosLat2, halfLon * halfLon, halfLat * halfLat)
+        return cosLat1 * cosLat2 * (halfLon * halfLon) + halfLat * halfLat
     }
 
     /** Great-circle distance in nautical miles, rounded, from decimal degrees. */
@@ -79,8 +87,8 @@ object GreatCircle {
     fun cachedFactor(index: AirportIndex, a: Int, b: Int): Float {
         val sinLatProduct = index.sinLat[a] * index.sinLat[b]
         val cosLatProduct = index.cosLat[a] * index.cosLat[b]
-        val cosLonDiff = Math.fma(index.sinLon[a], index.sinLon[b], index.cosLon[a] * index.cosLon[b])
-        val inner = Math.fma(cosLatProduct, cosLonDiff, sinLatProduct)
+        val cosLonDiff = index.sinLon[a] * index.sinLon[b] + index.cosLon[a] * index.cosLon[b]
+        val inner = cosLatProduct * cosLonDiff + sinLatProduct
         return 0.5f * (1.0f - inner)
     }
 
