@@ -65,16 +65,17 @@ quieter, not longer.
 
 ### Visual language
 
-- **Material 3, with an expressive layer this project owns.** The `MaterialShapes`,
-  `ButtonGroup`, `FloatingToolbar` and `LoadingIndicator` that Material 3
-  Expressive advertises **do not exist in material3 1.4.0**, and the `MotionScheme`
-  behind them is `internal` — see [API-GROUND-TRUTH.md](API-GROUND-TRUTH.md), which
-  records what actually compiles. `:core:designsystem` supplies the gap: motion
-  tokens carrying the real expressive spring constants, shape morphing on the
-  stable `androidx.graphics:graphics-shapes`, a morphing loading indicator, and
-  `SingleChoiceSegmentedButtonRow` for the mode selector. The expressive
-  *navigation* components — `ShortNavigationBar`, `WideNavigationRail`,
-  `NavigationSuiteScaffold` — are public and are used directly.
+- **Material 3 Expressive** as the base — `MaterialExpressiveTheme`, the expressive
+  shape scale, `MaterialShapes` morphing on the generate FAB, `ButtonGroup` for the
+  mode selector, `FloatingToolbar` for primary actions, `LoadingIndicator` and the
+  wavy progress indicators rather than a plain spinner, emphasized type for hero
+  numerics, and `ShortNavigationBar`/`WideNavigationRail` for navigation.
+  This requires material3 **1.5.0-alpha26**, pinned above the Compose BOM: the
+  BOM's 1.4.0 has none of it (absent or `internal`). See
+  [API-GROUND-TRUTH.md](API-GROUND-TRUTH.md) for exactly what compiles and why the
+  alpha is worth it. Screens must reach Expressive **through `:core:designsystem`**,
+  never by importing a material3 Expressive symbol directly — that is what keeps an
+  alpha bump to a one-module change.
 - **Dynamic colour** from wallpaper, with a brand fallback seeded from avgas
   blue and runway-marking amber.
 - **A "Cockpit" theme** — near-black with amber accents, for night flying. Not a
@@ -90,8 +91,8 @@ quieter, not longer.
 
 | Token | Use | Spec |
 | --- | --- | --- |
-| `spatial` | Anything that moves or resizes | Spring, damping 0.8 / stiffness 380 — interruptible, slight overshoot |
-| `effects` | Fades, colour, alpha | Spring, damping 1.0 / stiffness 1600 — critically damped, no overshoot |
+| `spatial` | Anything that moves or resizes | `MotionScheme.expressive()` spatial spring — damping 0.8 / stiffness 380, interruptible, slight overshoot |
+| `effects` | Fades, colour, alpha | Expressive effects spring — damping 1.0 / stiffness 1600, critically damped, no overshoot |
 | `enter` | List items appearing | 30 ms stagger, capped at 8 items, then instant |
 | `emphasis` | Value changed, action landed | Count-up or pulse, ≤ 500 ms, once |
 | `nav` | Screen to screen | Shared bounds where a real element persists, else fade-through |

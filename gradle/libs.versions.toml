@@ -26,6 +26,16 @@ targetSdk = "36"
 minSdk = "28"
 # --- androidx / compose ---
 composeBom = "2026.08.00"
+# material3 is pinned ABOVE the BOM on purpose. The BOM resolves 1.4.0, and the
+# whole Material 3 Expressive surface -- MaterialShapes, LoadingIndicator,
+# ButtonGroup, FloatingToolbar, SplitButton, FloatingActionButtonMenu, the wavy
+# progress indicators, MotionScheme and MaterialExpressiveTheme -- is either
+# absent from 1.4.0 or `internal` there, so none of it can be used. Expressive is
+# the design language this app is being built in, so the alpha is the only way to
+# get it. It costs less than it looks: 1.5.0-alpha26 requires compose
+# 1.12.0-beta01 and the BOM already supplies 1.12.0 stable, so nothing else moves.
+# See docs/API-GROUND-TRUTH.md.
+material3 = "1.5.0-alpha26"
 m3Adaptive = "1.3.0"
 activityCompose = "1.13.0"
 coreKtx = "1.19.0"
@@ -82,7 +92,7 @@ compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4
 compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
 compose-animation = { group = "androidx.compose.animation", name = "animation" }
-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 compose-material3-adaptive = { group = "androidx.compose.material3.adaptive", name = "adaptive", version.ref = "m3Adaptive" }
 compose-material3-adaptive-layout = { group = "androidx.compose.material3.adaptive", name = "adaptive-layout", version.ref = "m3Adaptive" }

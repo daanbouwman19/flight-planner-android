@@ -1,119 +1,134 @@
 # API ground truth for the pinned stack
 
 Everything here was established by **compiling a throwaway probe** against the
-versions in `gradle/libs.versions.toml`, or by reading the resolved artifact,
-not by reading documentation. Documentation for Compose Material 3 in this era
-describes APIs across several release trains at once, and a large part of the
-"Material 3 Expressive" surface it describes is **not public in the version this
-project resolves**. That discrepancy invalidated part of `UI-PLAN.md` §2 and is
-recorded here so it is not rediscovered.
-
-Resolved by Compose BOM `2026.08.00`:
+versions in `gradle/libs.versions.toml`, or by reading the resolved artifact — not
+by reading documentation. Documentation for Compose Material 3 in this era
+describes several release trains at once, so it cannot tell you whether a symbol
+exists *in the version you resolve*. Only the compiler can.
 
 | Artifact | Version |
 | --- | --- |
-| `androidx.compose.ui:ui` | 1.12.0 |
-| `androidx.compose.material3:material3` | **1.4.0** (newest *stable*; 1.5.0 is alpha26) |
+| `androidx.compose.ui:ui` | 1.12.0 (from BOM `2026.08.00`) |
+| `androidx.compose.material3:material3` | **1.5.0-alpha26**, pinned above the BOM |
 | `androidx.compose.material3:material3-adaptive-*` | 1.4.0 |
+| `androidx.graphics:graphics-shapes` | 1.1.0 |
 
-## What does NOT exist in material3 1.4.0
+## Why material3 is pinned above the BOM
 
-Confirmed twice: the compiler rejects each of these, and none appears in the
-class listing of `material3-android-1.4.0.aar`.
+**Material 3 Expressive is the design language for this app**, so the decision is
+which version supplies it, not whether to use it.
 
-| Symbol | Status |
+The BOM resolves material3 **1.4.0**, and Expressive is essentially unavailable
+there. Probed and confirmed twice — the compiler rejects each, and none appears in
+the class listing of `material3-android-1.4.0.aar`:
+
+| Symbol | in 1.4.0 |
 | --- | --- |
-| `MaterialShapes` (`Circle`, `Cookie9Sided`, `Pill`, …) | **absent** |
-| `LoadingIndicator`, `ContainedLoadingIndicator` | **absent** |
-| `ButtonGroup` | **absent** |
-| `HorizontalFloatingToolbar` / `VerticalFloatingToolbar` | **absent** |
-| `FloatingActionButtonMenu` | **absent** |
-| `SplitButtonLayout` | **absent** |
+| `MaterialShapes`, `LoadingIndicator`, `ButtonGroup` | **absent** |
+| `FloatingToolbar`, `SplitButtonLayout`, `FloatingActionButtonMenu` | **absent** |
+| `LinearWavyProgressIndicator` / `CircularWavyProgressIndicator` | **absent** |
 | `androidx.compose.material3.carousel.*` | **absent** |
-| `MotionScheme`, `MaterialTheme.motionScheme`, `MotionScheme.expressive()` | present but **`internal`** |
-| `MaterialExpressiveTheme` | present but **`internal`** |
-| `Typography.*Emphasized` (`bodyLargeEmphasized`, …) | present but **`internal`** |
-| `Shapes.largeIncreased` / `.extraLargeIncreased` / `.extraExtraLarge` | present but **`internal`** |
-| `ShapeDefaults.CornerExtraSmall` | **`internal`** (`ShapeDefaults.Medium` etc. are public) |
-| `ExperimentalMaterial3ExpressiveApi` | **`internal`** — cannot even be opted into |
+| `MotionScheme`, `MaterialTheme.motionScheme`, `MotionScheme.expressive()` | **`internal`** |
+| `MaterialExpressiveTheme` | **`internal`** |
+| `Typography.*Emphasized` | **`internal`** |
+| `Shapes.largeIncreased` / `.extraLargeIncreased` / `.extraExtraLarge` | **`internal`** |
+| `ExperimentalMaterial3ExpressiveApi` | **`internal`** — no opt-in is even possible |
 
-`internal` here is not a formality that an opt-in annotation unlocks. Kotlin
-`internal` is module-scoped, so from this project these members are as
-unreachable as private ones.
+`internal` is not a formality an annotation unlocks: Kotlin `internal` is
+module-scoped, so from this project those members are as unreachable as private
+ones. Reimplementing all of it by hand was considered and rejected — it would mean
+hand-writing a loading indicator, a button group, a floating toolbar, a FAB menu,
+a split button, a shape catalogue and a motion scheme, and the result would be an
+imitation of the design language rather than the design language.
 
-## What DOES exist and is public + stable
+So material3 is pinned to **1.5.0-alpha26**, where the whole surface is public
+behind `@OptIn(ExperimentalMaterial3ExpressiveApi::class)`. The cost is smaller
+than the version string suggests: alpha26 requires compose `1.12.0-beta01` and the
+BOM already supplies `1.12.0` stable, and it requires `graphics-shapes 1.0.1`
+against our 1.1.0 — both newer, so **nothing else in the graph moves**. The
+adaptive artifacts stay on 1.4.0 and continue to work.
 
-No opt-in required for any of these — verified by compiling without any `@OptIn`:
+The risk is real and is accepted: an alpha can change API between releases. It is
+contained by keeping the Expressive surface behind `:core:designsystem` — screens
+name a motion token or a design-system component, never a material3 Expressive
+symbol directly — so a breaking alpha bump is a change in one module.
 
-- `NavigationSuiteScaffold(navigationItems = { … }, navigationSuiteType = …)`
-  with `NavigationSuiteItem(selected, onClick, icon, label)`. Note the parameter
-  is `navigationItems`, not the older `navigationSuiteItems`.
+## Verified working on 1.5.0-alpha26
+
+Compiled with zero errors and zero warnings under
+`@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)`:
+
+- `MaterialExpressiveTheme(colorScheme, motionScheme, shapes, typography, content)`
+- `MotionScheme.expressive()` / `.standard()`, `MaterialTheme.motionScheme`, and all
+  six specs: `defaultSpatialSpec`, `fastSpatialSpec`, `slowSpatialSpec`,
+  `defaultEffectsSpec`, `fastEffectsSpec`, `slowEffectsSpec`
+- Expressive shape tiers `Shapes.largeIncreased`, `.extraLargeIncreased`, `.extraExtraLarge`
+- `MaterialShapes.Circle` / `Square` / `Pill` / `Cookie9Sided` / `Clover4Leaf` /
+  `VerySunny` / `Diamond` / `Arrow` (and the rest of the catalogue)
+- Emphasized type: `displayLargeEmphasized`, `headlineMediumEmphasized`,
+  `titleMediumEmphasized`, `bodyLargeEmphasized`, `labelLargeEmphasized`
+- `LoadingIndicator`, `ContainedLoadingIndicator`
+- `LinearWavyProgressIndicator`, `CircularWavyProgressIndicator`
+- `ButtonGroup(overflowIndicator = …)`
+- `HorizontalFloatingToolbar(expanded = …)`, `VerticalFloatingToolbar`
+- `FloatingActionButtonMenu(expanded, button)`
+- `SplitButtonLayout(leadingButton, trailingButton)`
+- `carousel.HorizontalMultiBrowseCarousel` + `carousel.rememberCarouselState`
+- `ShortNavigationBar`, `WideNavigationRail`, `AppBarRow`, `AppBarColumn`,
+  `VerticalDragHandle`, `SingleChoiceSegmentedButtonRow`, `PullToRefreshBox`
+- `NavigationSuiteScaffold(navigationItems = { … }, navigationSuiteType = …)` with
+  `NavigationSuiteItem(selected, onClick, icon, label)`. The parameter is
+  `navigationItems`, **not** the older `navigationSuiteItems` that many examples show.
 - `NavigationSuiteType.ShortNavigationBarCompact` / `ShortNavigationBarMedium` /
   `WideNavigationRailCollapsed` / `WideNavigationRailExpanded` / `None`, and
-  `NavigationSuiteScaffoldDefaults.navigationSuiteType(currentWindowAdaptiveInfo())`.
-- `ShortNavigationBar`, `WideNavigationRail` — the expressive navigation
-  components did land publicly, even though the rest of Expressive did not.
-- `AppBarRow(overflowIndicator = …)` and `AppBarColumn` — overflow-aware app bar
-  content.
-- `VerticalDragHandle` — for `ListDetailPaneScaffold` pane resizing.
-- `SingleChoiceSegmentedButtonRow` / `SegmentedButton`.
-- `CircularProgressIndicator`, `LinearProgressIndicator`.
-- `PullToRefreshBox`.
+  `NavigationSuiteScaffoldDefaults.navigationSuiteType(currentWindowAdaptiveInfo())`
+- `rememberSearchBarState`, `TopSearchBar`, `ExpandedFullScreenSearchBar`
+  (these need only `ExperimentalMaterial3Api`)
+- `SharedTransitionLayout` with `Modifier.sharedBounds` / `Modifier.sharedElement`
+  and `rememberSharedContentState`; `LazyItemScope.animateItem()`
+- `preferencesDataStore` delegate; a Hilt `@Qualifier` application `CoroutineScope`
 
-Experimental (compiles with `@OptIn(ExperimentalMaterial3Api::class)`):
+### Shape conversion — the two signatures worth writing down
 
-- `rememberSearchBarState`, `TopSearchBar`, `ExpandedFullScreenSearchBar`.
+Both are **extension functions** in `androidx.compose.material3`, so they need an
+import and receiver-call syntax; a qualified call like
+`androidx.compose.material3.toShape(polygon)` does not compile.
 
-Also verified compiling: `SharedTransitionLayout` with `Modifier.sharedBounds` /
-`Modifier.sharedElement` and `rememberSharedContentState`; `LazyItemScope
-.animateItem()`; `preferencesDataStore` delegate; a Hilt `@Qualifier`-annotated
-application `CoroutineScope` module.
+```kotlin
+import androidx.compose.material3.toShape
+import androidx.compose.material3.toPath
 
-## Consequence: this project owns its expressive layer
+@Composable fun RoundedPolygon.toShape(startAngle: Int = 270): Shape
+fun Morph.toPath(progress: Float, path: Path = Path(), startAngle: Int = 270): Path
+```
 
-`UI-PLAN.md` §2 named `ButtonGroup`, `FloatingToolbar` and the expressive
-`LoadingIndicator` directly. None can be used. Bumping material3 to `1.5.0-alpha26`
-would supply them, but pinning an app that is meant to ship to an alpha of the
-single largest dependency trades a bounded amount of our own code for an unbounded
-amount of someone else's churn. The decision is to **stay on 1.4.0 stable and own
-the thin expressive layer in `:core:designsystem`**, which is what `UI-PLAN.md`
-already recommended for exactly this risk ("keep the Expressive surface behind one
-wrapper file that absorbs the churn").
+`Morph.toPath(progress)` is the animation bridge — it is **not** `@Composable`, so
+it can be called from a draw scope each frame. This is why the design system does
+not need to hand-write a morph→`Shape` adapter.
 
-That layer is small because the underlying primitives are all public elsewhere:
+## The motion tokens are exact, not approximate
 
-- **Motion** — `FlightMotion` supplies the five tokens as `spring()` specs. The
-  Expressive spring constants are not guesses; they were read out of material3
-  1.4.0's own internal `ExpressiveMotionTokens` table:
+Read out of material3's own internal `ExpressiveMotionTokens` table rather than
+recalled, so `MotionScheme.expressive()` and any token we mirror agree exactly:
 
-  | Token | damping ratio | stiffness |
-  | --- | --- | --- |
-  | default spatial | 0.8 | 380 |
-  | fast spatial | 0.6 | 800 |
-  | slow spatial | 0.8 | 200 |
-  | default effects | 1.0 | 1600 |
-  | fast effects | 1.0 | 3800 |
-  | slow effects | 1.0 | 800 |
+| Token | damping ratio | stiffness |
+| --- | --- | --- |
+| default spatial | 0.8 | 380 |
+| fast spatial | 0.6 | 800 |
+| slow spatial | 0.8 | 200 |
+| default effects | 1.0 | 1600 |
+| fast effects | 1.0 | 3800 |
+| slow effects | 1.0 | 800 |
 
-  Spatial springs are underdamped on purpose — that overshoot *is* the expressive
-  character. Effects springs are critically damped (ratio 1.0) because a colour or
-  alpha that overshoots reads as a flicker, not as motion.
+Spatial springs are underdamped on purpose — that overshoot *is* the expressive
+character. Effects springs are critically damped (ratio 1.0) because a colour or
+alpha that overshoots reads as a flicker rather than as motion.
 
-- **Shape morphing** — `androidx.graphics:graphics-shapes:1.1.0` is **stable** and
-  public, and it is the library `MaterialShapes` is a catalogue on top of. We get
-  `RoundedPolygon` and `Morph` directly and define the handful of shapes actually
-  used, rather than the ~40 in the catalogue.
+## Re-verifying after a dependency bump
 
-- **Loading indicator** — a morphing indeterminate indicator built on the above.
-
-- **Mode selector** — `SingleChoiceSegmentedButtonRow` is public and stable, and
-  is a better fit for a three-way exclusive choice than `ButtonGroup` anyway.
-
-## Re-verifying
-
-The probe is deliberately not checked in; it exists to be thrown away. To redo
-this after a dependency bump, write a file that references each symbol in
-question, run `./gradlew :app:compileDebugKotlin`, read the errors, and delete it.
-An unresolved reference means absent; "cannot access … it is internal" means
-present but unusable. Both are compile errors, and only the message distinguishes
-them — which is why guessing from documentation does not work here.
+The probe is deliberately not checked in; it exists to be thrown away. Write a file
+referencing each symbol in question, run `./gradlew :app:compileDebugKotlin`, read
+the errors, delete it. An **unresolved reference** means absent; **"cannot access …
+it is internal"** means present but unusable. Both are compile errors and only the
+message distinguishes them, which is exactly why guessing from documentation fails
+here.
