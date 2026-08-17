@@ -52,9 +52,10 @@ so it cannot be tested and rots silently. Lint does **not** reliably flag these 
 
 ### Cold start stays under 500 ms
 
-Currently ~370 ms. Anything added to `Application.onCreate`, a Hilt `@Singleton`
-constructor, or an `androidx.startup` Initializer runs before first frame and
-spends that budget. In particular:
+Last trustworthy figure ~370 ms, measured on an idle host (see the caveat below —
+later readings that session are not comparable). Anything added to
+`Application.onCreate`, a Hilt `@Singleton` constructor, or an `androidx.startup`
+Initializer runs before first frame and spends that budget. In particular:
 
 - The airport index loads from a **prebuilt binary asset** via `AirportIndexLoader`.
   Rebuilding it from SQLite rows was measured at 646 ms and was deleted. It must
@@ -65,6 +66,14 @@ spends that budget. In particular:
 - Measure a median of ~12 launches and discard scheduler outliers. Do not measure
   immediately after install: the first runs include dex verification and JIT
   warm-up and read ~130 ms high.
+- **An emulator number is only comparable to another taken minutes earlier on the
+  same idle host.** Measured here: one unchanged APK gave a 424 ms median and then
+  ~712 ms later in the same session, after a series of Gradle builds had loaded the
+  host — a drift far larger than most regressions worth hunting. A before/after
+  comparison spanning a work session therefore proves nothing. To attribute a
+  startup change to a code change, build both commits and **interleave** their
+  measurements, or use `:macrobenchmark`, which controls iterations properly.
+  Otherwise report the number as unverified rather than reporting drift as a result.
 
 ### Flight-rules colours are semantic and never dynamic
 

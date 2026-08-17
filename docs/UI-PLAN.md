@@ -133,11 +133,19 @@ Three things learned while building it, worth carrying forward:
   background was fine; contrast against *each other* was the defect.
   `FlightRulesContrastTest` now enforces both.
 
-**Not done:** the adversarial review pass never ran (the orchestrating workflow
-died on a usage limit), so this code is verified at the build/test/startup level
-but has not been read adversarially. Worth a `/code-review` over `5a6274d`. Two
-known gaps: `AirportIndexProvider` caches a failed load permanently with no retry
-path, and the repositories' `Flow` re-emission semantics are unaudited.
+**Reviewed** in `1260284`: eight findings, all fixed — inset ownership under a
+navigation rail, a permanently-terminal index failure with no retry path, a
+`ContentObserver` registered per skeleton box, entity mapping on the main thread,
+two hardcoded English strings, and two stale comments.
+
+**Open:** startup has not been re-verified since those fixes. The emulator drifted
+badly during that session — the same unchanged APK read a 424 ms median and then
+~712 ms — so no comparison taken then means anything. Re-measure on an idle host
+with commits interleaved, or via `:macrobenchmark`. One change is worth checking
+specifically: reduce-motion is now resolved in `FlightPlannerTheme`, which puts a
+`Settings.Global` read and a `ContentObserver` registration on the startup path.
+Small, but it was not there before. There is also still no baseline profile, which
+remains the largest single startup win available to a Compose app.
 
 | ID | Task | Notes |
 | --- | --- | --- |
