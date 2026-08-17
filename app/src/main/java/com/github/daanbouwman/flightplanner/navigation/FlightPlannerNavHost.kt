@@ -1,0 +1,97 @@
+package com.github.daanbouwman.flightplanner.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.navigation.NavDestination
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
+import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
+import com.github.daanbouwman.flightplanner.startup.StartupCheckScreen
+import com.github.daanbouwman.flightplanner.ui.AirportsScreen
+import com.github.daanbouwman.flightplanner.ui.FleetScreen
+import com.github.daanbouwman.flightplanner.ui.LogbookScreen
+import com.github.daanbouwman.flightplanner.ui.PlanScreen
+import com.github.daanbouwman.flightplanner.ui.RouteDetailScreen
+import com.github.daanbouwman.flightplanner.ui.SettingsScreen
+import com.github.daanbouwman.flightplanner.ui.StatsScreen
+
+/**
+ * The whole graph. Screens are placeholders until their phase builds them; the
+ * shape of the graph is what is being established here.
+ */
+@Composable
+fun FlightPlannerNavHost(
+    navController: NavHostController,
+    modifier: Modifier = Modifier,
+) {
+    // Resolved once, outside the transition lambdas: those lambdas are not
+    // composable, so a motion token — which is — has to be read here and closed
+    // over. This is also the only place :app decides how a screen change looks,
+    // and it decides by naming a token rather than by writing a spec.
+    val enter = FlightMotion.navEnter()
+    val exit = FlightMotion.navExit()
+
+    NavHost(
+        navController = navController,
+        startDestination = Destination.Plan,
+        modifier = modifier,
+        enterTransition = { enter },
+        exitTransition = { exit },
+        popEnterTransition = { enter },
+        popExitTransition = { exit },
+    ) {
+        composable<Destination.Plan> {
+            PlanScreen(onOpenSampleRoute = { navController.navigateToDetail(it) })
+        }
+        composable<Destination.Logbook> { LogbookScreen() }
+        composable<Destination.Fleet> { FleetScreen() }
+        composable<Destination.Airports> { AirportsScreen() }
+        composable<Destination.Stats> { StatsScreen() }
+        composable<Destination.Settings> {
+            SettingsScreen(onOpenSelfCheck = { navController.navigate(Destination.SelfCheck) })
+        }
+
+        composable<Destination.RouteDetail> { entry ->
+            RouteDetailScreen(
+                route = entry.toRoute<Destination.RouteDetail>(),
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        // Kept whole rather than restyled: it is a diagnostic, and its value is
+        // that it reports exactly what it reported before the UI existed.
+        composable<Destination.SelfCheck> { StartupCheckScreen() }
+    }
+}
+
+/**
+ * Switches top-level destination the way a navigation bar is expected to
+ * behave: one entry per section on the back stack, each section's scroll
+ * position and state preserved, and back from anywhere returning to the start
+ * destination rather than walking every tab visited.
+ */
+fun NavHostController.navigateToTopLevel(destination: TopLevelDestination) {
+    navigate(destination.route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+private fun NavHostController.navigateToDetail(detail: Destination.RouteDetail) {
+    navigate(detail) { launchSingleTop = true }
+}
+
+/**
+ * Whether [destination] is the section currently shown.
+ *
+ * It asks the hierarchy rather than the leaf so that a nested destination inside
+ * a section still lights up that section's bar item.
+ */
+fun NavDestination?.isIn(destination: TopLevelDestination): Boolean =
+    this?.hierarchy?.any { it.hasRoute(destination.route::class) } == true

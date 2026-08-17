@@ -31,6 +31,6 @@ dependencies {
     api(libs.compose.animation)
     implementation(libs.androidx.core.ktx)
 
-    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.kotest.assertions.core)
 }

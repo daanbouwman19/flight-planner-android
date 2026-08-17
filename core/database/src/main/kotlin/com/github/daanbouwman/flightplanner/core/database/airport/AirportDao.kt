@@ -32,6 +32,49 @@ interface AirportDao {
 
     @Query("SELECT * FROM airports WHERE id = :id LIMIT 1")
     suspend fun findById(id: Int): AirportEntity?
+
+    /**
+     * Display data for a set of airports, in **one** query.
+     *
+     * This is the other half of the trade the index makes: the index carries no
+     * text, so a screen showing fifty rows fetches the text for exactly those
+     * fifty here. Doing it per row would be fifty statement preparations and
+     * fifty cursor round trips for the same bytes.
+     *
+     * Rows come back in whatever order SQLite finds them; the repository
+     * re-orders to the caller's request.
+     */
+    @Query(
+        """
+        SELECT id, icao, name, lat, lon, elevation_ft, country, municipality,
+               size_class, longest_runway_ft, runway_count, has_hard_surface, has_icao
+        FROM airports
+        WHERE id IN (:ids)
+        """,
+    )
+    suspend fun displayRowsByIds(ids: List<Int>): List<AirportDisplayRow>
+
+    /** The same projection keyed by code, for a route whose airports are known by ICAO. */
+    @Query(
+        """
+        SELECT id, icao, name, lat, lon, elevation_ft, country, municipality,
+               size_class, longest_runway_ft, runway_count, has_hard_surface, has_icao
+        FROM airports
+        WHERE icao IN (:icaos)
+        """,
+    )
+    suspend fun displayRowsByIcao(icaos: List<String>): List<AirportDisplayRow>
+
+    /**
+     * Every searchable text column, ordered by id so the reader can binary-search
+     * it instead of building a hash map.
+     *
+     * The second query allowed to return the whole table — but unlike
+     * [loadAllForIndex] it is **never** run at startup. It backs the name index,
+     * which is built on a background scope once the first frame is on screen.
+     */
+    @Query("SELECT id, name, municipality, country FROM airports ORDER BY id ASC")
+    suspend fun nameRows(): List<AirportNameRow>
 }
 
 @Dao

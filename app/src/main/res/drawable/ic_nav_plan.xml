@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Navigation icons are drawn here rather than imported.
+
+  `material-icons-extended` is deliberately not a dependency (~10,000 vectors),
+  and material3 1.5 no longer pulls `material-icons-core` in transitively, so
+  Compose ships no icons at all on this classpath. Seven drawables cost a few
+  hundred bytes and let each section say what it actually is, which beats a
+  generic glyph chosen for availability. Colour comes from the Icon composable,
+  so no tint is declared here.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:autoMirrored="true">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M2.01,21L23,12 2.01,3 2,10l15,2 -15,2z" />
+</vector>

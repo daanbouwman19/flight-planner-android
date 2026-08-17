@@ -1,4 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Flight Planner</string>
+
+    <!-- Navigation -->
+    <string name="destination_plan">Plan</string>
+    <string name="destination_logbook">Logbook</string>
+    <string name="destination_fleet">Fleet</string>
+    <string name="destination_airports">Airports</string>
+    <string name="destination_stats">Stats</string>
+    <string name="destination_settings">Settings</string>
+    <string name="action_back">Back</string>
+
+    <!-- Placeholder screens. Replaced as each phase builds its screen. -->
+    <string name="plan_empty_title">No routes yet</string>
+    <string name="plan_empty_message">Start your journey by generating a flight plan.</string>
+    <string name="plan_empty_action">Preview a route</string>
+
+    <string name="logbook_empty_title">No flights logged</string>
+    <string name="logbook_empty_message">Flights you mark as flown will appear here, grouped by month.</string>
+
+    <string name="fleet_empty_title">Fleet unavailable</string>
+    <string name="fleet_empty_message">Your aircraft, their ranges and what you have flown will appear here.</string>
+
+    <string name="airports_empty_title">Search unavailable</string>
+    <string name="airports_empty_message">Search the airport database by code, name or municipality here.</string>
+
+    <string name="stats_empty_title">Nothing to summarise</string>
+    <string name="stats_empty_message">Distance flown, favourite airports and your busiest aircraft will appear here.</string>
+
+    <string name="settings_empty_title">Settings</string>
+    <string name="settings_empty_message">Theme, units, weather provider and dataset information will live here.</string>
+    <string name="settings_self_check_action">Run on-device self-check</string>
+
+    <!-- Route detail -->
+    <string name="route_detail_title">%1$s → %2$s</string>
+    <string name="route_detail_empty_title">Detail coming soon</string>
+    <string name="route_detail_empty_message">%1$d NM. Bearings, runways, weather and the map arrive with the route detail screen.</string>
 </resources>
