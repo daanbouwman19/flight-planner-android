@@ -22,11 +22,39 @@ enum class TopLevelDestination(
     val route: Destination.TopLevel,
     @param:StringRes val labelRes: Int,
     @param:DrawableRes val iconRes: Int,
+    /**
+     * Whether this destination gets a slot in the navigation bar.
+     *
+     * Only [SETTINGS] does not. Six items on a 360 dp window — which is what a
+     * 1080 × 2340 phone at 480 dpi actually is — leaves 60 dp each, below the
+     * 3–5 Material specifies and narrow enough that the labels crowd into each
+     * other. Settings is also the odd one out in kind: the other five are places
+     * the content lives and the user moves between constantly, while settings is
+     * somewhere you go once and come back from. It lives in the app bar instead,
+     * which is where it is reachable from every screen rather than from a sixth
+     * of the bar.
+     *
+     * It stays a `TopLevel` destination so the navigation bar remains visible
+     * while it is open, with nothing selected — the alternative strands the user
+     * on a screen with no visible way back to the sections.
+     */
+    val inNavigationBar: Boolean = true,
 ) {
     PLAN(Destination.Plan, R.string.destination_plan, R.drawable.ic_nav_plan),
     LOGBOOK(Destination.Logbook, R.string.destination_logbook, R.drawable.ic_nav_logbook),
     FLEET(Destination.Fleet, R.string.destination_fleet, R.drawable.ic_nav_fleet),
     AIRPORTS(Destination.Airports, R.string.destination_airports, R.drawable.ic_nav_airports),
     STATS(Destination.Stats, R.string.destination_stats, R.drawable.ic_nav_stats),
-    SETTINGS(Destination.Settings, R.string.destination_settings, R.drawable.ic_nav_settings),
+    SETTINGS(
+        Destination.Settings,
+        R.string.destination_settings,
+        R.drawable.ic_nav_settings,
+        inNavigationBar = false,
+    ),
+    ;
+
+    companion object {
+        /** The five that appear in the bar, in bar order. */
+        val inBar: List<TopLevelDestination> = entries.filter { it.inNavigationBar }
+    }
 }

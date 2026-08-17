@@ -37,7 +37,7 @@ data class LoadedIndex(val index: AirportIndex, val timing: IndexLoadTiming)
  */
 @Singleton
 class AirportIndexLoader @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) {
 
     suspend fun load(): LoadedIndex = withContext(Dispatchers.IO) {

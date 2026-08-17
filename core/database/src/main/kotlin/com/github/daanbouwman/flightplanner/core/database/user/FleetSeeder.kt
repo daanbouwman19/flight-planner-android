@@ -22,7 +22,7 @@ private const val SEED_ASSET = "seed/aircrafts.csv"
  */
 @Singleton
 class FleetSeeder @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val aircraftDao: AircraftDao,
 ) {
 

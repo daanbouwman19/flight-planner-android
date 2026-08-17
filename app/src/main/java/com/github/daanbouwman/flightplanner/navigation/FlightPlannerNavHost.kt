@@ -15,10 +15,10 @@ import com.github.daanbouwman.flightplanner.startup.StartupCheckScreen
 import com.github.daanbouwman.flightplanner.ui.AirportsScreen
 import com.github.daanbouwman.flightplanner.ui.FleetScreen
 import com.github.daanbouwman.flightplanner.ui.LogbookScreen
-import com.github.daanbouwman.flightplanner.ui.PlanScreen
 import com.github.daanbouwman.flightplanner.ui.RouteDetailScreen
 import com.github.daanbouwman.flightplanner.ui.SettingsScreen
 import com.github.daanbouwman.flightplanner.ui.StatsScreen
+import com.github.daanbouwman.flightplanner.ui.plan.PlanScreen
 
 /**
  * The whole graph. Screens are placeholders until their phase builds them; the
@@ -45,13 +45,36 @@ fun FlightPlannerNavHost(
         popEnterTransition = { enter },
         popExitTransition = { exit },
     ) {
+        // Settings left the navigation bar, so every section's app bar carries the
+        // way to it. One lambda, defined once, rather than a parameter threaded
+        // through each screen's own navigation logic.
+        //
+        // A plain `navigate`, *not* `navigateToTopLevel`. That helper pops back to
+        // the start destination, which is right for a bar item — switching tabs
+        // should not stack them up — and wrong here now that Settings is reached
+        // from within a section: it would throw that section away, so back from
+        // Settings landed on Plan instead of on the screen the user opened it from.
+        val openSettings = { navController.navigate(Destination.Settings) { launchSingleTop = true } }
+
         composable<Destination.Plan> {
-            PlanScreen(onOpenSampleRoute = { navController.navigateToDetail(it) })
+            PlanScreen(
+                onOpenSettings = openSettings,
+                onOpenRoute = { row ->
+                    navController.navigateToDetail(
+                        Destination.RouteDetail(
+                            departureIcao = row.departure.icao,
+                            destinationIcao = row.destination.icao,
+                            aircraftId = row.aircraft.id,
+                            distanceNm = row.distanceNm,
+                        ),
+                    )
+                },
+            )
         }
-        composable<Destination.Logbook> { LogbookScreen() }
-        composable<Destination.Fleet> { FleetScreen() }
-        composable<Destination.Airports> { AirportsScreen() }
-        composable<Destination.Stats> { StatsScreen() }
+        composable<Destination.Logbook> { LogbookScreen(onOpenSettings = openSettings) }
+        composable<Destination.Fleet> { FleetScreen(onOpenSettings = openSettings) }
+        composable<Destination.Airports> { AirportsScreen(onOpenSettings = openSettings) }
+        composable<Destination.Stats> { StatsScreen(onOpenSettings = openSettings) }
         composable<Destination.Settings> {
             SettingsScreen(onOpenSelfCheck = { navController.navigate(Destination.SelfCheck) })
         }

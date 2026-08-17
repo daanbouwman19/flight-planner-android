@@ -78,7 +78,7 @@ Compiled with zero errors and zero warnings under
   `titleMediumEmphasized`, `bodyLargeEmphasized`, `labelLargeEmphasized`
 - `LoadingIndicator`, `ContainedLoadingIndicator`
 - `LinearWavyProgressIndicator`, `CircularWavyProgressIndicator`
-- `ButtonGroup(overflowIndicator = …)`
+- `ButtonGroup(overflowIndicator = …)` — **compiles, but see the defect below**
 - `HorizontalFloatingToolbar(expanded = …)`, `VerticalFloatingToolbar`
 - `FloatingActionButtonMenu(expanded, button)`
 - `SplitButtonLayout(leadingButton, trailingButton)`
@@ -96,6 +96,35 @@ Compiled with zero errors and zero warnings under
 - `SharedTransitionLayout` with `Modifier.sharedBounds` / `Modifier.sharedElement`
   and `rememberSharedContentState`; `LazyItemScope.animateItem()`
 - `preferencesDataStore` delegate; a Hilt `@Qualifier` application `CoroutineScope`
+
+## Known defects in 1.5.0-alpha26
+
+Compiling is not the same as working. These were found on a device, not by the
+compiler, and they are the concrete cost of the alpha.
+
+### `ButtonGroup` crashes when its items fill the width
+
+```
+java.lang.IllegalArgumentException: maxWidth must be >= than minWidth,
+maxHeight must be >= than minHeight, minWidth and minHeight must be >= 0
+  at androidx.compose.ui.unit.Constraints.copy-Zbe2FdA(Constraints.kt:670)
+  at androidx.compose.material3.ButtonGroupMeasurePolicy.measure-3p2s80s(ButtonGroup.kt:712)
+```
+
+Reproduced on a Galaxy S26, Android 16, **at the default font scale** with three
+`toggleableItem`s ("Any" / "Not flown 12" / "This aircraft") and an
+`overflowIndicator`, under `Modifier.fillMaxWidth()`. The measure policy computes
+a negative width and constructs an invalid `Constraints`. It is deterministic:
+the screen never draws, the app dies on launch.
+
+This is the failure mode the containment rule was written for. `ModeSelector` in
+`:core:designsystem` now wraps the stable `SingleChoiceSegmentedButtonRow`, and
+that substitution is one file. Nothing in `:app` changed, because nothing in
+`:app` ever named `ButtonGroup`.
+
+**Before switching back**, run the Plan screen on a device at font scale 2.0 with
+the longest mode label — the crash is a measurement bug, so it will not show up
+in a preview or a unit test.
 
 ### Shape conversion — the two signatures worth writing down
 

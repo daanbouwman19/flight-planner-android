@@ -51,7 +51,7 @@ fun FlightPlannerApp(
 
     NavigationSuiteScaffold(
         navigationItems = {
-            TopLevelDestination.entries.forEach { destination ->
+            TopLevelDestination.inBar.forEach { destination ->
                 val selected = currentDestination.isIn(destination)
                 val label = stringResource(destination.labelRes)
                 NavigationSuiteItem(

@@ -11,11 +11,87 @@
     <string name="destination_settings">Settings</string>
     <string name="action_back">Back</string>
 
-    <!-- Placeholder screens. Replaced as each phase builds its screen. -->
+    <!-- Plan screen -->
     <string name="plan_empty_title">No routes yet</string>
+    <!-- The desktop application's wording, kept so the two apps say the same thing. -->
     <string name="plan_empty_message">Start your journey by generating a flight plan.</string>
-    <string name="plan_empty_action">Preview a route</string>
 
+    <string name="plan_no_matches_title">Nothing in range</string>
+    <string name="plan_no_matches_message">No route fits the current aircraft, departure and runway
+        requirements. Try clearing the departure or choosing a longer-range aircraft.</string>
+
+    <string name="plan_pick_aircraft_title">Which aircraft?</string>
+    <string name="plan_pick_aircraft_message">Choose an airframe and every route will be planned for it.</string>
+    <string name="plan_pick_aircraft_action">Choose aircraft</string>
+
+    <string name="plan_error_title">Could not generate routes</string>
+    <string name="plan_error_index">The airport database could not be loaded, so no route can be
+        planned. Everything else in the app still works.</string>
+    <string name="plan_error_fleet">Your fleet is empty. Add an aircraft, or restore the default
+        fleet from Settings.</string>
+    <string name="plan_error_unknown">Something went wrong while generating routes.</string>
+
+    <string name="plan_mode_any">Any</string>
+    <string name="plan_mode_not_flown">Not flown</string>
+    <!--
+        Spoken by TalkBack in place of the label above. %1$d is how many airframes
+        have never been flown; it does not fit on the button itself.
+    -->
+    <plurals name="plan_mode_not_flown_description">
+        <item quantity="one">Not flown, %1$d aircraft</item>
+        <item quantity="other">Not flown, %1$d aircraft</item>
+    </plurals>
+    <string name="plan_mode_this_aircraft">This aircraft</string>
+
+    <string name="plan_filter_any_departure">Any departure</string>
+    <string name="plan_filter_any_aircraft">Any aircraft</string>
+    <string name="plan_filter_departure_label">Departure</string>
+    <string name="plan_filter_aircraft_label">Aircraft</string>
+
+    <string name="plan_action_generate">Generate</string>
+    <string name="plan_action_undo">Undo</string>
+    <!-- Snackbar after a route is swiped into the logbook. %1$s and %2$s are ICAO codes. -->
+    <string name="plan_flight_logged">Logged %1$s to %2$s</string>
+
+    <string name="plan_swipe_mark_flown">Mark flown</string>
+    <string name="plan_swipe_replace">Replace</string>
+
+    <string name="plan_chip_distance">DIST</string>
+    <string name="plan_chip_time">ETE</string>
+    <!-- Runway length shown under an airport code. %1$d is the length in feet. -->
+    <string name="plan_runway_value">RWY %1$,d ft</string>
+    <!-- %1$d is a distance in nautical miles; the comma flag groups thousands. -->
+    <string name="plan_value_nautical_miles">%1$,d NM</string>
+    <!-- %1$d is a runway length in feet. -->
+    <string name="plan_value_feet">%1$,d ft</string>
+
+    <string name="plan_runway_short">Runway shorter than this aircraft needs</string>
+
+    <!--
+        Spoken for a whole route card, so a screen reader reads one sentence
+        instead of stopping on eleven separate nodes. In order: aircraft,
+        departure code, departure name, destination code, destination name,
+        distance in nautical miles, hours, minutes.
+    -->
+    <string name="plan_route_content_description">%1$s, %2$s %3$s to %4$s %5$s, %6$,d nautical
+        miles, %7$d hours %8$d minutes</string>
+
+    <string name="plan_picker_departure_title">Departure airport</string>
+    <string name="plan_picker_aircraft_title">Aircraft</string>
+    <string name="plan_picker_departure_hint">Code, name or city</string>
+    <string name="plan_picker_aircraft_hint">Type code, manufacturer or category</string>
+    <string name="plan_picker_clear_query">Clear search</string>
+    <string name="plan_picker_clear_departure">Any departure</string>
+    <string name="plan_picker_clear_aircraft">Any aircraft</string>
+    <string name="plan_picker_largest_airports">Largest airports</string>
+    <string name="plan_picker_already_flown">Already flown</string>
+    <!-- %1$s is a category such as "Jet"; %2$d is the range in nautical miles. -->
+    <string name="plan_picker_aircraft_detail">%1$s · %2$,d NM range</string>
+    <string name="plan_picker_no_results_title">No matches</string>
+    <!-- %1$s is what the user typed. -->
+    <string name="plan_picker_no_results_message">Nothing matches “%1$s”.</string>
+
+    <!-- Placeholder screens. Replaced as each phase builds its screen. -->
     <string name="logbook_empty_title">No flights logged</string>
     <string name="logbook_empty_message">Flights you mark as flown will appear here, grouped by month.</string>
 

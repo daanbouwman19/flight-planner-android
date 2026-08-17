@@ -1,6 +1,7 @@
 package com.github.daanbouwman.flightplanner.routing
 
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -68,6 +69,16 @@ data class RouteGeneratorConfig(
 class RouteGenerator(
     private val index: AirportIndex,
     private val config: RouteGeneratorConfig = RouteGeneratorConfig(),
+    /**
+     * Where a batch runs. Defaults to [Dispatchers.Default], which is what it
+     * should be in production — the work is pure CPU.
+     *
+     * It is a parameter so that a caller under test can substitute a scheduler it
+     * controls. Hardcoding the dispatcher makes generation invisible to
+     * `advanceUntilIdle`, so a ViewModel test can only assert the state *before*
+     * the batch lands and has to fall back to sleeping and hoping.
+     */
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
 
     /**
@@ -95,7 +106,7 @@ class RouteGenerator(
      * routes.
      */
     suspend fun generate(request: RouteRequest, random: Random = Random.Default): List<GeneratedRoute> =
-        withContext(Dispatchers.Default) {
+        withContext(dispatcher) {
             val fleet = request.eligibleFleet()
             if (fleet.isEmpty() || request.amount <= 0 || index.size == 0) return@withContext emptyList()
 

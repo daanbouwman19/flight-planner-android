@@ -38,5 +38,11 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
         }
 
         configureKotlinAndroid()
+        // The library plugin has always armed this; the application plugin did
+        // not, which left `:app` silently on JUnit 4 while every other module ran
+        // JUnit 5. The visible symptom is that `kotlin.test.Test` does not
+        // resolve here and only here, so a test written the way the rest of the
+        // repo writes them fails to compile for no apparent reason.
+        configureUnitTestPlatform()
     }
 }

@@ -40,6 +40,40 @@ sealed interface IndexState {
 }
 
 /**
+ * Access to the process-wide [AirportIndex].
+ *
+ * An interface over [DefaultAirportIndexProvider] for the same reason the
+ * repositories in `:core:database` are interfaces over their `Default…`
+ * implementations: a consumer needs "give me the index", not "own the decode",
+ * and a screen's tests should not have to stand up an asset loader and a
+ * process-lifetime scope to ask for one.
+ *
+ * It is deliberately *this* interface rather than one declared by each consumer.
+ * A feature that declares its own narrow copy needs a Hilt module to bridge the
+ * two, and the two types then share a name and shadow each other at every import.
+ */
+interface AirportIndexProvider {
+
+    /** Observable progress, for skeletons and error states. */
+    val state: StateFlow<IndexState>
+
+    /** Suspends until the index is built, starting the build if it has not been. */
+    suspend fun get(): AirportIndex
+
+    /** Starts the build without waiting for it. Safe to call more than once. */
+    fun warm()
+
+    /** Discards a failed build so the next [get] or [warm] tries again. */
+    fun retry()
+
+    /** The index if it is already in memory, else null. Never suspends, never builds. */
+    val readyOrNull: AirportIndex?
+
+    /** True once the load has either succeeded or failed. */
+    val isSettled: Boolean
+}
+
+/**
  * Owns the single [AirportIndex] for the process.
  *
  * Three properties matter here and each one is deliberate:
@@ -64,15 +98,15 @@ sealed interface IndexState {
  * deleted for that reason; it must not come back.
  */
 @Singleton
-class AirportIndexProvider @Inject constructor(
+class DefaultAirportIndexProvider @Inject constructor(
     private val loader: AirportIndexLoader,
     @param:ApplicationScope private val scope: CoroutineScope,
-) {
+) : AirportIndexProvider {
 
     private val _state = MutableStateFlow<IndexState>(IndexState.Idle)
 
     /** Observable progress, for skeletons and error states. */
-    val state: StateFlow<IndexState> = _state.asStateFlow()
+    override val state: StateFlow<IndexState> = _state.asStateFlow()
 
     /**
      * The in-flight or completed build.
@@ -116,12 +150,12 @@ class AirportIndexProvider @Inject constructor(
      * Starts the build without waiting for it. Safe to call more than once;
      * `Deferred.start()` is a no-op once the job is running.
      */
-    fun warm() {
+    override fun warm() {
         current.get().start()
     }
 
     /** Suspends until the index is built, starting the build if it has not been. */
-    suspend fun get(): AirportIndex = current.get().await()
+    override suspend fun get(): AirportIndex = current.get().await()
 
     /**
      * Discards a failed build so the next [get] or [warm] tries again.
@@ -130,7 +164,7 @@ class AirportIndexProvider @Inject constructor(
      * succeeded or in-flight build would throw away a good index or duplicate work.
      * The compare-and-set makes two taps on a retry button safe.
      */
-    fun retry() {
+    override fun retry() {
         if (_state.value !is IndexState.Failed) return
         val failed = current.get()
         if (!failed.isCompleted) return
@@ -144,10 +178,10 @@ class AirportIndexProvider @Inject constructor(
      * The index if it is already in memory, else null — for callers that must not
      * suspend, such as the splash-screen keep-on-screen condition.
      */
-    val readyOrNull: AirportIndex? get() = (_state.value as? IndexState.Ready)?.index
+    override val readyOrNull: AirportIndex? get() = (_state.value as? IndexState.Ready)?.index
 
     /** True once the load has either succeeded or failed. */
-    val isSettled: Boolean get() = _state.value.settled
+    override val isSettled: Boolean get() = _state.value.settled
 
     private companion object {
         const val TAG = "AirportIndexProvider"

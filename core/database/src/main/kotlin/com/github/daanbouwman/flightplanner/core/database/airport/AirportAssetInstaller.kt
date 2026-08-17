@@ -26,7 +26,7 @@ private const val TAG = "AirportAssetInstaller"
  */
 @Singleton
 class AirportAssetInstaller @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) {
 
     /** Copies the asset if needed and returns the on-disk database file. */

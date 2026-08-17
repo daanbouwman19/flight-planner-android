@@ -48,10 +48,17 @@ fun PlaceholderScaffold(
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
+    /** Null on the Settings screen itself, which has nowhere to go. */
+    onOpenSettings: (() -> Unit)? = null,
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { TopAppBar(title = { Text(title) }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(title) },
+                actions = { onOpenSettings?.let { SettingsAction(onClick = it) } },
+            )
+        },
         contentWindowInsets = WindowInsets(0),
     ) { contentPadding ->
         Box(

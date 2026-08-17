@@ -113,6 +113,14 @@ Numerics use tabular figures so ICAO codes, distances, runway lengths and times 
 not jitter in width as they change — essential in a list of routes where the eye
 scans a column.
 
+`ValueChip` arranges its label and value with `SpaceBetween` for the same reason.
+When the chip is sized to its content the two arrangements are identical; it only
+matters once a caller stretches it into a grid of equal-width chips, and there
+centring would move the value left and right as its width changed, so "13 NM" and
+"2,990 NM" would sit at different offsets and the eye would have to re-find the
+number on every row. Pinned to both edges, the labels align down one edge and the
+digits down the other — which is how a table of numbers has always been set.
+
 ```kotlin
 object FlightShapes {
     val Circle: RoundedPolygon
@@ -153,6 +161,24 @@ Box(Modifier.clip(rememberMorphShape(FlightShapes.GenerateFabMorph, progress)))
 @Composable fun MorphingLoadingIndicator(modifier: Modifier = Modifier,
                                          contained: Boolean = false,
                                          contentDescription: String = "Loading")
+
+@Immutable data class ModeOption(val label: String,
+                                val contentDescription: String? = null,
+                                val enabled: Boolean = true)
+
+@Composable fun ModeSelector(options: List<ModeOption>, selectedIndex: Int,
+                             onSelect: (Int) -> Unit, modifier: Modifier = Modifier)
+
+@Composable fun RouteSparkline(points: FloatArray, modifier: Modifier = Modifier,
+                               color: Color = MaterialTheme.colorScheme.primary,
+                               endpointColor: Color = MaterialTheme.colorScheme.secondary)
+
+enum class SwipeActionSide { Start, End }
+
+@Composable fun SwipeActionBackground(side: SwipeActionSide, icon: Painter, label: String,
+                                     containerColor: Color, contentColor: Color,
+                                     modifier: Modifier = Modifier,
+                                     progress: Float = 1f, committed: Boolean = false)
 ```
 
 Notes that are easy to get wrong:
@@ -169,8 +195,50 @@ Notes that are easy to get wrong:
   failed even when focus is elsewhere.
 - Skeletons beat a spinner when the content's shape is known, because they stop the
   layout jumping. They are *worse* than a spinner when you are guessing at the size.
+- **`ModeSelector` is not `ButtonGroup`.** It should be — `ButtonGroup` is the
+  Expressive component for a single-choice row — but that component *crashes* in
+  the pinned alpha. See [API-GROUND-TRUTH.md](API-GROUND-TRUTH.md) for the repro
+  and what to re-test before switching back. This is the containment rule doing
+  its job: the substitution was one file because no screen ever named it.
+- **`RouteSparkline` takes points, not coordinates.** Turning two airports into a
+  great-circle polyline is spherical interpolation over two dozen samples, and
+  taking coordinates here would do that inside a composable — on the main thread,
+  per visible card, again on every recomposition. Callers project once, off the
+  main thread, with `RouteArc` in `:core:routing`.
+- **`SwipeActionBackground` takes colours rather than choosing them.** "Confirm"
+  and "destroy" are the caller's semantics. Pass the *solid* roles, not the
+  containers: a pale container behind a `surfaceContainer` card is two
+  neighbouring greys and the reveal stays invisible until it is nearly complete.
+  There is deliberately no hardcoded green anywhere in it — a fixed hue would be
+  the one element on screen that ignores the Cockpit theme.
+- **`progress` and `committed` are separate on purpose.** `progress` tracks the
+  finger with no spring, because a spring lags and the surface must feel attached
+  to the drag. `committed` is a discrete event and gets a sprung response.
 - Every atom carries a `@LightDarkPreview`. A component only ever viewed in one
   theme is a component whose other theme is broken and nobody has noticed.
+
+## Preview annotations
+
+```kotlin
+@Preview(name = "Light", showBackground = true)
+@Preview(name = "Dark", showBackground = true, uiMode = UI_MODE_NIGHT_YES)
+annotation class LightDarkPreview
+
+@Preview(name = "Compact 360dp", showBackground = true, widthDp = 360)
+@Preview(name = "Compact 360dp · font 2.0", showBackground = true, widthDp = 360, fontScale = 2.0f)
+annotation class CompactWidthPreview
+```
+
+Public rather than internal, because screens in `:app` need the same pairing and
+one shared annotation is what keeps every preview in the project framed the same
+way.
+
+**Anything with a horizontal layout gets `@CompactWidthPreview` as well.** 360 dp
+is what a 1080 × 2340 phone at 480 dpi reports — the most common phone width there
+is, and the width at which this app's dense rows first overflow. The tooling's
+default preview is wider than any phone this app runs on, so previewing only at
+the default hides exactly the problems worth catching: the route card shipped with
+a clipped runway figure for precisely that reason.
 
 ## Adding to this module
 

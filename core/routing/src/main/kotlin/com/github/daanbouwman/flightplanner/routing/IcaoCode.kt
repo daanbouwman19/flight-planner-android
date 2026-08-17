@@ -53,12 +53,53 @@ object IcaoCode {
         return String(chars)
     }
 
+    /**
+     * The character at [position] of a packed code, counting from the most
+     * significant, without decoding the whole code.
+     *
+     * Exists so that search can match against 24,000 codes per keystroke
+     * without allocating 24,000 four-character strings to throw away — see
+     * [AirportSlotSearch].
+     */
+    fun charAt(packed: Int, position: Int): Char =
+        CHARACTERS[(packed / DIVISORS[position]) % BASE]
+
+    /**
+     * Whether a packed code contains [query], ignoring case. Allocation-free.
+     *
+     * The same case-insensitive substring test the desktop app applies to an
+     * airport's code column, done against the packed integer instead of against
+     * text. A query longer than four characters cannot be a substring of a
+     * four-character code, which rejects most non-code queries immediately.
+     */
+    fun contains(packed: Int, query: String): Boolean {
+        if (packed < 0) return false
+        val length = query.length
+        if (length == 0) return true
+        if (length > LENGTH) return false
+
+        for (start in 0..LENGTH - length) {
+            var matched = true
+            for (i in 0 until length) {
+                if (!charAt(packed, start + i).equals(query[i], ignoreCase = true)) {
+                    matched = false
+                    break
+                }
+            }
+            if (matched) return true
+        }
+        return false
+    }
+
     private fun symbolOf(c: Char): Int = when (c) {
         in '0'..'9' -> c - '0'
         in 'A'..'Z' -> c - 'A' + 10
         in 'a'..'z' -> c - 'a' + 10
         else -> -1
     }
+
+    /** Place values, most significant first, so [charAt] is a divide and a modulo. */
+    private val DIVISORS = intArrayOf(BASE * BASE * BASE, BASE * BASE, BASE, 1)
 
     private val CHARACTERS = charArrayOf(
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
