@@ -110,10 +110,34 @@ Rules that apply everywhere:
 
 ---
 
-## 3. Phase A — Foundations
+## 3. Phase A — Foundations ✅ COMPLETE (`5a6274d`)
 
 Nothing below can be built well until these exist. **A1–A3 are the reason the
 animations will look coherent instead of assembled.**
+
+All ten tasks are done and the acceptance criterion below is met. The resulting
+API is documented in [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) — read that, not this
+table, when building a screen.
+
+Three things learned while building it, worth carrying forward:
+
+- **material3 1.4.0 has no usable Expressive surface**, so it is pinned to
+  `1.5.0-alpha26`. Screens must reach Expressive only through
+  `:core:designsystem`; that containment is the entire mitigation for the alpha.
+  See [API-GROUND-TRUTH.md](API-GROUND-TRUTH.md).
+- **`minSdk` is now 36**, so no `SDK_INT` guards anywhere.
+- **The flight-rules palette needed retuning.** Checking 4.5:1 text contrast was
+  not sufficient: at the conventional tone-90 the five pastels compress toward
+  white, and IFR and LIFR sat 0.05 apart in normalised RGB — two near-identical
+  pinks for "below minimums" and "well below minimums". Contrast against the
+  background was fine; contrast against *each other* was the defect.
+  `FlightRulesContrastTest` now enforces both.
+
+**Not done:** the adversarial review pass never ran (the orchestrating workflow
+died on a usage limit), so this code is verified at the build/test/startup level
+but has not been read adversarially. Worth a `/code-review` over `5a6274d`. Two
+known gaps: `AirportIndexProvider` caches a failed load permanently with no retry
+path, and the repositories' `Flow` re-emission semantics are unaudited.
 
 | ID | Task | Notes |
 | --- | --- | --- |
@@ -130,7 +154,8 @@ animations will look coherent instead of assembled.**
 
 **Done when:** the app launches into an empty themed shell with working
 navigation, both themes render correctly, and `:core:routing` tests cover the
-scorer and the statistics calculator.
+scorer and the statistics calculator. ✅ — cold start ~370 ms against the 500 ms
+budget.
 
 ---
 
