@@ -5,7 +5,9 @@ import com.github.daanbouwman.flightplanner.core.database.user.FleetSeeder
 import com.github.daanbouwman.flightplanner.core.database.user.toEntity
 import com.github.daanbouwman.flightplanner.core.database.user.toSpec
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
 import javax.inject.Inject
@@ -63,8 +65,16 @@ internal class DefaultFleetRepository @Inject constructor(
     private val seeder: FleetSeeder,
 ) : FleetRepository {
 
+    /**
+     * `flowOn` for the same reason as `LogbookRepository.observeAll` — the mapping
+     * would otherwise run in the collector's context, i.e. the main thread. The
+     * fleet is ~116 rows so this costs nothing today; it is here so that the two
+     * repositories cannot drift into disagreeing about where mapping happens.
+     */
     override fun observeFleet(): Flow<List<AircraftSpec>> =
-        aircraftDao.observeAll().map { rows -> rows.map { it.toSpec() } }
+        aircraftDao.observeAll()
+            .map { rows -> rows.map { it.toSpec() } }
+            .flowOn(Dispatchers.Default)
 
     override fun observeNotFlownCount(): Flow<Int> = aircraftDao.observeNotFlownCount()
 

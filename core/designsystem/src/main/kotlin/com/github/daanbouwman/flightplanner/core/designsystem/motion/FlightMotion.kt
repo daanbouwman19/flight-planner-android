@@ -17,9 +17,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 
 /**
@@ -126,6 +128,25 @@ object FlightMotion {
 
 /**
  * Whether the user has asked the system for no animation.
+ *
+ * **Read this, do not call [rememberReduceMotion].** [FlightPlannerTheme] resolves
+ * the setting once and provides it here, so a screen full of components shares one
+ * observer. Calling the `remember` function per component instead registers a
+ * `ContentObserver` per component — a ten-card skeleton list is thirty binder
+ * round-trips on appear and thirty more on dispose, all on the loading path that
+ * the skeletons exist to keep smooth.
+ *
+ * Defaults to `false` outside a theme, which is the safe direction: animations
+ * play. A preview or a test that has not gone through [FlightPlannerTheme] should
+ * look normal rather than mysteriously static.
+ */
+val LocalReduceMotion: ProvidableCompositionLocal<Boolean> = staticCompositionLocalOf { false }
+
+/**
+ * Resolves the reduce-motion setting, observing changes.
+ *
+ * Call this **once**, in [FlightPlannerTheme], and read [LocalReduceMotion]
+ * everywhere else — see the note there.
  *
  * Reads `Settings.Global.ANIMATOR_DURATION_SCALE`; zero means "off". Compose
  * honours that scale for its own spring and tween animations already, so this is

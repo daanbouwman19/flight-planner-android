@@ -3,7 +3,9 @@ package com.github.daanbouwman.flightplanner.core.database.repository
 import com.github.daanbouwman.flightplanner.core.database.user.FlightLogDao
 import com.github.daanbouwman.flightplanner.core.database.user.FlightLogEntity
 import com.github.daanbouwman.flightplanner.model.FlightRecord
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -41,8 +43,17 @@ internal class DefaultLogbookRepository @Inject constructor(
     private val flightLogDao: FlightLogDao,
 ) : LogbookRepository {
 
+    /**
+     * `flowOn` is load-bearing, not decoration. Room applies its own dispatcher to
+     * the *query*, but the entity-to-domain `map` below runs in the collector's
+     * context — which under `collectAsStateWithLifecycle` is the main thread. The
+     * logbook is unbounded, so without this a user with a few thousand flights
+     * rebuilds the whole list on the main thread on every write to the table.
+     */
     override fun observeAll(): Flow<List<FlightRecord>> =
-        flightLogDao.observeAll().map { rows -> rows.map { it.toRecord() } }
+        flightLogDao.observeAll()
+            .map { rows -> rows.map { it.toRecord() } }
+            .flowOn(Dispatchers.Default)
 
     override fun observeCount(): Flow<Int> = flightLogDao.observeCount()
 

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Strings owned by the design system.
+
+    Only strings a shared component renders itself belong here. Anything a screen
+    supplies (titles, messages, action labels) stays with the screen — a design
+    system that owns its callers' copy stops being reusable.
+-->
+<resources>
+
+    <!-- Button on the shared error state, retries the failed operation. -->
+    <string name="ds_error_state_retry">Try again</string>
+
+    <!--
+        Spoken by TalkBack for an indeterminate loading indicator. This is the
+        only signal a screen-reader user gets that the screen is busy rather than
+        empty, so it must be translated like any visible string.
+    -->
+    <string name="ds_loading_indicator_description">Loading</string>
+
+</resources>

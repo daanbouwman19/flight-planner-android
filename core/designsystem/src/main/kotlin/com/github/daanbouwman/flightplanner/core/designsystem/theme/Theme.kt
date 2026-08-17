@@ -14,6 +14,8 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
+import com.github.daanbouwman.flightplanner.core.designsystem.motion.rememberReduceMotion
 
 /**
  * The four looks the app offers.
@@ -70,6 +72,10 @@ fun FlightPlannerTheme(
 
     CompositionLocalProvider(
         LocalFlightRulesColors provides if (dark) DarkFlightRulesColors else LightFlightRulesColors,
+        // Resolved once here, for the whole tree. Every component that needs it
+        // reads LocalReduceMotion; resolving it per component would register a
+        // ContentObserver per component.
+        LocalReduceMotion provides rememberReduceMotion(),
     ) {
         MaterialExpressiveTheme(
             colorScheme = colorScheme,

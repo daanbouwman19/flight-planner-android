@@ -256,9 +256,19 @@ object SearchScorer {
      * is not a search result, so imposing a search result's ordering or cap on
      * it would be wrong.
      *
-     * Note the query is **not** trimmed, matching the desktop: a trailing space
-     * is a character the user typed and is matched literally. Only an entirely
-     * blank query short-circuits.
+     * The query is **not** trimmed, matching the desktop: a trailing space is a
+     * character the user typed, so `"EHAM "` is matched literally and finds
+     * nothing.
+     *
+     * **One deliberate divergence from the desktop.** The short-circuit here is
+     * `isBlank()`; the desktop's `filter_items_static` uses `is_empty()`. So a
+     * whitespace-only query returns the whole list here, where the desktop would
+     * filter to everything *containing* a space — which, since nearly every
+     * airport and aircraft name has one, produces a list that looks unfiltered
+     * but is quietly missing the entries that do not. Treating "nothing but
+     * whitespace" as "no query" is the better reading of the user's intent, and
+     * `SearchScorerTest` pins it. Recorded here because it is a real behavioural
+     * difference from the reference implementation rather than an oversight.
      */
     fun <T : SearchCandidate> rank(
         items: List<T>,

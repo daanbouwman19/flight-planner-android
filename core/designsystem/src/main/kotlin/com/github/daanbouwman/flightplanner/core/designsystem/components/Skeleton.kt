@@ -14,13 +14,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
-import com.github.daanbouwman.flightplanner.core.designsystem.motion.rememberReduceMotion
+import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 
 /**
@@ -45,12 +48,21 @@ fun SkeletonBox(
     modifier: Modifier = Modifier,
     shape: Shape = MaterialTheme.shapes.small,
 ) {
-    val reduceMotion = rememberReduceMotion()
-    val alpha = if (reduceMotion) {
-        MidAlpha
+    // Read, not resolved: FlightPlannerTheme owns the one ContentObserver.
+    val reduceMotion = LocalReduceMotion.current
+    val color = MaterialTheme.colorScheme.onSurface
+
+    // A State<Float>, deliberately not a Float. Unwrapping it here would make the
+    // shimmer a composition-scope read, recomposing every box on every frame of
+    // the 900 ms cycle; `drawBehind` below reads it in the draw scope instead, so
+    // a frame costs a redraw and nothing else. On a loading list of thirty boxes
+    // that is the difference between the skeleton being free and it being the
+    // most expensive thing on screen.
+    val alpha: State<Float> = if (reduceMotion) {
+        remember { mutableFloatStateOf(MidAlpha) }
     } else {
         val transition = rememberInfiniteTransition(label = "skeleton")
-        val animated by transition.animateFloat(
+        transition.animateFloat(
             initialValue = MinAlpha,
             targetValue = MaxAlpha,
             animationSpec = infiniteRepeatable(
@@ -63,7 +75,6 @@ fun SkeletonBox(
             ),
             label = "skeletonAlpha",
         )
-        animated
     }
 
     Box(
@@ -72,7 +83,7 @@ fun SkeletonBox(
             // an unlabelled node that TalkBack stops on while the screen loads.
             .clearAndSetSemantics { }
             .clip(shape)
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = alpha)),
+            .drawBehind { drawRect(color = color.copy(alpha = alpha.value)) },
     )
 }
 

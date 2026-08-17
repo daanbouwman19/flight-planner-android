@@ -7,12 +7,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.LoadingIndicator
-import androidx.compose.material3.LoadingIndicatorDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.github.daanbouwman.flightplanner.core.designsystem.R
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightShapes
 
@@ -38,7 +39,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightShapes
 fun MorphingLoadingIndicator(
     modifier: Modifier = Modifier,
     contained: Boolean = false,
-    contentDescription: String = "Loading",
+    contentDescription: String = stringResource(R.string.ds_loading_indicator_description),
 ) {
     // A loading indicator is one of the few purely decorative things that must
     // still be announced: it is the only signal a screen-reader user gets that

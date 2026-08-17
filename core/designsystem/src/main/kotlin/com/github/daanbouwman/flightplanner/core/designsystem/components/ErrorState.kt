@@ -10,6 +10,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import com.github.daanbouwman.flightplanner.core.designsystem.R
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
@@ -64,7 +66,7 @@ fun ErrorState(
                 onClick = onRetry,
                 modifier = Modifier.padding(top = 8.dp),
             ) {
-                Text("Try again")
+                Text(stringResource(R.string.ds_error_state_retry))
             }
         }
     }

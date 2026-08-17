@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.index
 
+import android.util.Log
 import com.github.daanbouwman.flightplanner.core.database.airport.AirportIndexLoader
 import com.github.daanbouwman.flightplanner.core.database.airport.IndexLoadTiming
 import com.github.daanbouwman.flightplanner.di.ApplicationScope
@@ -13,6 +14,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -72,7 +74,22 @@ class AirportIndexProvider @Inject constructor(
     /** Observable progress, for skeletons and error states. */
     val state: StateFlow<IndexState> = _state.asStateFlow()
 
-    private val deferred: Deferred<AirportIndex> =
+    /**
+     * The in-flight or completed build.
+     *
+     * An `AtomicReference` rather than a `val` because a `Deferred` caches its
+     * failure forever: one transient I/O error reading the asset would otherwise
+     * disable route generation, search and the globe for the entire life of the
+     * process, with force-stopping the app as the only remedy. Since the whole
+     * point of `IndexState.Failed` is to put a retry in front of the user, the
+     * failed job has to be replaceable. [retry] swaps in a fresh one.
+     *
+     * The success path is unaffected: once a build completes, every caller of
+     * [get] awaits that same instance and the index is still built exactly once.
+     */
+    private val current = AtomicReference(newBuild())
+
+    private fun newBuild(): Deferred<AirportIndex> =
         scope.async(Dispatchers.Default, CoroutineStart.LAZY) {
             _state.value = IndexState.Loading
             try {
@@ -86,6 +103,10 @@ class AirportIndexProvider @Inject constructor(
                 _state.value = IndexState.Idle
                 throw cancellation
             } catch (failure: Throwable) {
+                // Logged as well as surfaced: a failure here disables most of the
+                // app, and a silent one leaves nothing to diagnose from a bug
+                // report but "the lists are empty".
+                Log.e(TAG, "Airport index failed to load", failure)
                 _state.value = IndexState.Failed(failure)
                 throw failure
             }
@@ -96,11 +117,28 @@ class AirportIndexProvider @Inject constructor(
      * `Deferred.start()` is a no-op once the job is running.
      */
     fun warm() {
-        deferred.start()
+        current.get().start()
     }
 
     /** Suspends until the index is built, starting the build if it has not been. */
-    suspend fun get(): AirportIndex = deferred.await()
+    suspend fun get(): AirportIndex = current.get().await()
+
+    /**
+     * Discards a failed build so the next [get] or [warm] tries again.
+     *
+     * A no-op unless the current state is [IndexState.Failed] — retrying a
+     * succeeded or in-flight build would throw away a good index or duplicate work.
+     * The compare-and-set makes two taps on a retry button safe.
+     */
+    fun retry() {
+        if (_state.value !is IndexState.Failed) return
+        val failed = current.get()
+        if (!failed.isCompleted) return
+        if (current.compareAndSet(failed, newBuild())) {
+            _state.value = IndexState.Idle
+            current.get().start()
+        }
+    }
 
     /**
      * The index if it is already in memory, else null — for callers that must not
@@ -110,4 +148,8 @@ class AirportIndexProvider @Inject constructor(
 
     /** True once the load has either succeeded or failed. */
     val isSettled: Boolean get() = _state.value.settled
+
+    private companion object {
+        const val TAG = "AirportIndexProvider"
+    }
 }
