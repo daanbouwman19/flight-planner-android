@@ -1,13 +1,20 @@
 package com.github.daanbouwman.flightplanner.ui.plan
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -17,7 +24,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -26,12 +32,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,10 +50,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -69,6 +77,9 @@ import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotio
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
 import com.github.daanbouwman.flightplanner.ui.SettingsAction
+import com.github.daanbouwman.flightplanner.ui.chrome.ScrollToTopOnReselect
+import com.github.daanbouwman.flightplanner.ui.chrome.rememberChromeScrollConnection
+import com.github.daanbouwman.flightplanner.ui.chrome.rememberContentInsets
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -79,13 +90,38 @@ import kotlin.math.abs
 /**
  * The Plan screen: generate flyable routes and act on them.
  *
+ * ### The screen is one surface, and the only chrome is the navigation bar
+ *
+ * There is no top app bar. The list fills the window and draws **under** the status
+ * bar, with the system insets carried in its `contentPadding` rather than as padding
+ * on its container — which is the whole distinction: padding the container stops the
+ * list at the status bar, padding its content lets the first card scroll up behind
+ * it. The screen's title and its controls are the list's **first item**, so they
+ * scroll away with the routes at exactly the speed of the finger; see [PlanHeader]
+ * for why that beats the floating bar this had first. The navigation suite is the
+ * one thing that still hides and returns on a scroll signal.
+ *
+ * On a 360 × 780 dp phone that is about a fifth of the height handed back to the
+ * thing the screen exists to show.
+ *
+ * ### The system bars carry no scrim
+ *
+ * They are genuinely transparent: a card scrolls up under the clock and down under
+ * the gesture handle with nothing between them. A short gradient of the page colour
+ * behind each bar was built and removed — it kept the two sets of glyphs from
+ * sharing a 24 dp band, and it read on the device as exactly what it was, an opaque
+ * bar. Transparent bars are the point of the layout, so the collision is accepted
+ * and the legibility of the *system* glyphs is handled where it belongs: the theme
+ * sets the status- and navigation-bar appearance from the scheme it resolved, so the
+ * clock is dark on a light card and light on a dark one.
+ *
  * ### Insets
  *
- * The same rule `PlaceholderScaffold` documents applies here and for the same
- * reason: the navigation suite owns the bottom edge on a compact phone and the
- * start edge on anything wider, so nothing about which edge belongs to whom can
- * be hard-coded. The scaffold claims no insets, and the content pads only what
- * has not already been consumed.
+ * Which edge belongs to whom still changes with the window width — the navigation
+ * suite owns the bottom on a compact phone and the start on anything wider — and
+ * now it changes with the chrome state too, because a hidden suite gives the bottom
+ * edge back. Nothing about that is hard-coded here: `ContentInsets` reports what
+ * ancestors have already consumed and the content pads the remainder. See its KDoc.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -138,78 +174,111 @@ fun PlanScreen(
 
     InfiniteScroll(listState = listState, itemCount = state.routes.size, onLoadMore = viewModel::loadMore)
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.destination_plan)) },
-                actions = { SettingsAction(onClick = onOpenSettings) },
-            )
-        },
-        // No floating action button.
-        //
-        // There was one, and it had nothing left to do. Its tap generated a fresh
-        // batch, which the screen now does on open and pull-to-refresh does on
-        // demand; its long press appended fifty more, which the list does by
-        // itself as you approach the end. What remained was a permanent 56 dp
-        // obstruction over the content, flickering into view on launch a moment
-        // before the routes it was offering to generate had already arrived.
-        //
-        // It also freed the snackbar. `Scaffold` keeps a snackbar clear of the
-        // button by lifting the *snackbar*, which stranded it two thirds of the
-        // way up the screen with a gap beneath it; with no button it sits along
-        // the bottom edge where a snackbar belongs.
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        contentWindowInsets = WindowInsets(0),
-    ) { contentPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(contentPadding)
-                .consumeWindowInsets(contentPadding)
-                .windowInsetsPadding(WindowInsets.safeDrawing),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+    // Tapping Plan in the navigation bar while already on Plan comes back here. It
+    // matters more than usual on this screen: the controls are the list's first
+    // item, so this is the way back to them from row sixty.
+    ScrollToTopOnReselect(listState = listState)
+
+    // The navigation bar is the only chrome left, so this is the only scroll signal
+    // that has to travel out of the screen.
+    val chromeScroll = rememberChromeScrollConnection(listState = listState)
+    val contentInsets = rememberContentInsets()
+    val pullState = rememberPullToRefreshState()
+
+    // A plain `Box`, not a `Scaffold`.
+    //
+    // There is no top app bar in the scaffold's sense — the chrome floats over the
+    // content rather than displacing it — and there is no floating action button,
+    // so the only thing a scaffold would still do here is place the snackbar, which
+    // is one aligned modifier. Keeping it would mean taking its content padding and
+    // then deliberately ignoring it, and content padding that must be ignored is a
+    // sign the layout is not a scaffold's shape.
+    //
+    // (There *was* a FAB. Its tap generated a fresh batch, which the screen now does
+    // on open and pull-to-refresh does on demand; its long press appended fifty
+    // more, which the list does by itself as you approach the end. What remained was
+    // a permanent 56 dp obstruction over the content, flickering into view on launch
+    // a moment before the routes it was offering to generate had already arrived.)
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .then(contentInsets.modifier)
+            .nestedScroll(chromeScroll),
+    ) {
+        val insets = contentInsets.asPaddingValues()
+        val layoutDirection = LocalLayoutDirection.current
+        val contentPadding = PaddingValues(
+            start = insets.calculateStartPadding(layoutDirection) + HorizontalGutter,
+            end = insets.calculateEndPadding(layoutDirection) + HorizontalGutter,
+            top = insets.calculateTopPadding() + TopGutter,
+            bottom = insets.calculateBottomPadding() + BottomGutter,
+        )
+
+        PullToRefreshBox(
+            // Always false, deliberately: the skeleton cards are this screen's
+            // loading signal, and they say something a spinner cannot — where the
+            // rows will land, so the layout does not jump when they arrive. Showing
+            // both would be two answers to one question. The indicator still tracks
+            // the *drag*, which is the gesture's own feedback rather than a report
+            // on the load.
+            isRefreshing = false,
+            onRefresh = viewModel::generate,
+            modifier = Modifier.fillMaxSize(),
+            state = pullState,
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    state = pullState,
+                    isRefreshing = false,
+                    // Below the status bar. The box is full-bleed now, so the
+                    // default `TopCenter` would emerge from behind the clock.
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = contentPadding.calculateTopPadding()),
+                )
+            },
         ) {
-            PlanControls(
+            PlanContent(
                 state = state,
-                onModeChange = viewModel::setMode,
-                onPickDeparture = {
-                    query = ""
-                    viewModel.setAirportQuery("")
-                    picker = PickerTarget.Departure
+                listState = listState,
+                contentPadding = contentPadding,
+                header = {
+                    PlanHeader(
+                        state = state,
+                        onOpenSettings = onOpenSettings,
+                        onModeChange = viewModel::setMode,
+                        onPickDeparture = {
+                            query = ""
+                            viewModel.setAirportQuery("")
+                            picker = PickerTarget.Departure
+                        },
+                        onPickAircraft = {
+                            query = ""
+                            viewModel.setAircraftQuery("")
+                            picker = PickerTarget.Aircraft
+                        },
+                    )
                 },
+                onOpenRoute = onOpenRoute,
+                onMarkFlown = viewModel::markFlown,
+                onReplace = viewModel::replace,
+                onGenerate = viewModel::generate,
                 onPickAircraft = {
                     query = ""
                     viewModel.setAircraftQuery("")
                     picker = PickerTarget.Aircraft
                 },
             )
-
-            PullToRefreshBox(
-                // Always false, deliberately: the skeleton cards are this
-                // screen's loading signal, and they say something a spinner
-                // cannot — where the rows will land, so the layout does not jump
-                // when they arrive. Showing both would be two answers to one
-                // question. This box is here for the gesture, not the indicator.
-                isRefreshing = false,
-                onRefresh = viewModel::generate,
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                PlanContent(
-                    state = state,
-                    listState = listState,
-                    onOpenRoute = onOpenRoute,
-                    onMarkFlown = viewModel::markFlown,
-                    onReplace = viewModel::replace,
-                    onGenerate = viewModel::generate,
-                    onPickAircraft = {
-                        query = ""
-                        viewModel.setAircraftQuery("")
-                        picker = PickerTarget.Aircraft
-                    },
-                )
-            }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            // Consumption-aware: the bottom inset is the navigation suite's while
+            // the suite is up, and ours the moment it is not — so a snackbar shown
+            // over a scrolled list still clears the gesture handle.
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
+        )
     }
 
     picker?.let { target ->
@@ -259,27 +328,104 @@ fun PlanScreen(
     }
 }
 
+/**
+ * The screen's name, the way to Settings, and the controls — as the **first item of
+ * the list**, not as a bar above it.
+ *
+ * ### Why this is content and not chrome
+ *
+ * It was chrome first: an overlay that faded its container in once the list moved,
+ * dropped the title at one scroll threshold and the controls at another. Three
+ * things were wrong with it on a device, and they were all the same thing.
+ *
+ *  - **It could not feel attached to the finger.** A threshold means nothing happens
+ *    for 48 dp and then a spring runs on its own clock. Chrome that retracts *after*
+ *    the scroll reads as lag, however fast the spring is.
+ *  - **The container had to appear from nowhere.** An overlay needs a background the
+ *    moment a card is behind it, so the top of the screen tinted itself as soon as
+ *    the list moved — a highlight the user never asked for.
+ *  - **Its bottom edge cut the cards in half.** An opaque block over a scrolling list
+ *    ends in a straight horizontal line, and a card sliced by it looks broken rather
+ *    than layered.
+ *
+ * As the list's first item all three stop existing rather than getting fixed. It
+ * moves at exactly the speed of the finger because it *is* the content; it needs no
+ * background because nothing passes behind it; and it has no edge because there is
+ * nothing to have an edge against. The code that made it work — a measured height,
+ * a reserved band of padding, two thresholds and two transitions — is gone with it.
+ *
+ * ### What that costs, and why it is worth it
+ *
+ * The controls no longer come back on an upward flick from deep in the list; you
+ * scroll to the top for them, the way you do for the filters at the top of any list.
+ * That is the trade for the feel, and it is the right way round: filters are set
+ * when you arrive, and the rest of the session is spent reading routes.
+ *
+ * The navigation bar still hides and returns on the scroll signal — it is at the
+ * other end of the screen, it overlays nothing, and it is the one piece of chrome
+ * that must stay reachable.
+ *
+ * The title is a **heading**, not an app bar: it scrolls away for good, and the
+ * navigation bar already names the section, so there is no reason for it to be a
+ * permanent 64 dp. Being content rather than a bar, it can also be set at the size a
+ * page opening deserves.
+ */
+@Composable
+private fun PlanHeader(
+    state: PlanUiState,
+    onOpenSettings: () -> Unit,
+    onModeChange: (PlanMode) -> Unit,
+    onPickDeparture: () -> Unit,
+    onPickAircraft: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.destination_plan),
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            SettingsAction(onClick = onOpenSettings)
+        }
+        Spacer(Modifier.height(12.dp))
+        PlanControls(
+            state = state,
+            onModeChange = onModeChange,
+            onPickDeparture = onPickDeparture,
+            onPickAircraft = onPickAircraft,
+        )
+    }
+}
+
 @Composable
 private fun PlanControls(
     state: PlanUiState,
     onModeChange: (PlanMode) -> Unit,
     onPickDeparture: () -> Unit,
     onPickAircraft: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    // No horizontal padding of its own: this sits inside the list, whose
+    // `contentPadding` already holds the gutter the cards line up with.
     Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         val options = listOf(
-            ModeOption(stringResource(R.string.plan_mode_any)),
+            ModeOption(stringResource(R.string.plan_mode_all)),
             ModeOption(
                 label = stringResource(R.string.plan_mode_not_flown),
-                // The count is spoken, not drawn. A segmented row gives each
-                // option an equal third of the width, and "Not flown 116" does
-                // not fit one on a phone — it ellipsises to "Not flown 1…",
-                // which is worse than no count at all because it reads as a
-                // wrong number. A visible badge needs ButtonGroup, which cannot
-                // be used here (see ModeSelector).
+                // Drawn as well as spoken. It used to be spoken only: a segmented
+                // row gave each option an equal third of the width, and
+                // "Not flown 116" ellipsised to "Not flown 1…" — a wrong number,
+                // which is worse than none. Chips are sized to their own label, so
+                // the figure fits and the sentence stays for TalkBack.
+                count = state.notFlownCount,
                 contentDescription = pluralStringResource(
                     R.plurals.plan_mode_not_flown_description,
                     state.notFlownCount,
@@ -295,7 +441,7 @@ private fun PlanControls(
             onSelect = { onModeChange(PlanMode.entries[it]) },
             modifier = Modifier.fillMaxWidth(),
         )
-        PlanFilterChips(
+        PlanFilterFields(
             lockedDeparture = state.lockedDeparture,
             selectedAircraft = state.selectedAircraft,
             onPickDeparture = onPickDeparture,
@@ -304,10 +450,23 @@ private fun PlanControls(
     }
 }
 
+/**
+ * Whatever the screen currently has to show, under [header] and the same padding.
+ *
+ * [contentPadding] reaches the list as `contentPadding`, so cards scroll under the
+ * status bar, and every other state as ordinary padding, because there is nothing
+ * to scroll there.
+ *
+ * The header is emitted by both halves rather than hoisted above them: in the list
+ * it has to be an *item* — that is the whole point of it — and in a state with no
+ * list there is nothing to make it an item of.
+ */
 @Composable
 private fun PlanContent(
     state: PlanUiState,
     listState: LazyListState,
+    contentPadding: PaddingValues,
+    header: @Composable () -> Unit,
     onOpenRoute: (RouteRow) -> Unit,
     onMarkFlown: (RouteRow) -> Unit,
     onReplace: (RouteRow) -> Unit,
@@ -315,53 +474,90 @@ private fun PlanContent(
     onPickAircraft: () -> Unit,
 ) {
     when {
-        state.awaitingAircraftChoice -> EmptyState(
-            title = stringResource(R.string.plan_pick_aircraft_title),
-            message = stringResource(R.string.plan_pick_aircraft_message),
-            actionLabel = stringResource(R.string.plan_pick_aircraft_action),
-            onAction = onPickAircraft,
-            modifier = Modifier.fillMaxSize(),
-        )
+        state.awaitingAircraftChoice -> HeadedState(header, contentPadding) {
+            EmptyState(
+                title = stringResource(R.string.plan_pick_aircraft_title),
+                message = stringResource(R.string.plan_pick_aircraft_message),
+                actionLabel = stringResource(R.string.plan_pick_aircraft_action),
+                onAction = onPickAircraft,
+            )
+        }
 
-        state.status is PlanStatus.Failed -> ErrorState(
-            title = stringResource(R.string.plan_error_title),
-            message = stringResource(
-                when (state.status.reason) {
-                    PlanFailure.IndexUnavailable -> R.string.plan_error_index
-                    PlanFailure.FleetEmpty -> R.string.plan_error_fleet
-                    PlanFailure.Unknown -> R.string.plan_error_unknown
-                },
-            ),
-            onRetry = onGenerate,
-            modifier = Modifier.fillMaxSize(),
-        )
+        state.status is PlanStatus.Failed -> HeadedState(header, contentPadding) {
+            ErrorState(
+                title = stringResource(R.string.plan_error_title),
+                message = stringResource(
+                    when (state.status.reason) {
+                        PlanFailure.IndexUnavailable -> R.string.plan_error_index
+                        PlanFailure.FleetEmpty -> R.string.plan_error_fleet
+                        PlanFailure.Unknown -> R.string.plan_error_unknown
+                    },
+                ),
+                onRetry = onGenerate,
+            )
+        }
 
-        state.status == PlanStatus.Generating && state.routes.isEmpty() -> DelayedSkeletonList()
+        state.status == PlanStatus.Generating && state.routes.isEmpty() ->
+            HeadedState(header, contentPadding) { DelayedSkeletonList() }
 
-        state.status == PlanStatus.Idle -> EmptyState(
-            title = stringResource(R.string.plan_empty_title),
-            // The desktop application's wording, kept deliberately.
-            message = stringResource(R.string.plan_empty_message),
-            actionLabel = stringResource(R.string.plan_action_generate),
-            onAction = onGenerate,
-            modifier = Modifier.fillMaxSize(),
-        )
+        state.status == PlanStatus.Idle -> HeadedState(header, contentPadding) {
+            EmptyState(
+                title = stringResource(R.string.plan_empty_title),
+                // The desktop application's wording, kept deliberately.
+                message = stringResource(R.string.plan_empty_message),
+                actionLabel = stringResource(R.string.plan_action_generate),
+                onAction = onGenerate,
+            )
+        }
 
-        state.isEmptyResult -> EmptyState(
-            title = stringResource(R.string.plan_no_matches_title),
-            message = stringResource(R.string.plan_no_matches_message),
-            actionLabel = stringResource(R.string.plan_action_generate),
-            onAction = onGenerate,
-            modifier = Modifier.fillMaxSize(),
-        )
+        state.isEmptyResult -> HeadedState(header, contentPadding) {
+            EmptyState(
+                title = stringResource(R.string.plan_no_matches_title),
+                message = stringResource(R.string.plan_no_matches_message),
+                actionLabel = stringResource(R.string.plan_action_generate),
+                onAction = onGenerate,
+            )
+        }
 
         else -> RouteList(
             state = state,
             listState = listState,
+            contentPadding = contentPadding,
+            header = header,
             onOpenRoute = onOpenRoute,
             onMarkFlown = onMarkFlown,
             onReplace = onReplace,
         )
+    }
+}
+
+/**
+ * The header, then whatever fills the rest of the window.
+ *
+ * The controls stay usable in every state that is not a list — an empty result is
+ * exactly when the user wants to change a filter, and a screen that hides its
+ * controls when it has nothing to show asks them to undo something they cannot see.
+ */
+@Composable
+private fun HeadedState(
+    header: @Composable () -> Unit,
+    contentPadding: PaddingValues,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(contentPadding),
+    ) {
+        header()
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentAlignment = Alignment.Center,
+        ) {
+            content()
+        }
     }
 }
 
@@ -380,7 +576,7 @@ private fun PlanContent(
  * perception.
  */
 @Composable
-private fun DelayedSkeletonList() {
+private fun DelayedSkeletonList(modifier: Modifier = Modifier) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(SkeletonDelayMillis)
@@ -389,9 +585,7 @@ private fun DelayedSkeletonList() {
     if (!visible) return
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         repeat(SkeletonCount) { SkeletonCard() }
@@ -402,6 +596,8 @@ private fun DelayedSkeletonList() {
 private fun RouteList(
     state: PlanUiState,
     listState: LazyListState,
+    contentPadding: PaddingValues,
+    header: @Composable () -> Unit,
     onOpenRoute: (RouteRow) -> Unit,
     onMarkFlown: (RouteRow) -> Unit,
     onReplace: (RouteRow) -> Unit,
@@ -419,9 +615,13 @@ private fun RouteList(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+        contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // Keyed, so it survives the list being regenerated under it and does not
+        // get rebuilt every time a batch arrives.
+        item(key = HeaderKey) { header() }
+
         itemsIndexed(state.routes, key = { _, row -> row.id }) { index, row ->
             SwipeableRoute(
                 row = row,
@@ -721,8 +921,19 @@ private const val LoadMoreThreshold = 20
 
 private const val AppendingKey = "appending"
 
+private const val HeaderKey = "header"
+
 /** How far a row rises into place. Small: this is a hint of arrival, not a slide-in. */
 private val EntranceRise = 12.dp
+
+/** The card column's margin. Named because the header is an item inside it. */
+private val HorizontalGutter = 16.dp
+
+/** Space between the status bar and the heading. */
+private val TopGutter = 8.dp
+
+/** Space below the last card, so it does not end flush against the bottom inset. */
+private val BottomGutter = 24.dp
 
 /**
  * How far a card must travel before releasing commits.
@@ -742,24 +953,40 @@ private const val CommitFraction = 0.33f
  * cover every state the screen has, including the four that are awkward to reach
  * by hand: a failed index, an empty fleet, a filter combination that matches
  * nothing, and "this aircraft" with no aircraft chosen.
+ *
+ * `PlanContent` draws the header itself, at the top of whatever it is showing, so a
+ * preview of it is a preview of the whole screen at rest — which is what the screen
+ * *is* now that the header scrolls with the content instead of floating over it.
  */
 
 @Composable
 private fun PreviewPlan(state: PlanUiState) {
     FlightPlannerTheme(dynamicColor = false) {
         Surface(color = MaterialTheme.colorScheme.background) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                PlanControls(state = state, onModeChange = {}, onPickDeparture = {}, onPickAircraft = {})
-                PlanContent(
-                    state = state,
-                    listState = rememberLazyListState(),
-                    onOpenRoute = {},
-                    onMarkFlown = {},
-                    onReplace = {},
-                    onGenerate = {},
-                    onPickAircraft = {},
-                )
-            }
+            PlanContent(
+                state = state,
+                listState = rememberLazyListState(),
+                contentPadding = PaddingValues(
+                    start = HorizontalGutter,
+                    end = HorizontalGutter,
+                    top = TopGutter,
+                    bottom = BottomGutter,
+                ),
+                header = {
+                    PlanHeader(
+                        state = state,
+                        onOpenSettings = {},
+                        onModeChange = {},
+                        onPickDeparture = {},
+                        onPickAircraft = {},
+                    )
+                },
+                onOpenRoute = {},
+                onMarkFlown = {},
+                onReplace = {},
+                onGenerate = {},
+                onPickAircraft = {},
+            )
         }
     }
 }

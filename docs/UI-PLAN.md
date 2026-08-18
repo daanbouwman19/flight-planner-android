@@ -253,107 +253,218 @@ a preview shows what the screen will actually draw.
 
 ---
 
-## 4a. Phase B+ — an immersive Plan screen
+## 4a. Phase B+ — an immersive Plan screen ✅ COMPLETE
 
-**This is the next work item, before the map and before Phase C.**
+The screen used to sit inside its chrome: a top app bar, then controls, then a
+list that stopped politely above the navigation bar.
 
-The screen currently sits inside its chrome: a top app bar, then controls, then a
-list that stops politely above the navigation bar. That is a correct 2019 Android
-screen. What it is not is *modern* — and on a 360 × 780 dp phone it also spends
-about a fifth of the height on bars while the content it exists to show is
-squeezed between them.
+Every part of that was already Material 3 Expressive — the app bar, the segmented
+control, the cards, the shape scale, the springs. **The dated thing was the frame,
+not the components.** Boxing content between two opaque bars and padding the
+*container* by the system insets is the structure Android used before edge-to-edge
+and predictive back became platform defaults, and a current component library
+assembled that way still reads as an old screen. On a 360 × 780 dp phone it also
+spends about a fifth of the height on bars while the content the screen exists to
+show is squeezed between them.
+
+**Built.** Verified on the emulator at 1080 × 2424: at rest the title, mode
+selector and filter chips float over the list on a transparent container; a short
+scroll takes the title; sustained scrolling takes the controls and the navigation
+bar together; a small upward scroll brings both back. Cards pass behind an empty
+status bar and an empty gesture area. What follows is the design as built, then the
+things that turned out to matter.
 
 ### The design
 
-Content runs edge to edge, under the status bar and under the navigation bar, and
-the chrome gets out of the way as you scroll.
+Content runs edge to edge under empty system bars, and there is **almost nothing
+left to get out of the way**: the screen's name and its controls are the list's own
+first item, so they leave by being scrolled, and the navigation bar is the only
+thing that hides on a signal.
 
 ```
  scrolled to top                    scrolling down
 ┌─────────────────────┐            ┌─────────────────────┐
-│ ▓ 8:04    ▓▓▓ ░░░░  │ status     │ ▓ 8:04    ▓▓▓ ░░░░  │  card behind status bar
-│ Plan            ⚙   │ title      │ ╭─────────────────╮ │  title gone
-│ ╭───╮╭───╮╭───────╮ │ modes      │ │ KMTJ ──○ KPDC   │ │
-│ ╰───╯╰───╯╰───────╯ │            │ ╰─────────────────╯ │
-│ ╭─────────╮╭──────╮ │ filters    │ ╭─────────────────╮ │
-│ ╰─────────╯╰──────╯ │            │ │ SSGE ──○ SJGY   │ │
+│ ▓ 8:04    ▓▓▓ ░░░░  │ status     │ ▓ 8:04 ─○ KPDC ░░░  │  card under the clock
+│ Plan            ⚙   │ ┐          │ ╰─────────────────╯ │
+│  All  Not flown·116 │ │ header   │ ╭─────────────────╮ │
+│ ╭─────────╮╭──────╮ │ │  = the   │ │ SSGE ──○ SJGY   │ │
+│ │DEPARTURE││AIRCRA│ │ │  list's  │ ╰─────────────────╯ │
+│ │EHAM     ││737-6…│ │ │  item 0  │ ╭─────────────────╮ │
+│ ╰─────────╯╰──────╯ │ ┘          │ │ 0NM7 ──○ KRCA   │ │
 │ ╭─────────────────╮ │            │ ╰─────────────────╯ │
-│ │ KMTJ ──○ KPDC   │ │            │ ╭─────────────────╮ │
-│ ╰─────────────────╯ │            │ │ 0NM7 ──○ KRCA   │ │  card behind nav bar
-│ ╭──── card ───────╮ │            │ ╰─────────────────╯ │
-│ ▓ Plan Log Fleet ▓  │ nav        │      (nav hidden)   │
+│ │ KMTJ ──○ KPDC   │ │ cards      │ ╭─────────────────╮ │
+│ ╰─────────────────╯ │            │ │ KDEN ──○ KSLC   │ │  card in the gesture area
+│ ▓ Plan Log Fleet ▓  │ nav        │      (nav gone)     │
 └─────────────────────┘            └─────────────────────┘
 ```
 
-**Three things move, and they move for different reasons.**
+**Two things move, and only one of them is animated.**
 
-- **The title collapses first.** A large-title bar that shrinks to nothing is the
-  cheapest height on the screen to reclaim, because the screen's name is only
-  useful before you have started reading it. `TopAppBar` with a scroll behaviour
-  does this; the settings action stays pinned.
-- **The controls stay longer, then go.** The mode selector and the two filter
-  chips are not decoration — they are *what is being listed*, and hiding them the
-  instant a finger moves means the user cannot see which mode they are in. They
-  should survive the title and leave only on a sustained downward scroll, and come
-  back immediately on any upward one, which is the behaviour people already know
-  from a mail app's compose bar.
-- **The navigation bar hides on scroll down and returns on scroll up.** This is
-  the one that has to be done carefully: it lives in `FlightPlannerApp`'s
-  `NavigationSuiteScaffold`, one level above the screen, so a screen cannot hide it
-  by itself. The scroll signal has to travel *up*, which means a small piece of
-  shared state rather than a per-screen hack — and it must behave the same way
-  when the Logbook and Fleet lists arrive in Phase D.
+- **The header scrolls, because it is content.** Title, settings and controls in
+  one item at the top of the list. It moves at exactly the speed of the finger,
+  with no threshold to wait through, no container to fade in and no bottom edge to
+  slice a card on. It does not come back on an upward flick — **B20** is the way
+  back, and the reason that task exists.
+- **The navigation bar hides on a sustained scroll and returns on a small upward
+  one.** It lives in `FlightPlannerApp`'s `NavigationSuiteScaffold`, one level above
+  the screen, so a screen cannot hide it by itself: the signal travels *up* through
+  a small piece of shared state, which is what makes it work the same way for the
+  Logbook and Fleet lists in Phase D.
 
 **Content goes under the bars, not merely to the edges.** The list's first item
-scrolls up behind a translucent status bar and its last scrolls down behind the
-navigation bar, so the app reads as one surface with chrome floating on it. That
-means `contentPadding` carrying the inset heights rather than the *container*
-being padded by them — the distinction the whole thing turns on, and the opposite
-of what `PlaceholderScaffold` does today.
+scrolls up behind the status bar, and its last scrolls down through the gesture
+area once the navigation bar is away. That means `contentPadding` carrying the
+inset heights rather than the *container* being padded by them — the distinction
+the whole thing turns on, and the opposite of what `PlaceholderScaffold` does. The
+bars themselves stay **empty**: no scrim, no translucency, nothing painted behind
+the clock (see "The parts that bit").
 
 ### Tasks
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| **B15** | Collapsing title | `TopAppBar` on a scroll behaviour, settings action pinned, title gone by the time the first card reaches the top |
-| **B16** | Retracting controls | Mode selector and filter chips leave on sustained downward scroll and return on any upward one. Not on the first pixel — see above |
-| **B17** | Hoisted scroll state | A shared "chrome visible" signal the navigation suite reads and any scrolling screen can drive. Designed for Phase D's lists, not just this one |
-| **B18** | Hiding navigation suite | The suite animates out and back on that signal. Compact only — a `WideNavigationRail` on a tablet must not vanish, because there is no height to reclaim on a rail |
-| **B19** | Insets as content padding | The list draws under both bars; the top and bottom insets move into `contentPadding` so nothing is clipped and nothing is double-padded |
+| **B15** | Collapsing title | ✅ **as content, not a bar.** The title is the list's first item and scrolls away with it. Built as a collapsing `TopAppBar` first — see below |
+| **B16** | Retracting controls | ✅ **as content, not chrome.** Same item. Built as a threshold-driven overlay first, and that is the part that had to be thrown away |
+| **B17** | Hoisted scroll state | ✅ `AppChromeState` + `rememberChromeScrollConnection` in `ui/chrome`. One signal, one place that decides when the navigation may leave. Built for Phase D's lists as much as for this one |
+| **B18** | Hiding navigation suite | ✅ `NavigationSuiteScaffold`'s own `state` — it animates the suite out and stops consuming the bottom inset while away. Bottom bars only; a rail never hides |
+| **B19** | Insets as content padding | ✅ `ContentInsets` reports what ancestors consumed and the list pads the remainder as `contentPadding` |
+| **B20** | Reselect scrolls to top | ✅ Tapping the active section's navigation item returns the list to the top. `NavigationReselect`, an event with no replay |
 
-### The parts that will bite
+### How it is put together
 
-- **Insets are the whole difficulty, and this app has already documented why.**
-  `PlaceholderScaffold`'s KDoc explains that which edge belongs to whom changes
-  with width: on compact the suite owns the bottom, on medium and expanded it is a
-  rail owning the *start*. Moving insets into `contentPadding` must keep that true,
-  and must not double-pad when the suite is a rail.
-- **A hiding navigation bar can trap the user.** If the suite is hidden and the
-  list is short — one card, or an empty state — there must be no way to end up with
-  no navigation and nothing to scroll. Reveal on any upward scroll, and always
-  reveal when the list cannot scroll.
-- **Reduce motion.** Bars that slide are exactly the "anything that moves" the
-  motion rules cover; at `ANIMATOR_DURATION_SCALE == 0` they should snap, and
-  `LocalReduceMotion` already carries the signal.
-- **Predictive back.** The manifest opt-in landed in Phase B. Verify the
-  back-to-home preview still animates correctly once the window is truly
-  edge-to-edge, because that gesture and a hidden navigation bar share an edge.
-- **The status bar needs contrast.** A card scrolling under a transparent status
-  bar can put a dark ICAO code behind dark system icons. Either a short scrim or
-  `isAppearanceLightStatusBars` driven from the theme — decide on device, in both
-  themes and in Cockpit.
+`PlanScreen` is a `Box`, not a `Scaffold`. The list fills the window and the
+snackbar is one aligned modifier. A scaffold's content padding would have to be
+taken and then deliberately ignored, and content padding that must be ignored is a
+sign the layout is not a scaffold's shape. (Lint says so too:
+`UnusedMaterial3ScaffoldPaddingParameter`.)
+
+**The title and the controls are the list's first item.** Not a bar over it. That
+one decision is what makes the screen feel right, and it was arrived at the hard way
+— the first build was a floating chrome that faded its container in on the first
+scroll, dropped the title at one threshold and the controls at another. It was
+rejected on the device, in three parts that were all the same mistake:
+
+- **It could not feel attached to the finger.** A threshold means nothing happens
+  for 48 dp and then a spring runs on its own clock. Chrome that retracts *after*
+  the scroll reads as lag no matter how quick the spring is.
+- **Its container had to appear from nowhere.** An overlay needs a background the
+  moment a card is behind it, so the top of the screen tinted itself as soon as the
+  list moved — a highlight nobody asked for.
+- **Its bottom edge cut the cards in half.** An opaque block over a scrolling list
+  ends in a straight horizontal line, and a card sliced by one looks broken rather
+  than layered.
+
+As an item, all three stop existing rather than getting fixed: it moves at exactly
+the speed of the finger because it *is* the content, it needs no background because
+nothing passes behind it, and it has no edge because there is nothing to have an
+edge against. A measured chrome height, a reserved band of top padding, two
+thresholds and two transitions all went with it.
+
+**What it costs** is that the controls no longer return on an upward flick from deep
+in the list. **B20** is the answer and the reason it exists: tapping Plan in the
+navigation bar while already on Plan returns the list to the top, which is what that
+tap means everywhere else on Android and which the old design had no use for.
+
+The navigation bar is the one piece of chrome left. It is at the other end of the
+screen, it overlays nothing, and it must stay reachable — so it keeps the threshold
+(48 dp down to hide, 6 dp up to return) and the trap guard that shows it whenever
+the list is at its top or cannot scroll at all.
+
+### The parts that bit
+
+- **A padded container outlives its children.** The chrome block padded itself by
+  the status-bar inset with its background applied outside that padding, so when both
+  halves retracted it kept a bar's worth of height and painted it — a solid strip
+  across the top of the screen, which is precisely the opaque status bar the phase
+  exists to remove. The padding has to be *inside* whatever hides. **This shipped and
+  was caught on the device, not by lint, a test or a preview.**
+- **Scrims lose to transparency.** A short gradient of the page colour behind each
+  bar was built to keep an ICAO code from colliding with the clock. It is invisible
+  over the page's own background by construction — and on the device, with a card
+  behind it, it reads as an opaque bar. Removed. The bars are now genuinely empty and
+  `FlightPlannerTheme` sets `isAppearanceLightStatusBars` /
+  `isAppearanceLightNavigationBars` **from the scheme it resolved**, not from the
+  system night setting, which is what keeps the clock legible in Cockpit and under a
+  forced Light or Dark once Phase E offers them.
+- **The pull-to-refresh indicator needed moving.** Its default `TopCenter` was fine
+  under a scaffold and emerges from behind the clock in a full-bleed box, so it is
+  offset by the chrome's height.
+- **Insets, as predicted.** Which edge belongs to whom now varies with the chrome
+  state as well as the width, so nothing could be hard-coded:
+  `Modifier.onConsumedWindowInsetsChanged` plus `WindowInsets.exclude` turn "what my
+  ancestors did not take" into the `PaddingValues` a list needs. See `ContentInsets`.
+- **Reduce motion needed nothing.** Every part of this is a spring — the two
+  `AnimatedVisibility` blocks and the suite's own animation — and Compose collapses
+  springs at `ANIMATOR_DURATION_SCALE == 0`. Nothing here is staged or infinite, so
+  `LocalReduceMotion` is not consulted.
+
+### The controls themselves — "the flight strip"
+
+Redesigned with the immersive layout, because the segmented row and the two icon
+chips were the generic half of an otherwise specific screen. They now use the
+grammar the route cards already use: a letter-spaced caps field label over a short
+identifier in tabular figures, over one line of plain text.
+
+```
+  All    Not flown · 116    This aircraft          ← scope: which pool
+ ┌──────────────────────┐ ┌──────────────────────┐
+ │ DEPARTURE            │ │ AIRCRAFT             │  ← constraints: the envelope
+ │ EHAM                 │ │ 737-600              │
+ │ Amsterdam Schiphol   │ │ 3,010 NM · 6,900 ft  │
+ └──────────────────────┘ └──────────────────────┘
+```
+
+**A set field reports the constraint it imposes.** "3,010 NM · 6,900 ft" is the box
+every route in the list was generated inside — the fact that explains why the list
+looks the way it does, and one nothing else in the app shows. That line is the
+reason the redesign is worth more than a reskin.
+
+**One selection language across both rows:** hairline outline is "no constraint",
+filled is "constrained". Both read on any surface, which matters because this is
+drawn on the page background rather than on a chrome of its own.
+
+**Two accessories removed.** The leading icons — a `DEPARTURE` label and a departure
+icon say the same thing twice, and the icon costs the width the value needs — and
+the segmented row's checkmark, since the fill already says which option is on.
+
+**Two copy fixes fall out.** "Any" was doing two jobs one row apart: a scope in the
+first row and an unset value in the second, so the scope became **All**. And the
+not-flown count is now *drawn*: it was hidden in a `contentDescription` only because
+equal thirds ellipsised "Not flown 116" into a wrong number, and chips are sized to
+their own label. The mode row also wraps at font scale 2.0 where a segmented row
+truncated.
+
+The airframe is named by its **variant** — "737-600", not "Boeing 737-600", which
+truncates to "Boeing 737-6…" and spends the field on the half every 737 shares.
+
+### Divergences from the plan above
+
+- **The settings action leaves with the title**, because both are content now. The
+  navigation bar already names the section, so a permanent 64 dp bar to hold one
+  icon and a word the user can already see was the wrong trade.
+- **Cards stop above the navigation bar rather than passing behind it.**
+  `NavigationSuiteScaffoldLayout` measures its content to the window minus the bar,
+  so the "behind" half of B19 applies to the status bar and to the gesture area once
+  the suite is away. Taking it further would mean drawing our own bottom bar over
+  full-height content — a second layout to keep in step with the rail, and a
+  per-frame relayout traded for a translation — for a card edge that is only visible
+  while the bar is up. Not worth it.
 
 **Done when:** scrolling down leaves nothing but cards on screen, scrolling up
-brings the chrome back immediately, no card is ever clipped by a system bar, and
-the whole thing behaves the same at 360 dp and on a tablet rail.
+brings the navigation back immediately, no card is ever clipped by a system bar, and
+the whole thing behaves the same at 360 dp and on a tablet rail. ✅ — verified on the
+emulator at 1080 × 2424, at font scale 1.0 and 2.0, in both the unset and the
+constrained state. The tablet rail is reasoned rather than measured: the suite is
+only hidden for the two bar types, so a rail cannot vanish. Predictive back was not
+re-verified on the truly edge-to-edge window and remains open.
 
 ---
 
 ## 4b. Phase B++ — the world under the route
 
-**After 4a.** The immersive layout changes the card's frame — height, and how much
-of it is ever covered by chrome — so the map is designed against the final shape
-rather than redesigned twice.
+**This is the next work item, now that 4a has landed.** The immersive layout
+changes the card's frame — height, and how much of it is ever covered by chrome —
+so the map is designed against the final shape rather than redesigned twice.
 
 The sparkline proves a route has a *shape*. It does not say where on Earth that
 shape is: a bowed arc over the Pacific and a bowed arc over the Atlantic draw

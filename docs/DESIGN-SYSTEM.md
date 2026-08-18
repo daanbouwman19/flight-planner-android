@@ -36,6 +36,14 @@ and `FlightTypography`. Scheme selection, in order:
 3. Otherwise → `BrandLightColorScheme` / `BrandDarkColorScheme`, avgas blue with
    runway-marking amber.
 
+It also sets the **system-bar appearance** from the scheme it just resolved —
+`isAppearanceLightStatusBars` and `isAppearanceLightNavigationBars` — because the
+bars are transparent and nothing else is keeping the clock legible. It must come
+from the resolved scheme rather than from the system night setting: those agree only
+until a settings screen offers Light, Dark or Cockpit, at which point a near-black
+app under a light system would lose its status bar entirely. This is the one place
+the design system touches the window, and it is a `SideEffect` of two field writes.
+
 ## Flight-rules colours
 
 ```kotlin
@@ -163,11 +171,16 @@ Box(Modifier.clip(rememberMorphShape(FlightShapes.GenerateFabMorph, progress)))
                                          contentDescription: String = "Loading")
 
 @Immutable data class ModeOption(val label: String,
+                                val count: Int? = null,
                                 val contentDescription: String? = null,
                                 val enabled: Boolean = true)
 
 @Composable fun ModeSelector(options: List<ModeOption>, selectedIndex: Int,
                              onSelect: (Int) -> Unit, modifier: Modifier = Modifier)
+
+@Composable fun FilterField(label: String, value: String, selected: Boolean,
+                            onClick: () -> Unit, modifier: Modifier = Modifier,
+                            detail: String? = null)
 
 @Composable fun RouteSparkline(points: FloatArray, modifier: Modifier = Modifier,
                                color: Color = MaterialTheme.colorScheme.primary,
@@ -195,11 +208,25 @@ Notes that are easy to get wrong:
   failed even when focus is elsewhere.
 - Skeletons beat a spinner when the content's shape is known, because they stop the
   layout jumping. They are *worse* than a spinner when you are guessing at the size.
-- **`ModeSelector` is not `ButtonGroup`.** It should be — `ButtonGroup` is the
-  Expressive component for a single-choice row — but that component *crashes* in
-  the pinned alpha. See [API-GROUND-TRUTH.md](API-GROUND-TRUTH.md) for the repro
-  and what to re-test before switching back. This is the containment rule doing
-  its job: the substitution was one file because no screen ever named it.
+- **`ModeSelector` is single-select chips in a `FlowRow`**, and it is neither
+  `ButtonGroup` (which *crashes* in the pinned alpha — see
+  [API-GROUND-TRUTH.md](API-GROUND-TRUTH.md)) nor the segmented row it wrapped
+  first. A segmented row divides the width **equally**, so every option is as wide
+  as the longest one needs and none is as wide as it wants: "Not flown · 116" did
+  not fit a third of a 360 dp phone and ellipsised to a *wrong number*, which is
+  why the count used to be spoken to TalkBack and never drawn. Chips are sized to
+  their own label, so the count is visible, and the row **wraps** at font scale 2.0
+  where a segmented row truncates. The row is a `selectableGroup` of
+  `Role.RadioButton` chips, so TalkBack announces "2 of 3".
+- **`FilterField` is a control set like the data it filters** — a letter-spaced caps
+  label over a short identifier in tabular figures, over one line of detail. Its
+  detail line is the point: a chip can say *what* is set, a field can say what that
+  **means** ("3,010 NM · 6,900 ft" is the envelope every route was generated
+  inside). Outline is unset and a filled container is set, a language it shares with
+  `ModeSelector`, and both survive being drawn on any surface. It holds no space for
+  a detail it does not have — unlike the route card's flight-rules slot, because the
+  user's own tap is what changes it. Put a pair inside a
+  `Modifier.height(IntrinsicSize.Min)` row with `fillMaxHeight` to keep them level.
 - **`RouteSparkline` takes points, not coordinates.** Turning two airports into a
   great-circle polyline is spherical interpolation over two dozen samples, and
   taking coordinates here would do that inside a composable — on the main thread,

@@ -75,6 +75,18 @@ Initializer runs before first frame and spends that budget. In particular:
   measurements, or use `:macrobenchmark`, which controls iterations properly.
   Otherwise report the number as unverified rather than reporting drift as a result.
 
+### The system bars stay empty
+
+The window is edge to edge and the status and navigation bars are **transparent —
+nothing is painted behind them**. Content scrolls up under the clock and down under
+the gesture handle. A scrim, however subtle, reads on a device as an opaque bar the
+moment a card is behind it; so does an inset padding left on a container that
+outlives its children, because its background then paints a bar-height strip. Both
+were built and removed in Phase B+. Legibility where the app's glyphs meet the
+system's is handled by `FlightPlannerTheme` setting `isAppearanceLightStatusBars`
+and `isAppearanceLightNavigationBars` from the scheme it resolved — never from the
+system night setting, which is a different question once Cockpit exists.
+
 ### Flight-rules colours are semantic and never dynamic
 
 VFR green, MVFR blue, IFR red, LIFR magenta are standard aviation chart colours; a
@@ -103,6 +115,22 @@ a wrong expectation, say so explicitly rather than quietly changing it.
 
 `adb` is not on `PATH`:
 `C:\Users\daanb\AppData\Local\Android\Sdk\platform-tools\adb.exe`
+
+**A UI change is not verified until a screenshot of it has been looked at.** A green
+build, a passing test and a correct preview together said nothing about the Phase B+
+Plan screen shipping a solid bar across the status bar: a preview cannot show window
+insets, chrome that retracts, or anything else driven by scrolling. Install it and
+look — at rest *and* in the state the change is actually about.
+
+```bash
+./gradlew :app:installDebug
+adb shell am force-stop com.github.daanbouwman.flightplanner
+adb shell am start -n com.github.daanbouwman.flightplanner/.MainActivity
+adb exec-out screencap -p > shot.png
+# `input swipe` is often read as a tap and opens a card. Drive a scroll explicitly:
+adb shell "input motionevent DOWN 540 1800; input motionevent MOVE 540 1300; \
+           input motionevent MOVE 540 800; input motionevent UP 540 800"
+```
 
 Determining whether an API exists in the pinned versions is done by **compiling a
 throwaway probe**, never by reading documentation — the docs describe several
