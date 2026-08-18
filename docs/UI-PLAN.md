@@ -935,10 +935,17 @@ mistake.
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| **P1** | Baseline profile | The single largest startup and first-scroll win available to a Compose app, and the thing that most directly addresses "stutters at first, then smooths out". The `benchmark` variant it needs already exists |
+| **P1** | Baseline profile | The single largest startup and first-scroll win available to a Compose app, and the thing that most directly addresses "stutters at first, then smooths out". The `benchmark` variant it needs already exists. **Do it second** — see the order below |
 | **P2** | Macrobenchmark module | `FrameTimingMetric` over a scripted fling, with iterations and warm-up controlled, replacing `input motionevent` plus `dumpsys gfxinfo`. This is the instrument; P1 without it is a change nobody can grade |
 | **P3** | Projection off the UI thread | `MapFrame.projectOutline` runs in `drawWithCache` — on the UI thread, for every card entering composition during a fling. It needs the canvas aspect ratio, so moving it means deciding that ratio before measurement (a fixed card aspect, or a two-pass measure) rather than reading it from the canvas |
 | **P4** | A budget, written down | Once P2 can measure it: a p90 figure for the fling and a cold-start figure, both on the `benchmark` variant, so a regression is a failed check rather than an opinion |
+
+**Order: P2, then P1, then re-measure — then P3 only if the numbers still ask for
+it.** The IDs are stable, so they are not renumbered, but the instrument comes
+before the change. Building the macrobenchmark first means the baseline profile
+arrives with a before-and-after instead of an impression, and it is the only way
+to know whether P3 is worth doing at all: the projection may turn out to cost
+less than the warm-up it is currently hidden behind.
 
 **Done when:** the first fling after a cold start is indistinguishable from the
 tenth, and P2 reports it rather than a person judging it by eye.
