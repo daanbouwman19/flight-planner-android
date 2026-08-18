@@ -149,8 +149,16 @@ object GreatCircle {
 
 /** Estimated flight time and the cruise speed actually used to compute it. */
 data class FlightTime(val hours: Int, val minutes: Int, val effectiveSpeedKt: Double) {
-    /** "02h 35m" */
-    fun format(): String = "%02dh %02dm".format(hours, minutes)
+    /**
+     * Estimated time en route, written the way it is written on a flight plan:
+     * `2:35`, not `02h 35m`.
+     *
+     * The hour is not zero-padded because no chart pads it, and the minutes
+     * always are, because `2:5` is not a time. Formatted in a fixed locale: this
+     * is a clock-style figure, not a localised duration, and a decimal comma
+     * turning up in the middle of it would be worse than an unlocalised colon.
+     */
+    fun format(): String = String.format(java.util.Locale.ROOT, "%d:%02d", hours, minutes)
 }
 
 /** Signed shortest difference between two longitudes, in degrees, in (-180, 180]. */

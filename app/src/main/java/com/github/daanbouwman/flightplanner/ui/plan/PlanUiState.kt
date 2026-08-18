@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.routing.FlightTime
+import com.github.daanbouwman.flightplanner.routing.GeoArc
 
 /**
  * Which airframes a batch may draw from, as the *screen* understands it.
@@ -52,9 +53,10 @@ sealed interface PlanStatus {
  * A plain class with identity-based equality rather than a `data class`. Two
  * reasons, both about the list:
  *
- * The [arc] is a `FloatArray`, and array equality is referential, so a generated
- * `equals` would silently be identity-based for that field anyway — better to
- * say so than to leave a reader believing the comparison is structural.
+ * The [arc] holds two `DoubleArray`s, and array equality is referential, so a
+ * generated `equals` would silently be identity-based for that field anyway —
+ * better to say so than to leave a reader believing the comparison is
+ * structural.
  *
  * More importantly, [id] is already a perfect identity: it is minted once per
  * generated route and never reused, and two rows are the same row exactly when
@@ -72,11 +74,16 @@ class RouteRow(
     val departureRunwayFt: Int,
     val destinationRunwayFt: Int,
     /**
-     * The great circle, projected and normalised, ready for
-     * `RouteSparkline`. Computed once here rather than per frame in the
-     * composable — see that component for why.
+     * The great circle as geography — degrees, unwrapped past the ±180° seam.
+     *
+     * Sampled here rather than in the composable because spherical interpolation
+     * over 128 points is real arithmetic and this runs on a background
+     * dispatcher; the card only projects it, which is a multiply and an add per
+     * point. It stays *geographic* rather than pre-projected because the window
+     * it is drawn through depends on the card's measured aspect ratio, which no
+     * background thread knows.
      */
-    val arc: FloatArray,
+    val arc: GeoArc,
     /**
      * True when this row was generated to take a swiped row's place, rather
      * than as part of a batch.

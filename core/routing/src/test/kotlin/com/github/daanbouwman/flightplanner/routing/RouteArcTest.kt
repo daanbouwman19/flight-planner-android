@@ -1,32 +1,38 @@
 package com.github.daanbouwman.flightplanner.routing
 
 import io.kotest.matchers.doubles.shouldBeGreaterThan
+import io.kotest.matchers.doubles.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.doubles.shouldBeLessThan
-import io.kotest.matchers.floats.shouldBeGreaterThanOrEqual
-import io.kotest.matchers.floats.shouldBeLessThanOrEqual
+import io.kotest.matchers.doubles.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
 import kotlin.math.abs
 import kotlin.test.Test
 
-/** Longitudes of the sample at [sample], recovered from a normalised path. */
-private fun FloatArray.x(sample: Int): Float = this[sample * 2]
-
-private fun FloatArray.y(sample: Int): Float = this[sample * 2 + 1]
-
-private fun FloatArray.sampleCount(): Int = size / 2
-
+/**
+ * The arc is asserted as *geography* — degrees on a sphere — rather than as
+ * coordinates in a box.
+ *
+ * It used to be the other way round, because the arc's only consumer was a
+ * sparkline that normalised itself. Once a map came under it the projection moved
+ * to [MapFrame], and the assertions moved with it: where a point lands on a card
+ * is `MapFrameTest`'s question, and whether it is a real place on the shortest
+ * path between two airports is this one's.
+ */
 class RouteArcTest {
 
     @Test
-    fun `produces two floats per sample`() {
-        val path = RouteArc.normalisedPath(52.31, 4.76, 40.64, -73.78, samples = 12)
-        path.size shouldBe 24
+    fun `one point per sample, in both columns`() {
+        val arc = RouteArc.sampleGeographic(52.31, 4.76, 40.64, -73.78, samples = 12)
+
+        arc.size shouldBe 12
+        arc.lats.size shouldBe 12
+        arc.lons.size shouldBe 12
     }
 
     @Test
-    fun `every point lands inside the unit box`() {
+    fun `every sample is a real place`() {
         // A deliberately awkward spread: polar, equatorial, seam-crossing and
-        // hemisphere-crossing routes all share one normalisation.
+        // hemisphere-crossing routes all through one sampler.
         val routes = listOf(
             doubleArrayOf(52.31, 4.76, 40.64, -73.78),
             doubleArrayOf(-33.95, 151.18, 51.15, -0.18),
@@ -35,93 +41,79 @@ class RouteArcTest {
             doubleArrayOf(0.0, 0.0, 0.0, 90.0),
         )
         for (route in routes) {
-            val path = RouteArc.normalisedPath(route[0], route[1], route[2], route[3])
-            for (i in 0 until path.sampleCount()) {
-                path.x(i) shouldBeGreaterThanOrEqual 0f
-                path.x(i) shouldBeLessThanOrEqual 1f
-                path.y(i) shouldBeGreaterThanOrEqual 0f
-                path.y(i) shouldBeLessThanOrEqual 1f
+            val arc = RouteArc.sampleGeographic(route[0], route[1], route[2], route[3])
+            for (i in 0 until arc.size) {
+                arc.lats[i] shouldBeGreaterThanOrEqual -90.0
+                arc.lats[i] shouldBeLessThanOrEqual 90.0
+                arc.lons[i].isNaN() shouldBe false
             }
         }
     }
 
     @Test
-    fun `endpoints sit on the boundary of the dominant axis`() {
-        // Due east along the equator: longitude dominates, so the two ends are
-        // the extremes of x and the whole path is flat.
-        val path = RouteArc.normalisedPath(0.0, 0.0, 0.0, 90.0)
-        val last = path.sampleCount() - 1
-        path.x(0) shouldBe 0f
-        path.x(last) shouldBe 1f
-        for (i in 0..last) {
-            abs(path.y(i) - 0.5f).toDouble() shouldBeLessThan 1e-5
-        }
-    }
+    fun `a route due east along the equator stays on the equator`() {
+        val arc = RouteArc.sampleGeographic(0.0, 0.0, 0.0, 90.0)
 
-    @Test
-    fun `north is up`() {
-        // Due north from the equator: the northern end must have the smaller y,
-        // because a canvas grows downwards and the projection flips for it.
-        val path = RouteArc.normalisedPath(0.0, 10.0, 60.0, 10.0)
-        val last = path.sampleCount() - 1
-        path.y(last).toDouble() shouldBeLessThan path.y(0).toDouble()
+        for (i in 0 until arc.size) {
+            abs(arc.lats[i]) shouldBeLessThan 1e-9
+        }
+        for (i in 1 until arc.size) {
+            arc.lons[i] shouldBeGreaterThan arc.lons[i - 1]
+        }
     }
 
     @Test
     fun `a great circle bows away from the straight line between its ends`() {
-        // Amsterdam to Tokyo passes far north of the rhumb line, which is the
-        // entire reason a route sparkline is drawn from a great circle rather
-        // than from two points and a ruler.
-        val path = RouteArc.normalisedPath(52.31, 4.76, 35.55, 139.78)
-        val last = path.sampleCount() - 1
-        val mid = last / 2
+        // Amsterdam to Tokyo passes far north of the rhumb line — over Siberia,
+        // not over the Gobi — which is the entire reason the card draws a great
+        // circle rather than two points and a ruler.
+        val arc = RouteArc.sampleGeographic(52.31, 4.76, 35.55, 139.78)
+        val midpoint = arc.lats[arc.size / 2]
 
-        // y on the chord at the midpoint's x, versus the actual midpoint.
-        val t = (path.x(mid) - path.x(0)) / (path.x(last) - path.x(0))
-        val chordY = path.y(0) + (path.y(last) - path.y(0)) * t
-        // Smaller y is further north.
-        (chordY - path.y(mid)).toDouble() shouldBeGreaterThan 0.02
+        midpoint shouldBeGreaterThan (52.31 + 35.55) / 2.0 + 8.0
     }
 
     @Test
-    fun `crossing the antimeridian does not wrap the path back across the box`() {
-        // Fiji to Anchorage. Unwrapped naively the longitudes jump from +179 to
-        // -179 and the polyline draws a full-width horizontal line; with the seam
-        // handled, x advances monotonically.
-        val path = RouteArc.normalisedPath(-17.75, 177.44, 61.17, -150.00)
-        for (i in 1 until path.sampleCount()) {
-            path.x(i) shouldBeGreaterThanOrEqual path.x(i - 1)
+    fun `crossing the antimeridian keeps longitude running the same way`() {
+        // Fiji to Anchorage. Left raw, the longitudes jump from +179 to -179 and
+        // anything drawing them draws a line back across the entire planet.
+        val arc = RouteArc.sampleGeographic(-17.75, 177.44, 61.17, -150.00)
+
+        for (i in 1 until arc.size) {
+            arc.lons[i] shouldBeGreaterThan arc.lons[i - 1]
         }
+        // Past the seam rather than wrapped back under it.
+        arc.lons.last() shouldBeGreaterThan 180.0
     }
 
     @Test
-    fun `identical endpoints collapse to the centre rather than dividing by zero`() {
-        val path = RouteArc.normalisedPath(52.31, 4.76, 52.31, 4.76)
-        for (i in 0 until path.sampleCount()) {
-            path.x(i) shouldBe 0.5f
-            path.y(i) shouldBe 0.5f
+    fun `identical endpoints collapse to the point rather than dividing by zero`() {
+        val arc = RouteArc.sampleGeographic(52.31, 4.76, 52.31, 4.76)
+
+        for (i in 0 until arc.size) {
+            abs(arc.lats[i] - 52.31) shouldBeLessThan 1e-9
+            abs(arc.lons[i] - 4.76) shouldBeLessThan 1e-9
         }
     }
 
     @Test
     fun `antipodal endpoints still produce a drawable path`() {
-        val path = RouteArc.normalisedPath(0.0, 0.0, 0.0, 180.0)
-        path.sampleCount() shouldBe RouteArc.DEFAULT_SAMPLES
-        for (i in 0 until path.sampleCount()) {
-            path.x(i).isNaN() shouldBe false
-            path.y(i).isNaN() shouldBe false
+        val arc = RouteArc.sampleGeographic(0.0, 0.0, 0.0, 180.0)
+
+        arc.size shouldBe RouteArc.DEFAULT_SAMPLES
+        for (i in 0 until arc.size) {
+            arc.lats[i].isNaN() shouldBe false
+            arc.lons[i].isNaN() shouldBe false
         }
     }
 
     @Test
     fun `sampled points lie on the great circle between the endpoints`() {
         // This is what distinguishes real spherical interpolation from a
-        // decorative curve, and it cannot be seen once the path has been squashed
-        // into a unit box — hence testing the sampler directly. For any point on
-        // the shortest path, distance-to-departure plus distance-to-destination
-        // equals the whole route. A point off the great circle makes that sum
-        // larger; linear interpolation of lat/lon over this route is out by
-        // hundreds of miles.
+        // decorative curve. For any point on the shortest path,
+        // distance-to-departure plus distance-to-destination equals the whole
+        // route; a point off the great circle makes that sum larger, and linear
+        // interpolation of lat/lon over this route is out by hundreds of miles.
         val depLat = 52.31
         val depLon = 4.76
         val destLat = -33.95
@@ -158,20 +150,20 @@ class RouteArcTest {
 
     @Test
     fun `endpoints are reproduced exactly`() {
-        val lats = DoubleArray(6)
-        val lons = DoubleArray(6)
-        RouteArc.sampleInto(52.31, 4.76, 40.64, -73.78, lats, lons)
+        val arc = RouteArc.sampleGeographic(52.31, 4.76, 40.64, -73.78, samples = 6)
 
-        abs(lats.first() - 52.31) shouldBeLessThan 1e-9
-        abs(lons.first() - 4.76) shouldBeLessThan 1e-9
-        abs(lats.last() - 40.64) shouldBeLessThan 1e-9
-        abs(lons.last() - (-73.78)) shouldBeLessThan 1e-9
+        abs(arc.departureLat - 52.31) shouldBeLessThan 1e-9
+        abs(arc.departureLon - 4.76) shouldBeLessThan 1e-9
+        abs(arc.destinationLat - 40.64) shouldBeLessThan 1e-9
+        abs(arc.destinationLon - (-73.78)) shouldBeLessThan 1e-9
     }
 
     @Test
     fun `unwrapping keeps longitudes continuous across the seam`() {
         val lons = doubleArrayOf(178.0, 179.5, -179.0, -177.5)
+
         RouteArc.unwrapLongitudes(lons)
+
         lons[0] shouldBe 178.0
         abs(lons[1] - 179.5) shouldBeLessThan 1e-9
         abs(lons[2] - 181.0) shouldBeLessThan 1e-9

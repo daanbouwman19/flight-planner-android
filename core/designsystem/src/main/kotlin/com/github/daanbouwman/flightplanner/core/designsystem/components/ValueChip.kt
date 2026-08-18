@@ -32,15 +32,29 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlanne
  * table of numbers has always been set and the reason the figures are tabular in
  * the first place.
  *
+ * ### Translucency is opt-in
+ *
+ * [containerAlpha] exists for one caller: a chip drawn over the route card's map,
+ * where a solid container reads as a panel bolted onto the card and a translucent
+ * one reads as a layer over it. It fades the container only — see below.
+ *
  * Semantics are merged so a screen reader announces "DIST, 3,451 nm" as one
  * thing rather than as two unrelated fragments.
  */
 @Composable
-fun ValueChip(label: String, value: String, modifier: Modifier = Modifier) {
+fun ValueChip(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    containerAlpha: Float = 1f,
+) {
     Surface(
         modifier = modifier.semantics(mergeDescendants = true) {},
         shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = containerAlpha),
+        // The *content* colour is never faded with the container. A chip over a
+        // map wants its coastline to show faintly behind the figure; a figure at
+        // 70 % is just a figure that is harder to read.
         contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Row(

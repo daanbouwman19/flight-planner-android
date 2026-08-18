@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.github.daanbouwman.flightplanner.ui.asFigure
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
@@ -230,7 +231,7 @@ private fun AirportResults(
                 },
                 trailingContent = {
                     Text(
-                        text = stringResource(R.string.plan_value_feet, airport.longestRunwayFt),
+                        text = stringResource(R.string.plan_value_feet, airport.longestRunwayFt.asFigure()),
                         style = MaterialTheme.typography.labelMedium.withTabularFigures(),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -264,7 +265,7 @@ private fun AircraftResults(
                         text = stringResource(
                             R.string.plan_picker_aircraft_detail,
                             spec.category,
-                            spec.rangeNm,
+                            spec.rangeNm.asFigure(),
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

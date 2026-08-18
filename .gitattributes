@@ -19,3 +19,7 @@ gradlew text eol=lf
 app/src/main/assets/databases/*.db binary
 app/src/main/assets/databases/*.index binary
 tools/airportdb/data/*.csv -diff
+
+# The prebuilt world outline is read back byte for byte, exactly like the index.
+*.outline binary
+app/src/main/assets/maps/*.outline binary

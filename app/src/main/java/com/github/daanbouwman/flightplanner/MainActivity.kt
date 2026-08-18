@@ -2,6 +2,10 @@ package com.github.daanbouwman.flightplanner
 
 import android.os.Bundle
 import android.os.SystemClock
+import com.github.daanbouwman.flightplanner.settings.AppSettings
+import com.github.daanbouwman.flightplanner.settings.SettingsRepository
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,6 +22,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var airportIndexProvider: AirportIndexProvider
 
+    @Inject
+    lateinit var settingsRepository: SettingsRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         enableEdgeToEdge()
@@ -32,12 +39,23 @@ class MainActivity : ComponentActivity() {
         // missing or corrupt. Past the cap the app appears and shows skeletons,
         // which is a worse first frame but a recoverable one.
         val deadline = SystemClock.uptimeMillis() + SPLASH_HOLD_MILLIS
+        // Also waits for the stored theme. Without it the first frame draws with
+        // the defaults and flips a few milliseconds later — a light flash in front
+        // of someone who chose Cockpit precisely so they would not get one. It is
+        // one small file read, running in parallel with the index, under the same
+        // deadline.
         splashScreen.setKeepOnScreenCondition {
-            !airportIndexProvider.isSettled && SystemClock.uptimeMillis() < deadline
+            (!airportIndexProvider.isSettled || settingsRepository.settings.value == null) &&
+                SystemClock.uptimeMillis() < deadline
         }
 
         setContent {
-            FlightPlannerTheme {
+            val settings by settingsRepository.settings.collectAsStateWithLifecycle()
+            val resolved = settings ?: AppSettings()
+            FlightPlannerTheme(
+                themeChoice = resolved.themeChoice,
+                dynamicColor = resolved.dynamicColour,
+            ) {
                 FlightPlannerApp()
             }
         }

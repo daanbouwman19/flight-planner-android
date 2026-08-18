@@ -150,7 +150,7 @@ class FlightTimeTest {
         val time = GreatCircle.flightTime(599.99, 300)
         time.hours shouldBe 2
         time.minutes shouldBe 0
-        time.format() shouldBe "02h 00m"
+        time.format() shouldBe "2:00"
     }
 }
 

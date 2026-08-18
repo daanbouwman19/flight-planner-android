@@ -13,6 +13,14 @@ dependencies {
     // database or the network.
     api(projects.core.model)
 
+    // RouteMap names GeoArc, WorldOutline and MapFrame in its own signature: the
+    // map is one component, and the projection it draws through has to be the
+    // same one the arc is sampled into. :core:routing is pure JVM geometry with
+    // no Android, no Compose and no data access, so this stays a dependency on
+    // algorithms rather than on the app's data layer — which is the line this
+    // module is not allowed to cross.
+    api(projects.core.routing)
+
     api(libs.compose.material3.adaptive)
     api(libs.compose.material3.adaptive.layout)
     api(libs.compose.material3.adaptive.navigation)

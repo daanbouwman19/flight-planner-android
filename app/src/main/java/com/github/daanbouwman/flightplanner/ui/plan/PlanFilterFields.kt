@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.github.daanbouwman.flightplanner.ui.asFigure
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.FilterField
@@ -81,7 +82,7 @@ fun PlanFilterFields(
             label = stringResource(R.string.plan_filter_aircraft_label),
             value = selectedAircraft?.variant ?: unset,
             detail = selectedAircraft?.let {
-                stringResource(R.string.plan_filter_envelope, it.rangeNm, it.requiredRunwayFt)
+                stringResource(R.string.plan_filter_envelope, it.rangeNm.asFigure(), it.requiredRunwayFt.asFigure())
             },
             selected = selectedAircraft != null,
             onClick = onPickAircraft,

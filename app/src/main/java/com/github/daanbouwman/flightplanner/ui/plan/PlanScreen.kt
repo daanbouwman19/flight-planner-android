@@ -1,5 +1,12 @@
 package com.github.daanbouwman.flightplanner.ui.plan
 
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,6 +70,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
+import com.github.daanbouwman.flightplanner.ui.chrome.windowWidthDp
+import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
@@ -77,6 +87,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.SwipeAc
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
+import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.ui.SettingsAction
 import com.github.daanbouwman.flightplanner.ui.chrome.ScrollToTopOnReselect
 import com.github.daanbouwman.flightplanner.ui.chrome.rememberChromeScrollConnection
@@ -133,6 +144,9 @@ fun PlanScreen(
     viewModel: PlanViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // Separate from the state: it arrives once and never changes, so folding it in
+    // would put a copy of the coastline on every batch, status and filter change.
+    val outline by viewModel.worldOutline.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -185,6 +199,7 @@ fun PlanScreen(
     val chromeScroll = rememberChromeScrollConnection(listState = listState)
     val contentInsets = rememberContentInsets()
     val pullState = rememberPullToRefreshState()
+    var headerHeight by remember { mutableIntStateOf(0) }
 
     // A plain `Box`, not a `Scaffold`.
     //
@@ -208,10 +223,24 @@ fun PlanScreen(
     ) {
         val insets = contentInsets.asPaddingValues()
         val layoutDirection = LocalLayoutDirection.current
+        // On a tall window wider than a column wants to be, the extra width becomes
+        // margin: a filter field 390 dp across to say "Any" is width spent rather
+        // than used, so the column is centred instead of stretched.
+        //
+        // Not when the window is short. There, width is the only dimension with
+        // anything to spare — it is what lets the controls share one line instead
+        // of stacking — and capping it would take back the space the layout just
+        // went looking for.
+        val compactHeight = isCompactHeight()
+        val slack = if (compactHeight) {
+            0.dp
+        } else {
+            ((windowWidthDp() - MaxContentWidth) / 2).coerceAtLeast(0.dp)
+        }
         val contentPadding = PaddingValues(
-            start = insets.calculateStartPadding(layoutDirection) + HorizontalGutter,
-            end = insets.calculateEndPadding(layoutDirection) + HorizontalGutter,
-            top = insets.calculateTopPadding() + TopGutter,
+            start = insets.calculateStartPadding(layoutDirection) + HorizontalGutter + slack,
+            end = insets.calculateEndPadding(layoutDirection) + HorizontalGutter + slack,
+            top = insets.calculateTopPadding() + if (compactHeight) CompactTopGutter else TopGutter,
             bottom = insets.calculateBottomPadding() + BottomGutter,
         )
 
@@ -234,16 +263,29 @@ fun PlanScreen(
                     // default `TopCenter` would emerge from behind the clock.
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = contentPadding.calculateTopPadding()),
+                        .padding(
+                            top = contentPadding.calculateTopPadding() +
+                                with(LocalDensity.current) { headerHeight.toDp() },
+                        ),
                 )
             },
         ) {
+            Box(modifier = Modifier.fillMaxSize().fadeUnderStatusBar(insets.calculateTopPadding())) {
             PlanContent(
                 state = state,
+                outline = outline,
                 listState = listState,
                 contentPadding = contentPadding,
                 header = {
                     PlanHeader(
+                        // The refresh indicator is positioned against the window
+                        // while the title and controls are the list's own first
+                        // item, so without this the spinner lands on the mode
+                        // chips. Pull-to-refresh only fires at the top of the
+                        // list, where the header is fully visible, so its
+                        // measured height is exactly the offset the indicator
+                        // needs.
+                        modifier = Modifier.onSizeChanged { headerHeight = it.height },
                         state = state,
                         onOpenSettings = onOpenSettings,
                         onModeChange = viewModel::setMode,
@@ -269,6 +311,7 @@ fun PlanScreen(
                     picker = PickerTarget.Aircraft
                 },
             )
+            }
         }
 
         SnackbarHost(
@@ -380,6 +423,10 @@ private fun PlanHeader(
     onPickAircraft: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // A short window spends its height on cards, not on a screen name it already
+    // shows in the navigation bar: the title drops a step and the gap under it
+    // halves. It is not removed — a screen with no name reads as a fragment.
+    val compactHeight = isCompactHeight()
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -387,13 +434,17 @@ private fun PlanHeader(
         ) {
             Text(
                 text = stringResource(R.string.destination_plan),
-                style = MaterialTheme.typography.headlineMedium,
+                style = if (compactHeight) {
+                    MaterialTheme.typography.titleLarge
+                } else {
+                    MaterialTheme.typography.headlineMedium
+                },
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
             SettingsAction(onClick = onOpenSettings)
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(if (compactHeight) 6.dp else 12.dp))
         PlanControls(
             state = state,
             onModeChange = onModeChange,
@@ -411,43 +462,67 @@ private fun PlanControls(
     onPickAircraft: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // No horizontal padding of its own: this sits inside the list, whose
-    // `contentPadding` already holds the gutter the cards line up with.
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        val options = listOf(
-            ModeOption(stringResource(R.string.plan_mode_all)),
-            ModeOption(
-                label = stringResource(R.string.plan_mode_not_flown),
-                // Drawn as well as spoken. It used to be spoken only: a segmented
-                // row gave each option an equal third of the width, and
-                // "Not flown 116" ellipsised to "Not flown 1…" — a wrong number,
-                // which is worse than none. Chips are sized to their own label, so
-                // the figure fits and the sentence stays for TalkBack.
-                count = state.notFlownCount,
-                contentDescription = pluralStringResource(
-                    R.plurals.plan_mode_not_flown_description,
-                    state.notFlownCount,
-                    state.notFlownCount,
-                ),
-                enabled = state.notFlownCount > 0,
+    val options = listOf(
+        ModeOption(stringResource(R.string.plan_mode_all)),
+        ModeOption(
+            label = stringResource(R.string.plan_mode_not_flown),
+            // Drawn as well as spoken. It used to be spoken only: a segmented
+            // row gave each option an equal third of the width, and
+            // "Not flown 116" ellipsised to "Not flown 1…" — a wrong number,
+            // which is worse than none. Chips are sized to their own label, so
+            // the figure fits and the sentence stays for TalkBack.
+            count = state.notFlownCount,
+            contentDescription = pluralStringResource(
+                R.plurals.plan_mode_not_flown_description,
+                state.notFlownCount,
+                state.notFlownCount,
             ),
-            ModeOption(stringResource(R.string.plan_mode_this_aircraft)),
-        )
+            enabled = state.notFlownCount > 0,
+        ),
+        ModeOption(stringResource(R.string.plan_mode_this_aircraft)),
+    )
+
+    val modes: @Composable (Modifier) -> Unit = { itemModifier ->
         ModeSelector(
             options = options,
             selectedIndex = state.mode.ordinal,
             onSelect = { onModeChange(PlanMode.entries[it]) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = itemModifier,
         )
+    }
+    val filters: @Composable (Modifier) -> Unit = { itemModifier ->
         PlanFilterFields(
             lockedDeparture = state.lockedDeparture,
             selectedAircraft = state.selectedAircraft,
             onPickDeparture = onPickDeparture,
             onPickAircraft = onPickAircraft,
+            modifier = itemModifier,
         )
+    }
+
+    // No horizontal padding of its own: this sits inside the list, whose
+    // `contentPadding` already holds the gutter the cards line up with.
+    //
+    // Side by side when the window is short. Stacked, the mode chips and the two
+    // filter fields take more than half the height of a phone in landscape, which
+    // left exactly one card visible beneath them. They are the same controls,
+    // laid out along the axis that has room — and the two branches are written
+    // out rather than hidden behind a shared scope, because the children want
+    // different modifiers in each and that is the whole difference.
+    if (isCompactHeight()) {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            modes(Modifier.weight(1f))
+            filters(Modifier.weight(1f))
+        }
+    } else {
+        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            modes(Modifier.fillMaxWidth())
+            filters(Modifier.fillMaxWidth())
+        }
     }
 }
 
@@ -465,6 +540,7 @@ private fun PlanControls(
 @Composable
 private fun PlanContent(
     state: PlanUiState,
+    outline: WorldOutline,
     listState: LazyListState,
     contentPadding: PaddingValues,
     header: @Composable () -> Unit,
@@ -522,6 +598,7 @@ private fun PlanContent(
 
         else -> RouteList(
             state = state,
+            outline = outline,
             listState = listState,
             contentPadding = contentPadding,
             header = header,
@@ -596,6 +673,7 @@ private fun DelayedSkeletonList(modifier: Modifier = Modifier) {
 @Composable
 private fun RouteList(
     state: PlanUiState,
+    outline: WorldOutline,
     listState: LazyListState,
     contentPadding: PaddingValues,
     header: @Composable () -> Unit,
@@ -626,6 +704,7 @@ private fun RouteList(
         itemsIndexed(state.routes, key = { _, row -> row.id }) { index, row ->
             SwipeableRoute(
                 row = row,
+                outline = outline,
                 onOpen = { onOpenRoute(row) },
                 onMarkFlown = { onMarkFlown(row) },
                 onReplace = { onReplace(row) },
@@ -795,6 +874,7 @@ private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<
 @Composable
 private fun SwipeableRoute(
     row: RouteRow,
+    outline: WorldOutline,
     onOpen: () -> Unit,
     onMarkFlown: () -> Unit,
     onReplace: () -> Unit,
@@ -905,7 +985,13 @@ private fun SwipeableRoute(
             }
         },
     ) {
-        RouteCard(row = row, onClick = onOpen)
+        RouteCard(
+            row = row,
+            outline = outline,
+            onClick = onOpen,
+            onMarkFlown = onMarkFlown,
+            onReplace = onReplace,
+        )
     }
 }
 
@@ -983,6 +1069,9 @@ private val HorizontalGutter = 16.dp
 /** Space between the status bar and the heading. */
 private val TopGutter = 8.dp
 
+/** Nothing to spare above the title in a short window. */
+private val CompactTopGutter = 0.dp
+
 /** Space below the last card, so it does not end flush against the bottom inset. */
 private val BottomGutter = 24.dp
 
@@ -1016,6 +1105,7 @@ private fun PreviewPlan(state: PlanUiState) {
         Surface(color = MaterialTheme.colorScheme.background) {
             PlanContent(
                 state = state,
+                outline = rememberPreviewWorldOutline(),
                 listState = rememberLazyListState(),
                 contentPadding = PaddingValues(
                     start = HorizontalGutter,
@@ -1092,3 +1182,54 @@ private fun PlanIndexFailedPreview() {
 private fun PlanEmptyFleetPreview() {
     PreviewPlan(PlanUiState(status = PlanStatus.Failed(PlanFailure.FleetEmpty)))
 }
+
+/**
+ * Fades the content out where it passes under the status bar.
+ *
+ * The bars are transparent and nothing is painted behind them — that is the
+ * invariant, and this does not break it: it **erases** the top of the content
+ * rather than covering it, so no pixel is added behind the clock. A scrim would
+ * read as an opaque bar the moment a card slid under it; a card that dissolves
+ * into the ground reads as depth.
+ *
+ * It exists because of where a fling *stops*. Content passing under the clock is
+ * the point of an edge-to-edge list; content parked under it is a card whose ETE
+ * figure the battery icon is sitting on, and it stays that way until the user
+ * scrolls again.
+ *
+ * `CompositingStrategy.Offscreen` is what makes `BlendMode.DstIn` mean "erase" —
+ * without it the blend applies against whatever is already on the window, which
+ * is the ground, and the fade turns into a smear.
+ */
+private fun Modifier.fadeUnderStatusBar(height: Dp): Modifier =
+    // No inset, no layer: nothing to fade under, nothing to composite.
+    //
+    // The layer itself is free in practice. Five interleaved pairs on an SM-S942B,
+    // benchmark build, ten flings each: 9 ms p50 and 17-18 ms p90 with the fade
+    // against 9-10 ms and 18-24 ms without, GPU p50 4 ms either way — never worse
+    // with it. That was worth checking rather than assuming, because wrapping a
+    // scrolling list in an offscreen layer is exactly the shape of change that
+    // usually does cost frames.
+    if (height <= 0.dp) {
+        this
+    } else {
+        this
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithCache {
+                val fadeHeight = height.toPx()
+                val brush = Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    1f to Color.Black,
+                    startY = 0f,
+                    endY = fadeHeight,
+                )
+                onDrawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = brush,
+                        size = Size(size.width, fadeHeight),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+            }
+    }

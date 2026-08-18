@@ -16,7 +16,7 @@ import com.github.daanbouwman.flightplanner.ui.AirportsScreen
 import com.github.daanbouwman.flightplanner.ui.FleetScreen
 import com.github.daanbouwman.flightplanner.ui.LogbookScreen
 import com.github.daanbouwman.flightplanner.ui.RouteDetailScreen
-import com.github.daanbouwman.flightplanner.ui.SettingsScreen
+import com.github.daanbouwman.flightplanner.ui.settings.SettingsScreen
 import com.github.daanbouwman.flightplanner.ui.StatsScreen
 import com.github.daanbouwman.flightplanner.ui.plan.PlanScreen
 
@@ -76,7 +76,10 @@ fun FlightPlannerNavHost(
         composable<Destination.Airports> { AirportsScreen(onOpenSettings = openSettings) }
         composable<Destination.Stats> { StatsScreen(onOpenSettings = openSettings) }
         composable<Destination.Settings> {
-            SettingsScreen(onOpenSelfCheck = { navController.navigate(Destination.SelfCheck) })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenSelfCheck = { navController.navigate(Destination.SelfCheck) },
+            )
         }
 
         composable<Destination.RouteDetail> { entry ->

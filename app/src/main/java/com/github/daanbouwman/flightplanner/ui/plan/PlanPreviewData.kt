@@ -1,10 +1,15 @@
 package com.github.daanbouwman.flightplanner.ui.plan
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.routing.GreatCircle
 import com.github.daanbouwman.flightplanner.routing.RouteArc
+import com.github.daanbouwman.flightplanner.routing.WorldOutline
+import com.github.daanbouwman.flightplanner.routing.WorldOutlineCodec
 
 /**
  * Sample data for the `@Preview`s in this package.
@@ -58,7 +63,13 @@ internal object PlanPreviewData {
             flightTime = GreatCircle.flightTime(distance.toDouble(), aircraft.cruiseSpeedKt),
             departureRunwayFt = from.longestRunwayFt,
             destinationRunwayFt = to.longestRunwayFt,
-            arc = RouteArc.normalisedPath(from.latitude, from.longitude, to.latitude, to.longitude),
+            arc = RouteArc.sampleGeographic(
+                depLat = from.latitude,
+                depLon = from.longitude,
+                destLat = to.latitude,
+                destLon = to.longitude,
+                samples = RouteArc.CARD_SAMPLES,
+            ),
         )
     }
 
@@ -107,4 +118,24 @@ internal object PlanPreviewData {
         // has something to show.
         takeoffDistanceMeters = 3_000,
     )
+}
+
+/**
+ * The real coastline, for previews.
+ *
+ * A preview that drew invented land would be judging the design against a
+ * coastline the app never shows — and the whole question the map answers is
+ * whether a real coast is *recognisable* at 8 % contrast. The asset is in the
+ * module's own assets, so the preview renderer can open it exactly as the app
+ * does; if it cannot, the cards preview over an empty ocean rather than failing
+ * to render.
+ */
+@Composable
+internal fun rememberPreviewWorldOutline(): WorldOutline {
+    val context = LocalContext.current
+    return remember(context) {
+        runCatching {
+            WorldOutlineCodec.decode(context.assets.open("maps/land.outline").use { it.readBytes() })
+        }.getOrDefault(WorldOutline.Empty)
+    }
 }

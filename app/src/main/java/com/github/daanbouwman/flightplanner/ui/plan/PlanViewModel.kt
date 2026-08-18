@@ -24,6 +24,8 @@ import com.github.daanbouwman.flightplanner.routing.RouteRequest
 import com.github.daanbouwman.flightplanner.routing.SearchCandidate
 import com.github.daanbouwman.flightplanner.routing.SearchQuery
 import com.github.daanbouwman.flightplanner.routing.SearchScorer
+import com.github.daanbouwman.flightplanner.routing.WorldOutline
+import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -39,6 +41,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -87,6 +90,7 @@ class PlanViewModel @Inject constructor(
     private val fleetRepository: FleetRepository,
     private val logbookRepository: LogbookRepository,
     private val airportRepository: AirportRepository,
+    private val worldOutlineLoader: WorldOutlineLoader,
     @param:DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -177,6 +181,21 @@ class PlanViewModel @Inject constructor(
 
     private val notFlownCount: StateFlow<Int> = fleetRepository.observeNotFlownCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), 0)
+
+    /**
+     * The coastline every card draws on.
+     *
+     * Kept out of [PlanUiState] on purpose. It is the same 122 rings for the
+     * whole session and it changes exactly once — from empty to loaded — so
+     * folding it into the state would make every route batch, every status change
+     * and every mode flip carry a copy of it. Collected separately, the screen
+     * reads it once and hands the same instance to every row.
+     *
+     * `WhileSubscribed` means the read starts when the Plan screen composes, not
+     * when the ViewModel is built, which keeps it off the startup path.
+     */
+    val worldOutline: StateFlow<WorldOutline> = flow { emit(worldOutlineLoader.load()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), WorldOutline.Empty)
 
     val uiState: StateFlow<PlanUiState> =
         combine(selection, routes, status, notFlownCount) { selected, rows, phase, notFlown ->
@@ -606,11 +625,12 @@ class PlanViewModel @Inject constructor(
             ),
             departureRunwayFt = route.departureRunwayFt,
             destinationRunwayFt = route.destinationRunwayFt,
-            arc = RouteArc.normalisedPath(
+            arc = RouteArc.sampleGeographic(
                 depLat = departure.latitude,
                 depLon = departure.longitude,
                 destLat = destination.latitude,
                 destLon = destination.longitude,
+                samples = RouteArc.CARD_SAMPLES,
             ),
             arrivedAsReplacement = arrivedAsReplacement,
         )

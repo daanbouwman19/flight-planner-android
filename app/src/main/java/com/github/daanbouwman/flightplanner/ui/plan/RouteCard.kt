@@ -4,8 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
@@ -16,53 +17,71 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.FlightRulesBadge
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
-import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteSparkline
+import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMap
 import com.github.daanbouwman.flightplanner.core.designsystem.components.ValueChip
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.model.FlightRules
+import com.github.daanbouwman.flightplanner.routing.WorldOutline
 
 /**
- * One generated route.
+ * One generated route, drawn on the piece of the world it crosses.
  *
- * The layout is built around the fact that the eye scans a *column* of these:
- * the two ICAO codes sit at fixed positions on the left and right of a middle
- * band, so a finger-flick down the list reads as a list of routes rather than
- * as text that reflows per row. Every numeric uses tabular figures for the same
- * reason — a proportional `1` is narrower than a `0`, and in a column of
- * distances that shows up as the whole card twitching.
+ * The card used to be three stacked rows with a 120 dp sparkline between the two
+ * codes. The sparkline proved a route had a *shape*; it could not say where that
+ * shape was, so an arc over the Pacific and one over the Atlantic drew
+ * identically. Now the map is the card's background, full bleed, and everything
+ * the card says is drawn over it — which is the difference between a curve and a
+ * place, and most of what a route card is for.
  *
- * ### Where the runway figure lives
+ * ### The map is a background, so the content has to stay foreground
  *
- * Under the airport it belongs to, not in the row of chips. Runway length is a
- * property of an *end*, not of a route, and "RWY 7,053 ft" in a chip row silently
- * meant the shorter of the two — a number you cannot act on, because it does not
- * say which end it describes. Split per end it answers the question a pilot
- * actually has, and the end that is too short for the airframe can say so in
- * place. It also empties the third chip slot, which is what left a half-width
- * chip stranded on a line of its own.
+ * Land is 8 % of `onSurface` and its coast 16 %, which is faint enough that text
+ * over it keeps essentially its full contrast — that is what makes a scrim
+ * unnecessary, and a design that needs no scrim is simpler than one hiding behind
+ * a gradient. The chips are the one translucent thing on the card, at 70 %, so
+ * the coastline passes faintly behind their figures and the content reads as a
+ * layer over the map rather than a panel bolted to it. Text itself is never
+ * translucent: a figure at 70 % is just a figure that is harder to read.
  *
- * ### The flight-rules slot
+ * ### Content is bottom-weighted
  *
- * Weather arrives in Phase F. Until then the slot is *reserved but empty* rather
- * than filled with a grey "N/A" pill: the height is held so that a resolved chip
- * fades in later without moving the codes, and nothing is drawn in the meantime,
- * because two placeholder pills per card is a lot of ink to spend on the absence
- * of information.
+ * The airframe is an eyebrow at the top, the codes and their runways sit on the
+ * card's lower third, and the figures close it. That leaves the upper half of the
+ * card to the map, which is where a route's shape and the coast around it are
+ * legible; packing the content into a vertical centre band would have left the
+ * map showing only at the edges, where it says nothing.
+ *
+ * ### The height is a minimum, not a fixed size
+ *
+ * 180 dp is what makes about two cards fill a 360 × 780 dp phone: at 150 dp a
+ * long route shows a band of ocean and little else, and at 220 dp the list drops
+ * to a card and a half per screen, which is slow to scan. It is a floor rather
+ * than a height because at font scale 2.0 the content is taller than that, and a
+ * card that clips its own runway figures to protect a map is the wrong way round.
  */
 @Composable
 fun RouteCard(
     row: RouteRow,
+    outline: WorldOutline,
     onClick: () -> Unit,
+    onMarkFlown: () -> Unit,
+    onReplace: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // One description for the whole card. Left to itself the card announces
@@ -82,21 +101,70 @@ fun RouteCard(
         row.flightTime.minutes,
     )
 
+    // The two actions exist as swipes, and a swipe is not an action a screen
+    // reader can perform. Declared here they become entries in TalkBack's actions
+    // menu, on the node that already carries the row's description — so the
+    // gesture stays exactly as it is and the same two actions become reachable
+    // without it.
+    val markFlownLabel = stringResource(R.string.plan_swipe_mark_flown)
+    val replaceLabel = stringResource(R.string.plan_swipe_replace)
+
     Card(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .semantics(mergeDescendants = true) { contentDescription = description },
+            .semantics(mergeDescendants = true) {
+                contentDescription = description
+                customActions = listOf(
+                    CustomAccessibilityAction(markFlownLabel) { onMarkFlown(); true },
+                    CustomAccessibilityAction(replaceLabel) { onReplace(); true },
+                )
+            },
         shape = MaterialTheme.shapes.largeIncreased,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        // Shorter when the window is: 180 dp of card in a 360 dp-tall landscape
+        // window is half the screen for one row, and the map is the part that can
+        // afford to lose height — it stays a recognisable place at 132 dp, where
+        // the figures below it would not survive being squeezed at all.
+        val cardHeight = if (isCompactHeight()) CompactCardHeight else CardHeight
+        // `propagateMinConstraints`, without which the floor below is unreachable and
+        // the weighted spacer is dead code. A `Box` relaxes its children's minimum
+        // constraints by default, and a lazy list gives its items an unbounded
+        // maximum height — so the content Column measured against `0..Infinity`,
+        // where `fillMaxSize` does nothing and a weight resolves to zero space.
+        // The card looked right anyway, because its content is 197 dp and the floor
+        // is 180: there was never any slack to distribute. Measured with
+        // `uiautomator dump` — raising the floor to 320 dp moved nothing until this
+        // flag was set, and then put the whole 123 dp where the KDoc says it goes.
+        Box(
+            modifier = Modifier.fillMaxWidth().heightIn(min = cardHeight),
+            propagateMinConstraints = true,
         ) {
-            AircraftLine(row)
-            AirportLine(row)
-            FactLine(row)
+            // `matchParentSize`, not `fillMaxSize`. The map has no content of its
+            // own, so a fill modifier measures it against the constraints it is
+            // given — which in a lazy list are unbounded vertically — and it
+            // resolves to nothing at all. `matchParentSize` takes no part in
+            // sizing the card and adopts whatever height the content settled on,
+            // which is what a background is.
+            RouteMap(
+                arc = row.arc,
+                outline = outline,
+                modifier = Modifier.matchParentSize(),
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                AircraftLine(row)
+                // The gap between the eyebrow and the codes is the map's, and it
+                // takes whatever height the card has left over.
+                Box(modifier = Modifier.weight(1f))
+                AirportLine(row)
+                FactLine(row)
+            }
         }
     }
 }
@@ -125,39 +193,41 @@ private fun AircraftLine(row: RouteRow) {
 }
 
 /**
- * The two ends and the arc between them.
+ * The two ends, at the two edges.
  *
- * The airport *names* are deliberately not here. They were, and on a 360 dp
- * window — which is what a 1080 x 2340 phone at 480 dpi actually is — every one
- * of them truncated to "Stangland A...", which is worse than absent: it occupies
- * the width the sparkline needs in order to say nothing. B2 specifies the code
- * pair, and the name belongs to the detail screen, where there is room to read
- * it.
+ * Anchoring the codes to their endpoints on the map was considered and rejected:
+ * it looks right in a single mockup and collides unpredictably in a list, because
+ * the endpoints land somewhere different on every card. At the edges they are in
+ * the same two places on every row, which is what makes a column of cards
+ * scannable — and the map already says which end is which, with a hollow ring for
+ * the departure and a filled dot for the destination.
+ *
+ * The airport *names* are deliberately absent. They were here, and on a 360 dp
+ * window — which is what a 1080 × 2340 phone at 480 dpi actually is — every one of
+ * them truncated to "Stangland A...", which is worse than absent. The name
+ * belongs to the detail screen, where there is room to read it.
  */
 @Composable
 private fun AirportLine(row: RouteRow) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Bottom,
     ) {
         AirportEnd(
             icao = row.departure.icao,
             runwayFt = row.departureRunwayFt,
             runwayTooShort = row.departureRunwayTooShort,
             alignment = Alignment.Start,
+            textAlign = TextAlign.Start,
         )
-        RouteSparkline(
-            points = row.arc,
-            modifier = Modifier
-                .weight(1f)
-                .height(40.dp),
-        )
+        Box(modifier = Modifier.weight(1f))
         AirportEnd(
             icao = row.destination.icao,
             runwayFt = row.destinationRunwayFt,
             runwayTooShort = row.destinationRunwayTooShort,
             alignment = Alignment.End,
+            textAlign = TextAlign.End,
         )
     }
 }
@@ -168,20 +238,23 @@ private fun AirportEnd(
     runwayFt: Int,
     runwayTooShort: Boolean,
     alignment: Alignment.Horizontal,
+    textAlign: TextAlign,
 ) {
     val tooShortLabel = stringResource(R.string.plan_runway_short)
     Column(
         horizontalAlignment = alignment,
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
+        FlightRulesSlot(rules = FlightRules.UNKNOWN, alignment = alignment)
         Text(
             text = icao,
             style = MaterialTheme.typography.headlineSmall.withTabularFigures(),
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
+            textAlign = textAlign,
         )
         Text(
-            text = stringResource(R.string.plan_runway_value, runwayFt),
+            text = stringResource(R.string.plan_runway_value, runwayFt.asFigure()),
             style = MaterialTheme.typography.labelSmall.withTabularFigures(),
             // Colour carries the warning rather than a separate icon, so the
             // figure and the judgement of it are the same glyphs. The
@@ -192,26 +265,34 @@ private fun AirportEnd(
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
             maxLines = 1,
+            textAlign = textAlign,
             modifier = Modifier.semantics {
                 if (runwayTooShort) contentDescription = tooShortLabel
             },
         )
-        FlightRulesSlot(rules = FlightRules.UNKNOWN)
     }
 }
 
 /**
  * Holds the flight category's space whether or not there is one to show.
  *
- * Phase F resolves these from a METAR. The height is reserved now so that the
- * chip can fade in then without shifting the codes above it — F6's "never a
- * layout jump" is only free if the space was there from the start.
+ * Above the code rather than below the runway figure, which is where it used to
+ * sit. Weather is a property of the *airport*, so it belongs with the code, and
+ * putting it above means the two things that grow later — a badge here and a
+ * METAR line in the detail view — grow away from the figures rather than pushing
+ * them into the chips.
+ *
+ * Phase F resolves these. The height is reserved now so the badge can fade in
+ * then without shifting anything: F6's "never a layout jump" is only free if the
+ * space was there from the start. Nothing is drawn in the meantime, because two
+ * placeholder pills per card is a lot of ink to spend on the absence of
+ * information.
  */
 @Composable
-private fun FlightRulesSlot(rules: FlightRules) {
+private fun FlightRulesSlot(rules: FlightRules, alignment: Alignment.Horizontal) {
     Box(
-        modifier = Modifier.heightIn(min = FlightRulesSlotHeight),
-        contentAlignment = Alignment.Center,
+        modifier = Modifier.defaultMinSize(minHeight = FlightRulesSlotHeight),
+        contentAlignment = if (alignment == Alignment.Start) Alignment.CenterStart else Alignment.CenterEnd,
     ) {
         if (rules != FlightRules.UNKNOWN) FlightRulesBadge(rules = rules)
     }
@@ -221,36 +302,77 @@ private fun FlightRulesSlot(rules: FlightRules) {
  * Distance and time, in two equal columns.
  *
  * Equal columns rather than content-sized chips: content-sized ones give every
- * card a different ragged edge, so scrolling a list of them is a column of
- * shapes that never line up. Fixing the columns means DIST always starts where
- * DIST started on the row above, and the eye can run down one figure without
+ * card a different ragged edge, so scrolling a list of them is a column of shapes
+ * that never line up. Fixing the columns means DIST always starts where DIST
+ * started on the row above, and the eye can run down one figure without
  * re-finding it — the same reason the numerals are tabular.
  *
- * Two of them, now that the runway has moved to the airport ends, and two is
- * what fits: three equal columns give each chip about 93 dp on a 360 dp phone,
- * and "DIST 1,919 NM" needs more than that.
+ * They stop at two thirds of the card rather than filling it. A pair of chips
+ * spanning the full width would wall the map off along a straight horizontal
+ * line, and the coast has to be able to run past them for the card to read as one
+ * surface with a map on it rather than as a map with a panel over it.
  */
 @Composable
 private fun FactLine(row: RouteRow) {
+    val distance = stringResource(R.string.plan_chip_distance) to
+        stringResource(R.string.plan_value_nautical_miles, row.distanceNm.asFigure())
+    val time = stringResource(R.string.plan_chip_time) to row.flightTime.format()
+
+    // Past a certain size two chips cannot share a phone's width at all: at scale
+    // 2.0 "DIST 5,111 NM" becomes a ribbon of fragments, and the figure the card
+    // exists to state is the one thing that must stay one line. Stacked, each chip
+    // has the whole width and reads normally. The threshold is where the wrap
+    // starts on the narrowest window the app supports, not a round number.
+    val stacked = LocalDensity.current.fontScale >= StackChipsAtFontScale
+    if (stacked) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ValueChip(distance.first, distance.second, Modifier.fillMaxWidth(), ChipContainerAlpha)
+            ValueChip(time.first, time.second, Modifier.fillMaxWidth(), ChipContainerAlpha)
+        }
+        return
+    }
+
+    // Two equal columns across the full width. An earlier version left a third of
+    // the row empty so the map ran out from under the chips rather than ending on
+    // a straight edge; on a 360 dp phone at the *default* font scale that left
+    // 122 dp a chip, and "DIST 2,847 NM" wrapped to two lines inside it. The
+    // chips are translucent, so the coast passes behind them anyway — the gap was
+    // buying an effect the alpha already provides, and paying for it in the one
+    // thing on the card that must not wrap.
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ValueChip(
-            label = stringResource(R.string.plan_chip_distance),
-            value = stringResource(R.string.plan_value_nautical_miles, row.distanceNm),
-            modifier = Modifier.weight(1f),
-        )
-        ValueChip(
-            label = stringResource(R.string.plan_chip_time),
-            value = row.flightTime.format(),
-            modifier = Modifier.weight(1f),
-        )
+        ValueChip(distance.first, distance.second, Modifier.weight(1f), ChipContainerAlpha)
+        ValueChip(time.first, time.second, Modifier.weight(1f), ChipContainerAlpha)
     }
 }
 
-/** Tall enough for a flight-rules chip, so reserving it costs no later reflow. */
+/**
+ * Tall enough for a flight-rules chip, so reserving it costs no later reflow.
+ */
 private val FlightRulesSlotHeight = 24.dp
+
+/** See the class KDoc: a floor, not a fixed height. */
+private val CardHeight = 180.dp
+
+/** The floor in a short window — a phone in landscape, or a split-screen half. */
+private val CompactCardHeight = 132.dp
+
+/** Enough container to hold a figure, little enough to let a coastline through. */
+private const val ChipContainerAlpha = 0.7f
+
+/**
+ * Font scale at which the two figure chips stop sharing a line.
+ *
+ * Measured rather than chosen: with the chips across the full width of a 360 dp
+ * window, the longest figure the app produces — "DIST 5,111 NM" — fits up to 1.2
+ * and wraps at 1.3.
+ */
+private const val StackChipsAtFontScale = 1.3f
 
 @LightDarkPreview
 @CompactWidthPreview
@@ -258,15 +380,16 @@ private val FlightRulesSlotHeight = 24.dp
 private fun RouteCardPreview() {
     FlightPlannerTheme(dynamicColor = false) {
         Surface(color = MaterialTheme.colorScheme.background) {
+            val outline = rememberPreviewWorldOutline()
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // Two shapes side by side: a long haul that bows north and a
-                // shorter westbound leg. If the sparkline ever stops reflecting
-                // its input, these two stop differing and the preview says so.
-                RouteCard(row = PlanPreviewData.longHaul, onClick = {})
-                RouteCard(row = PlanPreviewData.transatlantic, onClick = {})
+                // Two places side by side: a long haul over Siberia and a
+                // transatlantic leg. If the projection ever stops following its
+                // input, these two stop differing and the preview says so.
+                RouteCard(PlanPreviewData.longHaul, outline, onClick = {}, onMarkFlown = {}, onReplace = {})
+                RouteCard(PlanPreviewData.transatlantic, outline, onClick = {}, onMarkFlown = {}, onReplace = {})
             }
         }
     }
@@ -280,7 +403,10 @@ private fun RouteCardRunwayTooShortPreview() {
         Surface(color = MaterialTheme.colorScheme.background) {
             RouteCard(
                 row = PlanPreviewData.runwayTooShort,
+                outline = rememberPreviewWorldOutline(),
                 onClick = {},
+                onMarkFlown = {},
+                onReplace = {},
                 modifier = Modifier.padding(16.dp),
             )
         }

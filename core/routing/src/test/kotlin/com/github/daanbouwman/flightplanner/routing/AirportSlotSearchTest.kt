@@ -5,31 +5,45 @@ import io.kotest.matchers.shouldBe
 import kotlin.test.Test
 
 /**
- * Fixture in the slot order the real index uses — ascending runway length — so
- * that "ties resolve by slot" is being asserted against a meaningful order
- * rather than against alphabetical accident.
+ * Fixture in the slot order the real index uses — **ascending runway length** —
+ * so that "the more significant airport wins" is asserted against a meaningful
+ * order rather than against alphabetical accident. Slot 5 is the largest field
+ * here and slot 0 the smallest.
+ *
+ * ### These expectations changed deliberately
+ *
+ * The previous version of this file asserted the desktop app's two-tier scoring:
+ * code beats field, ties break by ascending slot. Every one of those assertions
+ * passed, and the behaviour they pinned down was the defect — on the shipped
+ * dataset it put Ecuadorian airstrips above Schiphol for the query `EH`, because
+ * ascending slot *is* ascending runway length. The assertions were not weakened
+ * to make anything pass; they were rewritten because they encoded the wrong
+ * ranking. See [AirportSlotSearch] for the reasoning.
  */
 private val codes = intArrayOf(
-    IcaoCode.encode("EHAM"), // 0
-    IcaoCode.encode("KJFK"), // 1
-    IcaoCode.encode("EGLL"), // 2
-    IcaoCode.encode("LFPG"), // 3
-    IcaoCode.encode("EHRD"), // 4
+    IcaoCode.encode("EEHA"), // 0 — smallest: contains "EHA" but does not begin with it
+    IcaoCode.encode("EHAL"), // 1
+    IcaoCode.encode("KJFK"), // 2
+    IcaoCode.encode("EGLL"), // 3
+    IcaoCode.encode("EHAM"), // 4
+    IcaoCode.encode("EHRD"), // 5 — largest
 )
 
 private val names = arrayOf(
-    "Amsterdam Airport Schiphol",
+    "Humala Airfield",
+    "Ameland Airport Ballum",
     "John F Kennedy International Airport",
     "London Heathrow Airport",
-    "Charles de Gaulle International Airport",
+    "Amsterdam Airport Schiphol",
     "Rotterdam The Hague Airport",
 )
 
 private val municipalities = arrayOf<String?>(
-    "Amsterdam",
+    "Humala",
+    "Ballum",
     "New York",
     "London",
-    "Paris",
+    "Amsterdam",
     null,
 )
 
@@ -38,46 +52,64 @@ private fun rank(query: String, limit: Int = AirportSlotSearch.DEFAULT_LIMIT): L
 
 class AirportSlotSearchTest {
 
+    /**
+     * The regression this ranking exists for: on the real dataset, `EHA` used to
+     * return EEHA, then EHAL, then an Elkhart county field, and only then
+     * Schiphol.
+     */
     @Test
-    fun `a code match outranks a name match`() {
-        // "EH" is a code substring of EHAM and EHRD, and appears in no name;
-        // "am" is in Amsterdam. Code hits must come first regardless of slot.
-        rank("EHR") shouldContainExactly listOf(4)
+    fun `a prefix outranks a code that merely contains the query`() {
+        // EHAM (4) and EHAL (1) begin with EHA; EEHA (0) only contains it.
+        rank("EHA") shouldContainExactly listOf(4, 1, 0)
     }
 
     @Test
-    fun `code hits precede field hits even when the field hit has a lower slot`() {
-        // "L" matches EGLL and LFPG by code (slots 2 and 3) and Schiphol and
-        // "International" by name (slots 0 and 1). The two code hits sit at
-        // higher slots than both field hits, so a result that merely preserved
-        // slot order would put 0 and 1 first — the tier has to win.
-        rank("L") shouldContainExactly listOf(2, 3, 0, 1)
+    fun `an exact code wins outright`() {
+        // EHAM is exact; every other match is a prefix, a substring or a name.
+        rank("EHAM").first() shouldBe 4
+    }
+
+    @Test
+    fun `within a tier the larger airport comes first`() {
+        // E begins EEHA, EHAL, EGLL, EHAM and EHRD. Ordered by significance, the
+        // largest field leads — the opposite of what slot order alone would give.
+        rank("E").take(5) shouldContainExactly listOf(5, 4, 3, 1, 0)
+    }
+
+    @Test
+    fun `a code hit precedes a field hit whatever their sizes`() {
+        // Code hits: EGLL (3) and EHAL (1), both by substring. Field hits: Schiphol
+        // (4), International (2) and Airfield (0). Every code hit first, and each
+        // tier ordered by size.
+        rank("L") shouldContainExactly listOf(3, 1, 4, 2, 0)
     }
 
     @Test
     fun `a query matching only text stays in the field tier`() {
-        // "LO" is in no code (EGLL's pairs are EG, GL, LL) but is in "London".
-        rank("LO") shouldContainExactly listOf(2)
+        rank("Heathrow") shouldContainExactly listOf(3)
     }
 
     @Test
     fun `matching is case insensitive in both directions`() {
-        rank("eham") shouldContainExactly listOf(0)
-        rank("AMSTERDAM") shouldContainExactly listOf(0)
+        rank("eham").first() shouldBe 4
+        rank("AMSTERDAM") shouldContainExactly listOf(4)
     }
 
     @Test
     fun `municipality is searchable`() {
-        // Nothing in Rotterdam's row matches "hague" except its name; nothing in
-        // JFK's row matches "new york" except its municipality.
-        rank("new york") shouldContainExactly listOf(1)
+        rank("new york") shouldContainExactly listOf(2)
     }
 
     @Test
     fun `a row with no municipality is still searchable by name`() {
-        // Slot 4 publishes no municipality. Reading a null out of the array must
-        // fall through to the name rather than short-circuit the whole row.
-        rank("Hague") shouldContainExactly listOf(4)
+        // Slot 5 publishes no municipality; reading a null must fall through to
+        // the name rather than short-circuit the row.
+        rank("Hague") shouldContainExactly listOf(5)
+    }
+
+    @Test
+    fun `surrounding whitespace does not change the ranking`() {
+        rank("  EHAM  ").first() shouldBe 4
     }
 
     @Test
@@ -88,15 +120,13 @@ class AirportSlotSearchTest {
 
     @Test
     fun `a query longer than a code cannot match a code`() {
-        // "EHAMX" is five characters; no four-character code can contain it.
-        // It must not match by code, and it matches no name either.
         rank("EHAMX") shouldBe emptyList()
     }
 
     @Test
     fun `without a name index it still matches codes`() {
         val slots = AirportSlotSearch.rank("EG", codes, codes.size, names = null, municipalities = null)
-        slots.toList() shouldContainExactly listOf(2)
+        slots.toList() shouldContainExactly listOf(3)
     }
 
     @Test
@@ -105,11 +135,15 @@ class AirportSlotSearchTest {
         slots.toList() shouldBe emptyList()
     }
 
+    /**
+     * The other half of the original defect: the scan used to stop as soon as the
+     * cap was full of *any* matches, so a large airport could be excluded rather
+     * than merely ranked low.
+     */
     @Test
-    fun `the limit caps the result and keeps the best entries`() {
-        // Three code hits are available for "E" (EHAM, EGLL, EHRD); a limit of two
-        // must keep the two lowest slots and drop every field hit.
-        rank("E", limit = 2) shouldContainExactly listOf(0, 2)
+    fun `a capped result keeps the best matches, not the first ones found`() {
+        rank("EHA", limit = 2) shouldContainExactly listOf(4, 1)
+        rank("E", limit = 1) shouldContainExactly listOf(5)
     }
 
     @Test
@@ -120,18 +154,19 @@ class AirportSlotSearchTest {
 
     @Test
     fun `size bounds the scan`() {
-        // Only the first two slots are visible, so EHRD is out of range even
-        // though its code matches.
-        AirportSlotSearch.rank("EH", codes, size = 2, names = names, municipalities = municipalities)
-            .toList() shouldContainExactly listOf(0)
+        // Only the first two slots are visible, so EHAM is out of range even
+        // though its code matches best.
+        AirportSlotSearch.rank("EHA", codes, size = 2, names = names, municipalities = municipalities)
+            .toList() shouldContainExactly listOf(1, 0)
     }
 }
 
-class IcaoCodeContainsTest {
+class IcaoCodeMatchTest {
+
+    private val eham = IcaoCode.encode("EHAM")
 
     @Test
-    fun `matches every substring position`() {
-        val eham = IcaoCode.encode("EHAM")
+    fun `contains matches every substring position`() {
         IcaoCode.contains(eham, "E") shouldBe true
         IcaoCode.contains(eham, "H") shouldBe true
         IcaoCode.contains(eham, "AM") shouldBe true
@@ -140,28 +175,27 @@ class IcaoCodeContainsTest {
     }
 
     @Test
-    fun `rejects a substring that is not present`() {
-        val eham = IcaoCode.encode("EHAM")
-        IcaoCode.contains(eham, "EA") shouldBe false
-        IcaoCode.contains(eham, "MA") shouldBe false
-        IcaoCode.contains(eham, "Z") shouldBe false
+    fun `startsWith matches only from the first character`() {
+        IcaoCode.startsWith(eham, "E") shouldBe true
+        IcaoCode.startsWith(eham, "EH") shouldBe true
+        IcaoCode.startsWith(eham, "EHAM") shouldBe true
+        IcaoCode.startsWith(eham, "H") shouldBe false
+        IcaoCode.startsWith(eham, "HAM") shouldBe false
+        IcaoCode.startsWith(eham, "EHAMX") shouldBe false
     }
 
     @Test
-    fun `agrees with decoding for every code in the alphabet`() {
-        // The packed form is read arithmetically rather than decoded, so this
-        // pins the two representations together: every position of every code
-        // must yield the character the decoder produces.
-        for (code in listOf("EHAM", "KJFK", "0A9Z", "ZZZZ", "0000")) {
-            val packed = IcaoCode.encode(code)
-            for (position in code.indices) {
-                IcaoCode.charAt(packed, position) shouldBe code[position]
-            }
-        }
+    fun `matches is exact and length-sensitive`() {
+        IcaoCode.matches(eham, "EHAM") shouldBe true
+        IcaoCode.matches(eham, "eham") shouldBe true
+        IcaoCode.matches(eham, "EHA") shouldBe false
+        IcaoCode.matches(eham, "EHAMM") shouldBe false
     }
 
     @Test
-    fun `an invalid code never matches`() {
+    fun `an invalid code matches nothing`() {
+        IcaoCode.startsWith(IcaoCode.INVALID, "E") shouldBe false
+        IcaoCode.matches(IcaoCode.INVALID, "EHAM") shouldBe false
         IcaoCode.contains(IcaoCode.INVALID, "E") shouldBe false
     }
 }

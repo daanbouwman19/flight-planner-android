@@ -13,8 +13,7 @@
 
     <!-- Plan screen -->
     <string name="plan_empty_title">No routes yet</string>
-    <!-- The desktop application's wording, kept so the two apps say the same thing. -->
-    <string name="plan_empty_message">Start your journey by generating a flight plan.</string>
+    <string name="plan_empty_message">Generate a batch and the routes appear here.</string>
 
     <string name="plan_no_matches_title">Nothing in range</string>
     <string name="plan_no_matches_message">No route fits the current aircraft, departure and runway
@@ -58,9 +57,10 @@
     <string name="plan_filter_unset">Any</string>
     <!--
         What a chosen airframe costs every route in the list: its range and the
-        runway it needs. %1$d is nautical miles, %2$d is feet.
+        runway it needs. %1$s is nautical miles and %2$s is feet, both already grouped —
+        the app formats aviation figures in a fixed locale. Keep them %1$s and %2$s.
     -->
-    <string name="plan_filter_envelope">%1$,d NM · %2$,d ft</string>
+    <string name="plan_filter_envelope">%1$s NM · %2$s ft</string>
 
     <string name="plan_action_generate">Generate</string>
     <string name="plan_action_undo">Undo</string>
@@ -72,12 +72,14 @@
 
     <string name="plan_chip_distance">DIST</string>
     <string name="plan_chip_time">ETE</string>
-    <!-- Runway length shown under an airport code. %1$d is the length in feet. -->
-    <string name="plan_runway_value">RWY %1$,d ft</string>
-    <!-- %1$d is a distance in nautical miles; the comma flag groups thousands. -->
-    <string name="plan_value_nautical_miles">%1$,d NM</string>
-    <!-- %1$d is a runway length in feet. -->
-    <string name="plan_value_feet">%1$,d ft</string>
+    <!-- Runway length shown under an airport code. %1$s is the length in feet, already
+         grouped: the app formats aviation figures in a fixed locale so they read as chart
+         figures everywhere. Keep it %1$s — a %1$d here throws at runtime. -->
+    <string name="plan_runway_value">RWY %1$s ft</string>
+    <!-- %1$s is a distance in nautical miles, already grouped. Keep it %1$s. -->
+    <string name="plan_value_nautical_miles">%1$s NM</string>
+    <!-- %1$s is a runway length in feet, already grouped. Keep it %1$s. -->
+    <string name="plan_value_feet">%1$s ft</string>
 
     <string name="plan_runway_short">Runway shorter than this aircraft needs</string>
 
@@ -99,8 +101,8 @@
     <string name="plan_picker_clear_aircraft">Any aircraft</string>
     <string name="plan_picker_largest_airports">Largest airports</string>
     <string name="plan_picker_already_flown">Already flown</string>
-    <!-- %1$s is a category such as "Jet"; %2$d is the range in nautical miles. -->
-    <string name="plan_picker_aircraft_detail">%1$s · %2$,d NM range</string>
+    <!-- %1$s is a category such as "Jet"; %2$s is the range in nautical miles, already grouped. -->
+    <string name="plan_picker_aircraft_detail">%1$s · %2$s NM range</string>
     <string name="plan_picker_no_results_title">No matches</string>
     <!-- %1$s is what the user typed. -->
     <string name="plan_picker_no_results_message">Nothing matches “%1$s”.</string>
@@ -109,21 +111,34 @@
     <string name="logbook_empty_title">No flights logged</string>
     <string name="logbook_empty_message">Flights you mark as flown will appear here, grouped by month.</string>
 
-    <string name="fleet_empty_title">Fleet unavailable</string>
-    <string name="fleet_empty_message">Your aircraft, their ranges and what you have flown will appear here.</string>
+    <string name="fleet_empty_title">Fleet is not built yet</string>
+    <string name="fleet_empty_message">Your aircraft are already loaded — the aircraft picker on Plan lists them. This screen, which will show their ranges and what you have flown, is still to come.</string>
 
-    <string name="airports_empty_title">Search unavailable</string>
-    <string name="airports_empty_message">Search the airport database by code, name or municipality here.</string>
+    <string name="airports_empty_title">Airport search is not built yet</string>
+    <string name="airports_empty_message">The airport database is loaded, and the departure picker on Plan already searches it by code, name or city. This screen will search it too.</string>
 
     <string name="stats_empty_title">Nothing to summarise</string>
     <string name="stats_empty_message">Distance flown, favourite airports and your busiest aircraft will appear here.</string>
 
-    <string name="settings_empty_title">Settings</string>
-    <string name="settings_empty_message">Theme, units, weather provider and dataset information will live here.</string>
+    <string name="settings_appearance">APPEARANCE</string>
+    <string name="settings_theme_system">Follow the system</string>
+    <string name="settings_theme_system_detail">Light or dark, whichever the phone is set to.</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_light_detail">Always light, whatever the system does.</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_dark_detail">Always dark, whatever the system does.</string>
+    <string name="settings_theme_cockpit">Cockpit</string>
+    <string name="settings_theme_cockpit_detail">Near-black with amber accents, for flying at night.</string>
+    <string name="settings_dynamic_colour">Colours from your wallpaper</string>
+    <string name="settings_dynamic_colour_detail">Off uses the app’s own palette: avgas blue and runway amber.</string>
+    <string name="settings_dynamic_colour_cockpit">Cockpit sets its own colours.</string>
+    <string name="settings_empty_message">Units, weather provider and dataset information are still to come.</string>
     <string name="settings_self_check_action">Run on-device self-check</string>
 
     <!-- Route detail -->
     <string name="route_detail_title">%1$s → %2$s</string>
-    <string name="route_detail_empty_title">Detail coming soon</string>
-    <string name="route_detail_empty_message">%1$d NM. Bearings, runways, weather and the map arrive with the route detail screen.</string>
+    <string name="route_detail_departure">DEPARTURE</string>
+    <string name="route_detail_destination">DESTINATION</string>
+    <string name="route_detail_loading_airport">Reading the airport…</string>
+    <string name="route_detail_missing_airport">This airport is not in the dataset.</string>
 </resources>

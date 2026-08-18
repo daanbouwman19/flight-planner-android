@@ -11,7 +11,8 @@ import com.github.daanbouwman.flightplanner.R
  * and screenshot before the screen is built; phases D–E replace the bodies
  * without touching the graph.
  *
- * Plan is gone from here — it is a real screen now, in the `plan` package.
+ * Plan and Settings are gone from here — both are real screens now, in the
+ * `plan` and `ui.settings` packages.
  */
 
 @Composable
@@ -55,21 +56,5 @@ fun StatsScreen(onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
         emptyMessage = stringResource(R.string.stats_empty_message),
         modifier = modifier,
         onOpenSettings = onOpenSettings,
-    )
-}
-
-@Composable
-fun SettingsScreen(
-    onOpenSelfCheck: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    PlaceholderScaffold(
-        title = stringResource(R.string.destination_settings),
-        emptyTitle = stringResource(R.string.settings_empty_title),
-        emptyMessage = stringResource(R.string.settings_empty_message),
-        modifier = modifier,
-        // No settings action: this is Settings.
-        actionLabel = stringResource(R.string.settings_self_check_action),
-        onAction = onOpenSelfCheck,
     )
 }

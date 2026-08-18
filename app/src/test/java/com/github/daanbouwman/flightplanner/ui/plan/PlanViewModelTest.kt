@@ -17,6 +17,7 @@ import com.github.daanbouwman.flightplanner.model.FlightRecord
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.AirportIndexBuilder
+import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -236,6 +237,7 @@ class PlanViewModelTest {
             fleetRepository = fleetRepository,
             logbookRepository = logbook,
             airportRepository = airports,
+            worldOutlineLoader = { WorldOutline.Empty },
             defaultDispatcher = dispatcher,
         )
         backgroundScope.launch(dispatcher) { model.uiState.collect {} }
@@ -502,7 +504,8 @@ class PlanViewModelTest {
 
         model.uiState.value.routes.forEach { row ->
             (row.arc.size >= 4) shouldBe true
-            row.arc.none { it.isNaN() } shouldBe true
+            row.arc.lats.none { it.isNaN() } shouldBe true
+            row.arc.lons.none { it.isNaN() } shouldBe true
             // 450 kt cruise over hundreds of miles: never zero for a real leg.
             (row.flightTime.hours > 0 || row.flightTime.minutes > 0) shouldBe true
         }

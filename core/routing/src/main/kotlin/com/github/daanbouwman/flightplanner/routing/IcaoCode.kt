@@ -91,6 +91,30 @@ object IcaoCode {
         return false
     }
 
+    /**
+     * Whether a packed code starts with [query], ignoring case. Allocation-free.
+     *
+     * The distinction [contains] cannot make. Typing "EHA" means "the airports
+     * whose code begins EHA" to everyone who has ever used an airport code; that
+     * it also appears inside EEHA is a coincidence of spelling, and ranking the
+     * coincidence first is what made the picker unusable. See [AirportSlotSearch].
+     */
+    fun startsWith(packed: Int, query: String): Boolean {
+        if (packed < 0) return false
+        val length = query.length
+        if (length == 0) return true
+        if (length > LENGTH) return false
+
+        for (i in 0 until length) {
+            if (!charAt(packed, i).equals(query[i], ignoreCase = true)) return false
+        }
+        return true
+    }
+
+    /** Whether a packed code is exactly [query], ignoring case. Allocation-free. */
+    fun matches(packed: Int, query: String): Boolean =
+        query.length == LENGTH && startsWith(packed, query)
+
     private fun symbolOf(c: Char): Int = when (c) {
         in '0'..'9' -> c - '0'
         in 'A'..'Z' -> c - 'A' + 10

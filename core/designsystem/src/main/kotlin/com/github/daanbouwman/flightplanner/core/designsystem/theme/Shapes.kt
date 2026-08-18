@@ -47,12 +47,19 @@ val FlightShapeScale: Shapes = Shapes(
 )
 
 /**
- * The handful of `MaterialShapes` this app actually uses, plus the morphs built
- * from them.
+ * The handful of `MaterialShapes` this app actually uses.
  *
  * The catalogue has forty shapes. Naming the four we use — and naming them for
- * what they are *for* rather than for what they look like — is what stops the
- * FAB from quietly becoming a clover one day because a clover was available.
+ * what they are *for* rather than for what they look like — is what stops a
+ * component from quietly becoming a clover one day because a clover was
+ * available.
+ *
+ * Two entries were removed rather than kept "for later": an `Arrow` polygon that
+ * nothing ever drew (the route card draws its direction marker as a triangle,
+ * because a rounded polygon at eight pixels a side rounds away the tip that
+ * carries the whole signal) and the generate FAB's press morph, which outlived
+ * the FAB itself by a phase. A design system is a set of promises about what the
+ * app looks like, and an unused promise drifts.
  */
 object FlightShapes {
 
@@ -67,18 +74,6 @@ object FlightShapes {
 
     /** The spiky one; the last frame of the loading sequence before it settles. */
     val VerySunny: RoundedPolygon get() = MaterialShapes.VerySunny
-
-    /** Direction-of-flight marker on the route sparkline. */
-    val Arrow: RoundedPolygon get() = MaterialShapes.Arrow
-
-    /**
-     * Circle → cookie, the generate FAB's press morph.
-     *
-     * Built once: a [Morph] precomputes a matched cubic list for the two
-     * polygons, and doing that per frame is exactly the kind of work that turns
-     * a 1 ms interaction into a dropped frame.
-     */
-    val GenerateFabMorph: Morph by lazy { Morph(Circle, Cookie) }
 
     /**
      * The polygon sequence [androidx.compose.material3.LoadingIndicator] cycles
@@ -108,9 +103,9 @@ fun RoundedPolygon.asShape(startAngle: Int = 270): Shape = toShape(startAngle)
  * This is the one piece material3 does not hand you ready-made. It gives you
  * `RoundedPolygon.toShape()` (a static polygon) and `Morph.toPath(progress)` (a
  * path, not a shape, but usefully **not** `@Composable`, so it is safe to call
- * every frame). The gap between them is this class, and the generate FAB is what
- * needs it: press it and it has to travel from circle to cookie under a spring,
- * which means a new outline on every frame of the animation.
+ * every frame). The gap between them is this class: anything that travels from
+ * one shape to another under a spring needs a new outline on every frame of the
+ * animation.
  *
  * Construct a new instance per frame — that is intentional, and cheap. The shape
  * is a value: two instances with the same morph and progress are equal, so
@@ -118,7 +113,7 @@ fun RoundedPolygon.asShape(startAngle: Int = 270): Shape = toShape(startAngle)
  *
  * ```
  * val progress by animateFloatAsState(if (pressed) 1f else 0f, FlightMotion.spatialFast())
- * Box(Modifier.clip(MorphShape(FlightShapes.GenerateFabMorph, progress)))
+ * Box(Modifier.clip(MorphShape(Morph(FlightShapes.Circle, FlightShapes.Cookie), progress)))
  * ```
  *
  * The geometry mirrors what material3 does inside `toShape()`: the morph's path

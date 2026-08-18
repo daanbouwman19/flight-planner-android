@@ -10,16 +10,38 @@ package com.github.daanbouwman.flightplanner.routing
  * every keystroke. Materialising a list of 24,000 wrappers per character typed
  * would allocate more in a second of typing than the whole index costs to hold.
  *
- * So this is the same two-tier ranking expressed over the arrays:
+ * ### Why this is not the desktop's two-tier scoring
  *
- *  - a match on the **code** scores [SearchScorer.CODE_MATCH_SCORE]
- *  - a match on the name or municipality scores [SearchScorer.FIELD_MATCH_SCORE]
- *  - non-matches are dropped; results come back score-descending, ties in slot
- *    order
+ * The desktop app scores a code match 2, any other field 1, and sorts. Ported
+ * literally, that made this picker unusable, and the reason is worth stating
+ * because it applies to every ranked list in this app: **a table's rank and a
+ * type-ahead's rank are different problems.** The desktop showed a sortable
+ * table, so its ranking only had to be defensible — the user could re-sort. A
+ * type-ahead has no re-sort. Rank *is* the interface, and the first row is the
+ * answer.
  *
- * Slots come back rather than airports, because the caller already has the
- * index and knows how to turn slots into rows — see
- * `AirportRepository.airportsForSlots`.
+ * Two consequences, both measured against the shipped dataset:
+ *
+ *  - **A prefix is not a substring.** Typing `EHA` means "codes beginning EHA"
+ *    to anyone who has used an airport code. Ranked by substring alone, EEHA and
+ *    an Elkhart county field outrank Schiphol, because their codes happen to
+ *    contain the letters too.
+ *  - **Ties have to break on significance.** Scores took two values, so ties were
+ *    the common case, and they broke by slot order — which is ascending runway
+ *    length, so the least significant airport on Earth sorted first. Worse, the
+ *    scan stopped once the result cap was full of matches, so for a two-letter
+ *    query a major airport could be excluded rather than merely buried.
+ *
+ * ### The four tiers
+ *
+ * Exact code, code prefix, code substring, then name or municipality. Within a
+ * tier, results are ordered by descending runway length — which costs nothing,
+ * because the index is sorted *ascending* by runway length and this scans it
+ * backwards.
+ *
+ * That backwards scan is also what makes the early exit safe: every slot still
+ * unvisited is less significant than everything already found, so once the two
+ * top tiers hold [limit] results between them, nothing later can displace them.
  *
  * **One deliberate divergence from the desktop app.** It searches an airport's
  * code, name and *rendered runway length*; this searches code, name and
@@ -36,26 +58,23 @@ object AirportSlotSearch {
      * Results per query.
      *
      * Far smaller than [SearchScorer.DEFAULT_LIMIT] because this backs a picker
-     * that is scrolled with a thumb, not a table that is scanned. The cap is
-     * also what makes the scan cheap: once this many code matches exist there is
-     * nothing a later slot could displace, so the loop stops early.
+     * that is scrolled with a thumb, not a table that is scanned.
      */
     const val DEFAULT_LIMIT: Int = 50
 
     private val EMPTY = IntArray(0)
 
     /**
-     * The best [limit] slots for [query].
+     * The best [limit] slots for [query], best first.
      *
      * A blank query returns **nothing**, not everything. The caller is a picker
-     * with an empty search box, and "every airport in the world, in runway-length
-     * order" is not a useful thing to show there — see `PlanViewModel`, which
-     * offers the largest airports as suggestions instead. Returning the whole
-     * index would also be the one case that allocates.
+     * with an empty search box, and "every airport in the world" is not a useful
+     * thing to show there — see `PlanViewModel`, which offers the largest
+     * airports as suggestions instead.
      *
      * @param codes packed codes, slot-aligned — `AirportIndex.codes`.
-     * @param size number of slots to scan; the two array parameters must be at
-     *   least this long.
+     * @param size number of slots to scan; the array parameters must be at least
+     *   this long.
      * @param names slot-aligned airport names, or null when the name index has
      *   not been built yet, in which case matching falls back to codes alone.
      * @param municipalities slot-aligned municipalities, null entries allowed.
@@ -68,40 +87,66 @@ object AirportSlotSearch {
         municipalities: Array<String?>? = null,
         limit: Int = DEFAULT_LIMIT,
     ): IntArray {
-        if (query.isBlank() || limit <= 0 || size <= 0) return EMPTY
+        val trimmed = query.trim()
+        if (trimmed.isEmpty() || limit <= 0 || size <= 0) return EMPTY
 
-        val prepared = SearchQuery(query)
-        // Two fixed buffers rather than a heap: scores here take exactly two
-        // values, and slots are visited in ascending order, so "score-descending,
-        // ties by slot" is simply every code match in order followed by every
-        // field match in order. No comparator, no boxing, no sort.
-        val codeHits = IntArray(limit)
-        var codeCount = 0
-        val fieldHits = IntArray(limit)
+        val prepared = SearchQuery(trimmed)
+
+        // One buffer per tier rather than a heap: within a tier the scan already
+        // visits slots in the order the results want, so there is nothing to
+        // sort — no comparator, no boxing, no allocation per candidate.
+        val exact = IntArray(limit)
+        var exactCount = 0
+        val prefix = IntArray(limit)
+        var prefixCount = 0
+        val contains = IntArray(limit)
+        var containsCount = 0
+        val field = IntArray(limit)
         var fieldCount = 0
 
-        for (slot in 0 until size) {
-            if (IcaoCode.contains(codes[slot], query)) {
-                codeHits[codeCount++] = slot
-                // A full buffer of code matches cannot be improved on: every
-                // remaining slot has a higher index, so it would lose every tie.
-                if (codeCount == limit) break
-                continue
+        // Backwards: the index is sorted ascending by runway length, so this
+        // visits the most significant airports first and every tier comes out
+        // ordered without a sort.
+        for (slot in size - 1 downTo 0) {
+            val code = codes[slot]
+            when {
+                IcaoCode.matches(code, trimmed) ->
+                    if (exactCount < limit) exact[exactCount++] = slot
+
+                IcaoCode.startsWith(code, trimmed) ->
+                    if (prefixCount < limit) prefix[prefixCount++] = slot
+
+                IcaoCode.contains(code, trimmed) ->
+                    if (containsCount < limit) contains[containsCount++] = slot
+
+                fieldCount < limit &&
+                    (prepared.matches(names?.get(slot)) || prepared.matches(municipalities?.get(slot))) ->
+                    field[fieldCount++] = slot
             }
-            if (fieldCount < limit &&
-                (prepared.matches(names?.get(slot)) || prepared.matches(municipalities?.get(slot)))
-            ) {
-                fieldHits[fieldCount++] = slot
-            }
+
+            // Everything left to visit is less significant than what the top two
+            // tiers already hold, so nothing later could displace it.
+            if (exactCount + prefixCount >= limit) break
         }
 
-        val total = minOf(limit, codeCount + fieldCount)
+        val total = minOf(limit, exactCount + prefixCount + containsCount + fieldCount)
         if (total == 0) return EMPTY
 
         val ranked = IntArray(total)
-        val fromCodes = minOf(codeCount, total)
-        codeHits.copyInto(ranked, 0, 0, fromCodes)
-        if (fromCodes < total) fieldHits.copyInto(ranked, fromCodes, 0, total - fromCodes)
+        var out = 0
+        out += copyTier(exact, exactCount, ranked, out)
+        out += copyTier(prefix, prefixCount, ranked, out)
+        out += copyTier(contains, containsCount, ranked, out)
+        copyTier(field, fieldCount, ranked, out)
         return ranked
+    }
+
+    /** Copies as much of a tier as still fits, and reports how much that was. */
+    private fun copyTier(tier: IntArray, count: Int, into: IntArray, at: Int): Int {
+        val room = into.size - at
+        if (room <= 0 || count <= 0) return 0
+        val taken = minOf(count, room)
+        tier.copyInto(into, at, 0, taken)
+        return taken
     }
 }
