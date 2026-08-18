@@ -18,11 +18,11 @@ Verified against the source tree, not against the plan.
 | --- | --- |
 | `:core:model` | **Complete.** `Airport`, `AircraftSpec`, `FlightRecord`, `FlightStatistics`, `FlightRules`, `Metar`, `Units`, `SurfaceKinds`, `FleetCsv` |
 | `:core:database` | **Complete for what exists.** Both Room DBs, all DAOs, asset installer, fleet seeder |
-| `:core:routing` | **Complete.** Index, codec, band index, great-circle, generator, `SearchScorer`, `FlightStatisticsCalculator`, plus `RouteArc` and `AirportSlotSearch` from Phase B — all tested |
+| `:core:routing` | **Complete.** Index, codec, band index, great-circle, generator, `SearchScorer`, `FlightStatisticsCalculator`, `RouteArc` and `AirportSlotSearch` from Phase B, and `MapFrame`, `WorldOutline` and the two clippers from Phase B++ — all tested |
 | `:core:designsystem` | **Complete for what exists.** Theme, motion, shapes, and eleven components. See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
 | `:core:network` | **Empty.** No sources at all. Phase F |
 | `:feature:globe` | `FilamentProbe` only. Vulkan confirmed working, `FEATURE_LEVEL_3` |
-| `:app` | Shell, navigation, the self-check, and the Plan screen. Logbook, Fleet, Airports, Stats and Settings are still placeholders |
+| `:app` | Shell, navigation, the self-check, the Plan screen, the route detail and Settings. Logbook, Fleet, Airports and Stats are still placeholders |
 
 The three gaps the original plan did not cover — the index carrying no display
 data (**G-a**), the missing `SearchScorer` and `FlightStatisticsCalculator`
@@ -193,7 +193,10 @@ appended one on long press. Once the screen generated on open, pull-to-refresh
 regenerated and the list appended by itself, both of those had no work left — so
 it was a permanent 56 dp obstruction over the content, and it flickered in on
 launch a moment before the routes it offered to generate had already arrived.
-`FlightShapes.GenerateFabMorph` stays in the design system; nothing uses it yet.
+`FlightShapes.GenerateFabMorph` stayed in the design system for a phase with
+nothing using it, and the design review deleted it: an unused promise about what
+the app looks like drifts. `MorphShape` itself remains — it is a general
+primitive, not a named morph for a cut component.
 
 **The screen generates on open.** It was built to start empty and wait, on the
 reasoning that generating unprompted spends startup budget on work nobody asked
@@ -460,9 +463,9 @@ re-verified on the truly edge-to-edge window and remains open.
 
 ---
 
-## 4b. Phase B++ — the world under the route
+## 4b. Phase B++ — the world under the route ✅ COMPLETE
 
-**This is the next work item, now that 4a has landed.** The immersive layout
+**B11–B14 are built and measured on device. ✅ COMPLETE.** The immersive layout
 changes the card's frame — height, and how much of it is ever covered by chrome —
 so the map is designed against the final shape rather than redesigned twice.
 
@@ -550,10 +553,10 @@ sampling and joins, not a flag:
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| **B11** | World outline asset | Natural Earth 1:110m land polygons, simplified and quantised to a prebuilt binary asset, exactly as the airport index is. Built by a pure-JVM tool; never parsed from GeoJSON on device. Source and format settled below |
-| **B12** | `MapFrame` in `:core:routing` | A window — centre, span, aspect — that both the coastline and the arc project through. Replaces `RouteArc`'s self-normalising output, which cannot be shared by a second layer |
-| **B13** | `RouteMap` in `:core:designsystem` | Replaces `RouteSparkline`. Land fill, coast stroke, cased arc, cased endpoints, in that order |
-| **B14** | Card recomposition | Map to the card's background layer, content over it, chips translucent, height raised to fit a map |
+| **B11** | World outline asset | ✅ `:tools:worldmap` builds `app/src/main/assets/maps/land.outline` — 122 rings, 4,601 points, 18.9 KB. Natural Earth 1:110m land polygons, simplified and quantised to a prebuilt binary asset, exactly as the airport index is. Built by a pure-JVM tool; never parsed from GeoJSON on device. Source and format settled below |
+| **B12** | `MapFrame` in `:core:routing` | ✅ Plus the two clips it projects through — Sutherland–Hodgman for the fill, Liang–Barsky for the coast — and `RouteArc.sampleGeographic`, which hands back degrees instead of a self-normalised box, and `ProjectedLand`, the coastline clipped and projected for one card. A window — centre, span, aspect — that both the coastline and the arc project through. Replaces `RouteArc`'s self-normalising output, which cannot be shared by a second layer |
+| **B13** | `RouteMap` in `:core:designsystem` | ✅ `RouteSparkline` is deleted, and so is `RouteArc.normalisedPath` with it. Land fill, coast stroke, cased arc, cased endpoints, in that order |
+| **B14** | Card recomposition | ✅ Looked at in both themes on an emulator and on a phone, at font scale 1.0 and 2.0. Map to the card's background layer, content over it, chips translucent, height raised to fit a map |
 
 ### Findings for B11, so the next session does not rediscover them
 
@@ -590,11 +593,170 @@ by the Plan screen, on a background dispatcher.
 **Per-frame cost is the real risk, and it is larger than it was.** A full-bleed
 map shows far more coastline than a 120 dp sparkline did: eight visible cards
 stroking a thousand segments each is 8,000 segments a frame. Three mitigations, in
-order — clip and project each route's coastline **once**, off the main thread,
-where `RouteArc` already runs; build the `Path` once per row in `remember`, never
-per frame; and if that is still not enough, snap frames to a handful of zoom
+order — clip and project each route.s coastline **once** (done, though in
+`drawWithCache` on the UI thread rather than beside `RouteArc` on a dispatcher,
+because the window needs a measured aspect ratio); build the `Path` once per row
+in `remember`, never per frame; and if that is still not enough, snap frames to a handful of zoom
 levels and cache them as `ImageBitmap`s. Measure with `dumpsys gfxinfo` while
 flinging, before and after.
+
+### What B11 turned out to be
+
+The findings above held. Three things they did not predict, and the numbers as
+built:
+
+**The source is already coarse, so simplification is not where the size went.**
+`ne_110m_land` is 128 rings and 5,143 points — Douglas–Peucker at 0.05° (about
+5.5 km, a third of a pixel at the closest a card zooms) removes only 10 % of them.
+The file is small because a point is 4 bytes, not because the geometry was thinned:
+4,601 points is 18.9 KB, inside the 20 KB the format was designed around. Six rings
+were dropped for being under 0.75° across, which is a couple of pixels.
+
+**Antarctica legitimately steps 360° in longitude.** Natural Earth clips its
+polygons at the antimeridian, so no ring crosses the seam — except that Antarctica
+runs along ±180 down to the pole and back, giving one segment from (180, -90) to
+(-180, -90). That is the bottom edge of the map, not a coastline, and a
+seam-crossing check that does not exempt it fails on correct data. Anything
+projecting these rings has to expect it.
+
+**The verifier asks where places are, not whether bytes decode.** Eleven
+land-or-water probes — the Sahara, central Siberia, the Amazon, the Australian
+interior, Kansas, East Antarctica, and five open oceans — answered through the same
+even-odd rule the renderer fills with. A transposed coordinate pair, a flipped sign
+or a ring table off by one all decode cleanly and all still look like *a* planet;
+only asking whether the Pacific is wet distinguishes them. The probes are far from
+any coast on purpose: this is a check on the world's orientation, not an audit of a
+shoreline.
+
+### What B12 settled
+
+**The projection has a standard parallel.** Longitude is scaled by the cosine of
+the window's centre latitude before anything else happens, because plate carrée
+stretches by `1 / cos(latitude)` — 1.6× at Amsterdam, which makes Britain fat and
+the North Sea look like an ocean. The factor is floored at 75° so a polar window
+is drawn slightly stretched rather than hundreds of degrees wide. This is the
+difference between the sparkline, which was allowed to distort because its whole
+job was the *shape* of a curve, and a map, whose job is a recognisable place.
+
+**Land is not clipped to the window, only culled by it.** Clipping a filled
+polygon runs its boundary along the window's edge, and the coast stroke would then
+draw a hairline box around every card. Rings are rejected by their bounding box —
+122 rings, three of which a card typically shows — and the canvas clips the
+overspill. If it ever costs too much, the next mitigation is caching whole frames,
+not clipping.
+
+**A ring is offered at ±360°.** A Pacific crossing is framed around 190°E, and
+nothing in the outline is stored there; a window just west of the seam has to be
+met by land at +179°. Both shifts are tried and only one can match, since no ring
+is wider than a turn.
+
+**A route to itself framed a NaN.** Coincident endpoints have no extent, so
+scaling them up to the 25° floor multiplies zero by infinity. It failed at the far
+end of the frame, where nothing said an airport had been routed to itself — the
+kind of defect the pure-JVM layer exists to catch in milliseconds.
+
+### What B13 and B14 turned out to be
+
+**It works, it cost frames, and clipping bought most of them back.** Every number
+below is the `benchmark` variant, eight identical flings per run, `dumpsys gfxinfo`
+reset before each.
+
+The first build culled rings by bounding box and left the canvas to discard the
+rest. On the emulator that measured 30 % janky frames and a 27 ms p50 against 12 %
+and 18 ms for the same build with the map switched off — about 9 ms a frame, and
+the loss showed up as *frames not produced at all*, 90 against 181 for the same
+input.
+
+Then the rings were clipped to the window, and the comparison moved to a real
+device (SM-S942B, 1080 × 2340 at 480 dpi, 120 Hz), interleaved three pairs deep
+because the emulator's numbers drift further between runs than the change being
+measured:
+
+| | p50 | p90 | janky |
+| --- | --- | --- | --- |
+| Unclipped map | 8 / 8 / 9 ms | 11 / 11 / 12 ms | 10 % / 16 % / 10 % |
+| Clipped map | 6 / 6 / 6 ms | 8 / 8 / 9 ms | 6 % / 8 % / 6 % |
+| No map at all | 5 / 5 / 5 ms | 5 / 5 / 5 ms | 1 % / 1 % / 1 % |
+
+So the map costs about **1 ms a frame** on hardware, half what it cost unclipped,
+and jank is within a few points of a card with nothing drawn behind it. Two things
+this exercise settled beyond the numbers:
+
+- **The emulator was measuring itself.** 9 ms there is ~3 ms here, and its jank
+  figures for an *unchanged* APK ranged from 12 % to 47 % across one working
+  session, which is wider than every effect measured. Fill-rate on a software
+  raster is not a phone's GPU. Frame numbers for this app come from the device.
+- **Clipping has to be two operations.** A polygon clipped to a rectangle has the
+  rectangle's edges in its boundary — right for a fill, and stroking it would draw
+  a hairline box around every card. So the fill is Sutherland–Hodgman and the coast
+  is the original segments trimmed by Liang–Barsky into *open* polylines. Verified
+  by looking at a 2× crop of a card whose land runs off three sides.
+
+**A background with no content measures zero.** The map was written with
+`fillMaxSize()` inside the card's `Box`, which is unbounded vertically in a lazy
+list, so it resolved to nothing and the first build shipped blank cards that
+compiled, laid out and drew perfectly — the map simply was not there. A background
+that takes no part in sizing wants `matchParentSize()`. This is the fourth time in
+this project that "a green build says nothing about a UI change" has been the
+lesson.
+
+**A third of the chip row was spent on an effect the alpha already provided.** The
+chips were given two thirds of the width so the coast could run out from under
+them rather than ending on a straight edge. On a 360 dp phone at the *default*
+font scale that leaves 122 dp a chip, and "DIST 2,847 NM" wrapped to two lines
+inside it — which only showed up on the device, because the emulator's routes
+happened to be shorter. The chips are translucent, so the coast passes behind them
+regardless; the gap was removed. Past font scale 1.3 they stop sharing a line at
+all and stack, because two chips cannot hold a figure between them at that size.
+
+**The empty ocean is honest and looks like a bug.** A route in the American
+Midwest frames 25° of land-free interior, so the card is genuinely blank above the
+codes while a Mediterranean or Baltic route reads immediately. That is the design
+working as specified — the map says where you are, and some places have no coast —
+but it is worth knowing before someone reports it.
+
+**The flight-rules slot moved above the code.** It was a reserved row *under* each
+runway figure, which in a 180 dp card spends vertical space on absent weather.
+Above the code it costs nothing: the codes sit on a line that is already tall
+enough, weather is a property of the airport it now sits with, and Phase F's badge
+will fade in without moving anything.
+
+### What a code review found afterwards
+
+A high-effort review over the whole day's diff, run once the fifteen fixes were in.
+Six findings, all fixed; three are worth carrying forward.
+
+**The card's weighted spacer was dead code, and the layout only looked right by
+luck.** `Box` relaxes its children's minimum constraints by default, and a lazy
+list hands its items an unbounded maximum height — so the content `Column`
+measured against `0..Infinity`, where `fillMaxSize` does nothing and a weight
+resolves to zero. The card looked correct anyway, because its content is 197 dp
+against a 180 dp floor: there was never any slack to distribute, so nothing
+visibly collapsed. `propagateMinConstraints = true` makes the floor real.
+Confirmed by measurement rather than by eye — `uiautomator dump` reports the card
+bounds, and raising the floor to 320 dp moved nothing until the flag was set, then
+put the whole 123 dp exactly where the KDoc says it goes.
+
+**A ring can reach the window at two whole turns, not one.** `lonShiftFor`
+returned the first shift that overlapped and the comment said only one could
+match "because no ring is wider than a full turn" — which is false for the one
+ring the format explicitly allows to span −180…180. A far-southern window
+straddling the seam matched at both −360 and 0, took −360, and drew a sliver of
+Antarctica instead of the coast. It now emits every matching shift, with a test
+that fails against the old behaviour (`expected:<2> but was:<1>`).
+
+**A KDoc asserted a guarantee the code does not provide.** `projectOutline` said
+it "runs once per route, off the main thread"; its only caller runs it inside
+`drawWithCache`, on the UI thread. That was the design intent, and it cannot be
+met until the projection has an aspect ratio before the card is measured. The
+KDoc now says where it actually runs — a comment that describes the intended
+architecture rather than the built one is worse than no comment, because it is
+trusted.
+
+The rest were small: translator comments still naming `%1$d` after the specifiers
+became `%1$s` (a translator following them would have crashed the app at runtime),
+an unused import, a dead string, and a formatting trap in the fade modifier that
+parsed correctly and read wrongly.
 
 ### Rejected
 
@@ -607,19 +769,169 @@ flinging, before and after.
 - **Political or terrain colouring.** It cannot survive the Cockpit theme or
   dynamic colour, and it is exactly the decorative imagery §2 rules out.
 
-**Done when:** a European hop shows a recognisable coast, a Pacific crossing shows
-a recognisably empty one, the codes and figures are no harder to read than they
-are today at 360 dp and font scale 2.0, and flinging the list drops no frames.
+**Done when — and it is:** a European hop shows a recognisable coast, a Pacific
+crossing shows a recognisably empty one, the codes and figures are no harder to
+read than they were at 360 dp and font scale 2.0, and flinging the list costs
+about 1 ms a frame on device against a card with no map behind it.
+
+---
+
+## 4c. The design review, and what it changed
+
+A critical review of the whole application — visual system, interaction,
+information architecture, and the decisions encoded in code — was run against the
+built app on 18 August 2026. Sixteen findings; fifteen are fixed, and the
+sixteenth is a product decision recorded below rather than taken unilaterally.
+
+The three that mattered most were not aesthetic.
+
+**The departure picker could not find major airports.** Typing `EH` returned
+Ecuadorian and Estonian airstrips; typing `EHA` put Schiphol fourth, behind two
+airports whose codes merely *contain* those letters. Three decisions compounded:
+the ranking had no notion of a prefix, ties broke by slot order, and the shipped
+index is sorted **ascending by runway length** — so within a tier the least
+significant airport on Earth sorted first, and a 50-result cap could exclude the
+answer entirely rather than merely bury it.
+
+`AirportSlotSearch` now ranks in four tiers — exact code, code prefix, code
+substring, then name or municipality — and scans the index **backwards**, which
+is what makes "the larger airport wins the tie" free: descending runway length is
+just reverse slot order. The early exit is safe for the same reason. `EHA` now
+returns EHAM first.
+
+The port that produced the defect is worth naming, because the trap generalises:
+the desktop app's `SearchService` was ported field-for-field, and its ranking is
+fine *there* because it feeds a sortable table where the user can re-sort. A
+type-ahead has no re-sort. **Rank is the interface, and the first row is the
+answer.**
+
+**Mark flown and Replace were swipe-only, and invisible to a screen reader.** No
+`CustomAccessibilityAction` existed anywhere in the app, so a TalkBack user could
+read every route and log none of them. Both are now declared on the card's
+existing semantics node — the gesture is unchanged, and the same two actions
+appear in TalkBack's actions menu.
+
+**A card parked under the status bar stayed there.** Content passing under an
+empty bar is the point of the immersive layout; content *stopped* under it is a
+card whose ETE figure the battery icon is sitting on. The list's top edge now
+fades over the inset — a mask on the content with `BlendMode.DstIn`, not a scrim
+on the bar, so nothing is painted behind the clock and the invariant holds.
+
+### The rest, briefly
+
+| ID | Finding | Resolution |
+| --- | --- | --- |
+| **F3** | Landscape showed one clipped card | Controls share one row, title drops a step, card floor 132 dp, and the width cap lifts when the window is short — the axis with room is the one that gets used |
+| **F5** | Refresh spinner landed on the mode chips | The header measures itself and the indicator clears it |
+| **F6** | Brand palette and Cockpit unreachable | A real Settings screen: four themes, a dynamic-colour switch, persisted in DataStore. `MainActivity` holds the splash for the stored value, so nobody sees a light flash before Cockpit loads |
+| **F7** | Direction under-encoded | An arrowhead on the arc, oriented along the curve. Drawn as a triangle rather than `MaterialShapes.Arrow`, which rounds away the tip that carries the signal |
+| **F8** | Tapping a card led to a placeholder | The detail screen is real: the map at 220 dp, both airports with names, municipality and runway, distance and ETE. Phase C still owns bearings, per-runway detail and weather |
+| **F9** | Settings was a dead end | A back arrow, as on route detail |
+| **F11** | `3863 NM` on one screen, `3,863 NM` on another | One formatter, and the string that skipped the separator is gone |
+| **F12** | "Fleet unavailable" read as an error | Placeholders say what is not built yet and what already works instead. "Start your journey" — the desktop's wording, kept deliberately once — is gone: it was the one sentence in the app that sounded like a different product |
+| **F13** | Dead design-system surface | `SectionHeader`, `FlightShapes.Arrow` and `GenerateFabMorph` deleted. (The review said four of five `MaterialShapes` were unused; that was wrong — four are used through `LoadingPolygons`) |
+| **F14** | Landless cards read as broken | A graticule at the land fill's own contrast, drawn only when the window frames no coast at all |
+| **F15** | `06h 18m` | `6:18`, which is how a flight plan writes it |
+| **F16** | RTL unverified | Verified under an Arabic app locale. It mirrors correctly — and exposed that distances and runways were being localised into Arabic-Indic digits while ETE stayed Latin. Aviation figures are chart figures: they now format in a fixed locale everywhere, and only the spoken description stays localised, because speech follows the language it is spoken in |
+
+### F10, which is not a code change
+
+**Five bottom-bar destinations serve one action loop.** Plan generates, Logbook
+records it, Stats is a projection *of* Logbook, Airports duplicates a search the
+departure picker already performs, and Fleet duplicates the aircraft picker. The
+bar's cost is already visible: Settings was evicted from it for space, which is
+the layout saying there is one destination too many.
+
+The proposal is Plan · Logbook · Fleet, with Stats as the Logbook's header summary
+and Airports as a search entry inside Plan — which frees the fifth slot for
+Settings. It is **not implemented**, because it deletes two destinations that
+Phases D and E are scoped to build, and that is a product decision rather than a
+defect to fix. The trigger is the same either way: decide before Phase D, because
+the cost of moving those screens rises the moment they exist.
+
+### The measurement that was owed
+
+The top fade wraps the list in an offscreen compositing layer, which is the shape
+of change that usually costs frames. On the emulator it sat inside that machine.s
+own noise band, which Phase B++ already established is wider than the effect being
+measured, so it was recorded as unverified rather than claimed as free.
+
+Measured since, on an SM-S942B, benchmark build, five interleaved pairs of ten
+flings: **9 ms p50 and 17-18 ms p90 with the fade, against 9-10 ms and 18-24 ms
+without**, GPU p50 4 ms either way. It was never the worse of a pair. The layer
+costs nothing measurable on hardware.
+
+(Those figures are not comparable with the Phase B++ table above — different day,
+different thermal state, and a build with the arrowhead and graticule in it. Only
+the within-session pairing means anything, which is the whole reason for pairing.)
+
+---
+
+## 4d. Phase P — Performance, before the next feature
+
+**This is the next work item, ahead of Phase C.** Not because the app is slow —
+it is not — but because the two things that would tell us are missing, and every
+screen built from here adds surface to whatever they would have found.
+
+### What is actually observed
+
+Flinging the route list **stutters for the first second or two, then smooths out,
+and generation itself is very smooth once it has run a few times.** That shape —
+bad at first, fine later, on the same code and the same data — is warm-up, not
+throughput: ART interpreting and then compiling. It is exactly what a baseline
+profile exists for, and this app does not have one.
+
+### What the budget actually is
+
+The panel on the test device (SM-S942B) supports 120 Hz and Adaptive motion
+smoothness is on. Sampled *during* a fling, `mActiveRenderFrameRate` is
+**120.0** — so the frame budget while scrolling is **8.33 ms**, not the 16.7 ms
+a 60 Hz reading suggests. Every earlier figure in this document was recorded
+without knowing which of the two applied.
+
+Against 8.33 ms, a synthetic-fling harness measured a 9 ms median and 10–14 %
+janky frames. Read that as "worth investigating", not as a verdict — see below.
+
+### Why the existing numbers cannot answer this
+
+The same APK, on the same phone, on the same day, measured **5–7 ms p50 and
+2.6–5.4 % janky** in one session and **9–12 ms p50 and 10–20 % janky** in
+another. The only differences were the fling pattern (eight back-to-back versus
+ten with pauses) and where the device was in its own warm-up. A harness whose
+output moves by 2× between runs of identical code cannot measure a change worth
+1 ms, and every conclusion in this document that rests on it is only trustworthy
+because it was an *interleaved A/B within one session* — never an absolute.
+
+That is the same lesson the emulator taught in Phase B++, arriving a second time
+on real hardware: **pairs are evidence, absolutes are not.**
+
+### Tasks
+
+| ID | Task | Notes |
+| --- | --- | --- |
+| **P1** | Baseline profile | The single largest startup and first-scroll win available to a Compose app, and the thing that most directly addresses "stutters at first, then smooths out". The `benchmark` variant it needs already exists |
+| **P2** | Macrobenchmark module | `FrameTimingMetric` over a scripted fling, with iterations and warm-up controlled, replacing `input motionevent` plus `dumpsys gfxinfo`. This is the instrument; P1 without it is a change nobody can grade |
+| **P3** | Projection off the UI thread | `MapFrame.projectOutline` runs in `drawWithCache` — on the UI thread, for every card entering composition during a fling. It needs the canvas aspect ratio, so moving it means deciding that ratio before measurement (a fixed card aspect, or a two-pass measure) rather than reading it from the canvas |
+| **P4** | A budget, written down | Once P2 can measure it: a p90 figure for the fling and a cold-start figure, both on the `benchmark` variant, so a regression is a failed check rather than an opinion |
+
+**Done when:** the first fling after a cold start is indistinguishable from the
+tenth, and P2 reports it rather than a person judging it by eye.
 
 ---
 
 ## 5. Phase C — Route detail
 
+**Part of this landed early.** Resolving F8 of the design review — tapping a card
+reached a placeholder — turned the detail destination into a real screen: the map
+at 220 dp, both airports with their names, municipality and runway, and the two
+figures. What is left is what needs data or a calculation the screen does not have
+yet, which is most of C2 and all of C4–C6.
+
 | ID | Task | Notes |
 | --- | --- | --- |
-| **C1** | Detail container | `ModalBottomSheet` on compact, `ListDetailPaneScaffold` pane on expanded. Predictive back on both |
-| **C2** | Route facts | Distance, estimated time, initial and final bearing, both elevations, longest runway and surface at each end |
-| **C3** | Hero map area | Static equirectangular arc with DEP/DEST markers. **Deliberately a still image until Phase G** — it is the fallback the globe crossfades in over, so it is not throwaway work |
+| **C1** | Detail container | Partly done: a full screen with predictive back, which is what the review needed. Still to do — `ModalBottomSheet` on compact and a `ListDetailPaneScaffold` pane on expanded |
+| **C2** | Route facts | Partly done: distance, estimated time, longest runway per end. Still to do — initial and final bearing, elevations, surface |
+| **C3** | Hero map area | ✅ `RouteMap` at 220 dp, the same component the card draws. **Deliberately a still image until Phase G** — it is the fallback the globe crossfades in over, so it is not throwaway work |
 | **C4** | Actions | Mark as flown, copy plan, SkyVector, SimBrief, Google Maps, share — the last four via `ACTION_VIEW` intents |
 | **C5** | Weather block | Decoded METAR layout, raw text in monospace. Placeholder until Phase F |
 | **C6** | Detail motion | `sharedBounds` on the ICAO pair and aircraft name from the card; facts stagger in beneath the hero; distance counts up once; mark-as-flown plays a confirmation with haptic |
@@ -646,13 +958,16 @@ and the card→detail→back journey is continuous with no visual jump.
 
 ## 7. Phase E — Airports, Stats, Settings
 
+**E5 is partly built.** The appearance half of Settings landed with the design
+review; the rest of the screen is still Phase E work.
+
 | ID | Task | Notes |
 | --- | --- | --- |
 | **E1** | Airports browse | Ranked type-ahead over the name index from **A5**, plus the desktop's random-50 action |
 | **E2** | Airport detail | Runway diagram drawn in `Canvas` — idents, true headings, surface, length — plus "fly from here", which sets the locked departure and jumps to Plan |
 | **E3** | Stats dashboard | All nine `FlightStatistics` fields. Hero total distance with count-up and an equivalence ("2.3× around the Earth"), monthly bar chart, top-aircraft list, longest/shortest cards |
 | **E4** | Visited mini-globe | Dots on a small projection. Cheap 2D version now; upgraded in Phase G |
-| **E5** | Settings | Theme, dynamic colour, units, ICAO-only toggle, weather provider, tile provider, dataset info, licences. Preferences DataStore, not a table |
+| **E5** | Settings | Partly done: theme (four choices) and dynamic colour ship now, in Preferences DataStore, because F6 of the design review found the brand palette and the Cockpit theme were unreachable without them. Still to do — units, ICAO-only toggle, weather provider, tile provider, dataset info, licences |
 | **E6** | Motion | Chart bars grow on first composition only; stat values count up; filter changes animate the list rather than replacing it |
 
 ---
@@ -697,8 +1012,8 @@ default until that is settled.
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| **H1** | Baseline profile | The largest single startup win available to a Compose app, and the `benchmark` variant to measure it against already exists |
-| **H2** | Macrobenchmark | Cold start, plus frame timing while flinging the list and spinning the globe |
+| **H1** | ~~Baseline profile~~ | **Moved to P1.** It is the instrument, not the polish |
+| **H2** | ~~Macrobenchmark~~ | **Moved to P2**, for the same reason. What stays in H is extending it to the globe, once there is a globe |
 | **H3** | Glance widget | "Today's challenge" — one route seeded by `LocalDate.toEpochDay()`, deterministic across the day. Nearly free given the seeded RNG |
 | **H4** | Shortcuts | Generate route, log a flight, last route |
 | **H5** | Screenshot goldens | Roborazzi across light/dark, LTR/RTL, font scale 1.0/2.0, three window sizes. The globe is stubbed — it is covered by G1's math tests plus a device smoke check |
@@ -709,12 +1024,20 @@ default until that is settled.
 ## 11. Sequencing
 
 ```
-A ──► B ──► B+ ──► B++ ──► C ──► D ──► E ──► H
-      │            │            │
-      └────────────┴──► F ──────┘
+A ──► B ──► B+ ──► B++ ──► P ──► C ──► D ──► E ──► H
+      │            │                   │
+      └────────────┴──► F ──────────────┘
                         │
             C3 ────────►└──► G ──► H
 ```
+
+P was inserted after B++ rather than left to H. Two of its four tasks (P1, P2)
+were H1 and H2, and they were in H because polish belongs at the end — but a
+baseline profile and a macrobenchmark are not polish, they are the instrument
+everything after them is judged with. Building C, D and E first means adding
+three more screens and then measuring all four at once, which is the position
+this project has already been in twice: an unexplained number and no way to
+attribute it.
 
 B+ and B++ sit where they do by decision rather than by dependency: nothing in C
 needs either. They come next because the Plan screen is the one the user actually

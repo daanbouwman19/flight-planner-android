@@ -146,5 +146,5 @@ unusable. Both are compile errors and only the message distinguishes them.
 | `:core:model` | Pure JVM. No Android imports, ever |
 | `:core:routing` | Pure JVM. No Android, no Compose. The algorithms live here so they stay unit-testable in milliseconds |
 | `:core:database` | Room + repositories. Knows nothing about UI |
-| `:core:designsystem` | Knows `:core:model` (for `FlightRules`). Must never know the database or the network |
+| `:core:designsystem` | Knows `:core:model` (for `FlightRules`) and `:core:routing` (for the geometry `RouteMap` projects). Must never know the database or the network |
 | `:app` | Screens. Reaches Expressive and motion only through `:core:designsystem` |

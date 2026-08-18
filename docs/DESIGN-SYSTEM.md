@@ -135,8 +135,6 @@ object FlightShapes {
     val Cookie: RoundedPolygon
     val Clover: RoundedPolygon
     val VerySunny: RoundedPolygon
-    val Arrow: RoundedPolygon
-    val GenerateFabMorph: Morph              // circle -> cookie, the FAB press
     val LoadingPolygons: List<RoundedPolygon>
 }
 
@@ -151,15 +149,15 @@ it is safe every frame), but nothing that animates between them.
 
 ```kotlin
 val progress by animateFloatAsState(if (pressed) 1f else 0f, FlightMotion.spatialFast())
-Box(Modifier.clip(rememberMorphShape(FlightShapes.GenerateFabMorph, progress)))
+Box(Modifier.clip(rememberMorphShape(Morph(FlightShapes.Circle, FlightShapes.Cookie), progress)))
 ```
 
 ## Components
 
 ```kotlin
 @Composable fun FlightRulesBadge(rules: FlightRules, modifier: Modifier = Modifier)
-@Composable fun ValueChip(label: String, value: String, modifier: Modifier = Modifier)
-@Composable fun SectionHeader(text: String, modifier: Modifier = Modifier)
+@Composable fun ValueChip(label: String, value: String, modifier: Modifier = Modifier,
+                          containerAlpha: Float = 1f)
 @Composable fun SkeletonBox(modifier: Modifier = Modifier, shape: Shape = MaterialTheme.shapes.small)
 @Composable fun SkeletonCard(modifier: Modifier = Modifier)
 @Composable fun EmptyState(title: String, message: String, modifier: Modifier = Modifier,
@@ -182,9 +180,12 @@ Box(Modifier.clip(rememberMorphShape(FlightShapes.GenerateFabMorph, progress)))
                             onClick: () -> Unit, modifier: Modifier = Modifier,
                             detail: String? = null)
 
-@Composable fun RouteSparkline(points: FloatArray, modifier: Modifier = Modifier,
-                               color: Color = MaterialTheme.colorScheme.primary,
-                               endpointColor: Color = MaterialTheme.colorScheme.secondary)
+
+@Composable fun RouteMap(arc: GeoArc, outline: WorldOutline, modifier: Modifier = Modifier,
+                         landColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                         coastColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+                         routeColor: Color = MaterialTheme.colorScheme.primary,
+                         casingColor: Color = MaterialTheme.colorScheme.surfaceContainer)
 
 enum class SwipeActionSide { Start, End }
 
@@ -227,11 +228,25 @@ Notes that are easy to get wrong:
   a detail it does not have — unlike the route card's flight-rules slot, because the
   user's own tap is what changes it. Put a pair inside a
   `Modifier.height(IntrinsicSize.Min)` row with `fillMaxHeight` to keep them level.
-- **`RouteSparkline` takes points, not coordinates.** Turning two airports into a
-  great-circle polyline is spherical interpolation over two dozen samples, and
-  taking coordinates here would do that inside a composable — on the main thread,
-  per visible card, again on every recomposition. Callers project once, off the
-  main thread, with `RouteArc` in `:core:routing`.
+- **`RouteMap` is the card's background, and it takes geography.** Land at 8 % of
+  `onSurface` with its coast at 16 %, then the route as the only saturated thing on
+  the card — that ratio is what makes a scrim unnecessary, and a design that needs
+  no scrim is simpler than one hiding behind a gradient. Every line is drawn twice,
+  a casing in the card's colour under the line itself, which is the technique a
+  chart uses to keep a route readable wherever it crosses something. It takes a
+  `GeoArc` rather than projected points — the opposite of the sparkline it replaced
+  — because the window it projects through depends on the *canvas aspect ratio*, so
+  the projection cannot be done before the card is measured. The expensive half,
+  spherical interpolation, still happens once per route off the main thread; what
+  happens here is a multiply per point plus a clip, inside `drawWithCache`, so it
+  runs when the size changes and never while scrolling. The clip is two operations
+  on purpose: the fill is a polygon clipped to the card, the coast is the original
+  segments trimmed and left open, because stroking a clipped polygon would draw a
+  hairline box around every card. On device the whole map costs about 1 ms a frame.
+  It also draws the direction arrowhead — a triangle, not `MaterialShapes.Arrow`,
+  whose corner radii round away the tip at eight pixels a side — and, when the
+  window frames no coastline at all, a graticule at the land fill's own contrast,
+  so an inland card reads as a place rather than as a failed load.
 - **`SwipeActionBackground` takes colours rather than choosing them.** "Confirm"
   and "destroy" are the caller's semantics. Pass the *solid* roles, not the
   containers: a pale container behind a `surfaceContainer` card is two

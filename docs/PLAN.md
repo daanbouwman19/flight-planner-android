@@ -96,7 +96,7 @@ it lives on Android.
 
 | Desktop | Android |
 | --- | --- |
-| Scored search over the currently displayed list — code match scores 2, name/manufacturer/variant/category/date/runway scores 1, sorted by score (`TableItem::search_score_optimized`) | `SearchScorer` in `:core:routing`, ported field-for-field; every list screen has search |
+| Scored search over the currently displayed list — code match scores 2, name/manufacturer/variant/category/date/runway scores 1, sorted by score (`TableItem::search_score_optimized`) | `SearchScorer` in `:core:routing`, ported field-for-field for the fleet and the logbook. **Airport search deliberately diverges**: `AirportSlotSearch` ranks exact code, then prefix, then substring, then name/municipality, breaking ties by size. The desktop feeds a sortable table, where rank only has to be defensible; a type-ahead has no re-sort, so rank is the interface |
 | Clear-search affordance | Trailing clear icon |
 | Searchable, paginated dropdowns for aircraft and departure | Full-screen `SearchBar` with ranked type-ahead |
 | "No results" state distinct from "no data" | Both, per screen |
@@ -420,7 +420,12 @@ widget `Random(LocalDate.now().toEpochDay())`.
 `FlightStatisticsCalculator` mirroring `StatsAccumulator` used only to cross-check it in tests.
 
 `SearchScorer` is a field-for-field port of `TableItem::search_score_optimized` over all four item
-types, with the same 2-for-code / 1-for-other scoring and score-descending sort.
+types, with the same 2-for-code / 1-for-other scoring and score-descending sort. **Airport search
+does not use it.** `AirportSlotSearch` ranks over the index arrays in four tiers — exact code,
+code prefix, code substring, then name or municipality — with ties broken by airport size. The
+ported scoring produced an unusable picker: with no notion of a prefix and ties breaking by slot
+order, which is ascending runway length, typing `EHA` put Schiphol fourth behind two airports whose
+codes merely contain those letters. A table can be re-sorted by the user; a type-ahead cannot.
 
 ---
 
@@ -632,13 +637,16 @@ generate-complete.
 
 ### 6.3 Screens
 
-1. **Plan** (start) — chips + segmented control, route cards, expressive generate FAB with a
-   long-press "Generate 50 more". Card: aircraft + type badge, `EHAM → KJFK` in tabular figures,
-   distance + est. time, dep/dest flight-rules chips, runway-length badges, and a tiny
-   great-circle sparkline drawn in a Compose `Canvas` (equirectangular, no GPU). Swipe right =
-   mark flown (haptic + undo snackbar); swipe left = discard and regenerate that one.
-   Pull-to-refresh regenerates; infinite scroll appends 50. Empty state reuses the good desktop
-   copy ("Start your journey by generating a flight plan."). Loading = skeleton cards.
+1. **Plan** (start) — chips + segmented control, route cards. **As built**, and diverging from this
+   paragraph in three places: there is no generate FAB (it was cut once the screen generated on
+   open and pull-to-refresh existed), the sparkline became a full-bleed world map behind the card,
+   and the desktop empty-state copy was replaced — it was the one sentence in the app that read as
+   marketing. Card: aircraft + category, `EHAM → RJTT` in tabular figures at the card's two edges,
+   distance + ETE in translucent chips, runway per end, dep/dest flight-rules slots reserved for
+   Phase F, and the route drawn over a coastline as a cased line with a direction arrowhead. Swipe
+   right = mark flown (haptic + undo snackbar); swipe left = replace that one, keeping the airframe
+   and departure. Both are also custom accessibility actions. Pull-to-refresh regenerates; infinite
+   scroll appends 50. Loading = skeleton cards.
 2. **Route detail** — `ModalBottomSheet` on compact, detail pane on expanded. Hero globe (~60%
    height) with the arc and DEP/DEST pins; below: distance, est. time, initial/final bearing,
    elevations, longest runway + surface both ends, decoded METAR (wind, visibility, ceiling,

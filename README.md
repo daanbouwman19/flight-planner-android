@@ -56,6 +56,7 @@ sdk.dir=/path/to/Android/Sdk
 | `:core:designsystem` | Android library | Theme, semantic colours, shared components |
 | `:feature:globe` | Android library | Filament-based 3D globe |
 | `:tools:airportdb` | pure JVM, not shipped | CSV → SQLite ETL for the bundled airport database |
+| `:tools:worldmap` | pure JVM, not shipped | GeoJSON → binary ETL for the bundled world outline |
 
 `:core:model` and `:core:routing` have no Android dependency on purpose: their tests run on a
 plain JVM in milliseconds, and no `Context` can leak into the domain layer.
@@ -86,10 +87,33 @@ own exported schema JSON, and the verifier fails the build if the shipped file n
 It also generates real routes for the shortest- and longest-range aircraft in the fleet, so the
 dataset and the route generator cannot silently stop agreeing.
 
+## The bundled world outline
+
+`:tools:worldmap` turns the checked-in Natural Earth `ne_110m_land` snapshot into
+`app/src/main/assets/maps/land.outline` — **122 rings, 4,601 points, 18.9 KB**, which is what a
+route card draws its coastline from. Land polygons, not coastlines: a closed ring can be filled,
+an open line cannot.
+
+The device never sees GeoJSON. Coordinates are quantised to 16 bits (~610 m of longitude, ~305 m
+of latitude — under a twentieth of a pixel at the closest a card zooms), rings carry explicit
+offsets rather than a sentinel coordinate, and loading is a file read plus two array copies.
+
+```bash
+./gradlew :tools:worldmap:run                     # regenerate the outline
+./gradlew :tools:worldmap:verifyWorldOutline      # also runs as part of `check`
+```
+
+The verifier does the thing a decode check cannot: it asks whether eleven unmistakable places —
+the Sahara, the Amazon, East Antarctica, the central Pacific — come out as land or as water. A
+transposed coordinate pair, a flipped sign or a ring table off by one all still decode, still
+fill, and still look like *a* planet.
+
 ## Data and attribution
 
 - Airport and runway data: [OurAirports](https://ourairports.com/data/) — released to the public
   domain.
+- Land outline: [Natural Earth](https://www.naturalearthdata.com/) `ne_110m_land` — released to the
+  public domain, so there is nothing to attribute on screen.
 - Weather: [NOAA Aviation Weather Center](https://aviationweather.gov/data/api/) — no API key
   required. [AVWX](https://avwx.rest/) is available as an alternative provider.
 - Satellite imagery: attribution is rendered on the globe and depends on the selected tile
