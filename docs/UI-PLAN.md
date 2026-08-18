@@ -178,7 +178,7 @@ chips and one segmented control.
 | **B5** | Mode selector | Any · Not flown · This aircraft |
 | **B6** | Infinite scroll | Appends 50 on approach to the end; pull-to-refresh regenerates |
 | **B7** | ~~Generate FAB~~ | **Cut.** See below |
-| **B8** | Swipe actions | Right = mark flown, writing both the logbook row and the airframe's flag, with undo; left = discard and generate a replacement into the gap |
+| **B8** | Swipe actions | Right = mark flown, writing both the logbook row and the airframe's flag, with undo; left = replace, which keeps the airframe and the departure and generates a new destination into the gap |
 | **B9** | Empty, loading, error states | Delayed skeletons, distinct empty vs. no-match vs. failure states |
 | **B10** | Plan screen motion | Staggered entrance for the first screenful, spring placement, swipe reveal proportional to commitment |
 

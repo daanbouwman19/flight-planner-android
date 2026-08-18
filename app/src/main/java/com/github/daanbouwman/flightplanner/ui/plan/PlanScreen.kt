@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -643,7 +644,7 @@ private fun RouteList(
                         fadeOutSpec = null,
                         placementSpec = FlightMotion.spatial(),
                     )
-                    .rowEntrance(index = index, rowId = row.id, entered = entered),
+                    .rowEntrance(index = index, row = row, entered = entered),
             )
         }
 
@@ -663,7 +664,10 @@ private fun RouteList(
 }
 
 /**
- * The staggered entrance: rows fade and rise into place, 30 ms apart.
+ * How a row arrives — which is two different animations, because a row arrives
+ * for two different reasons.
+ *
+ * ### A batch: staggered, fading and rising
  *
  * The stagger flattens after [com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion.EnterStaggerCap]
  * items, which is what keeps a fifty-row batch from becoming a one-and-a-half
@@ -672,35 +676,58 @@ private fun RouteList(
  * the cap, land as one block rather than cascading below the fold where nobody
  * is looking.
  *
- * Fade runs on the effects spring and the rise on the spatial one, which is the
- * design system's split applied to a single entrance: the alpha must not
- * overshoot, the movement should.
+ * ### A replacement: dealt in from the trailing edge, at once
+ *
+ * A replacement is not a small batch and the batch entrance was wrong for it in
+ * three separate ways. It inherited a stagger delay from its *index*, so
+ * replacing row six sat still for 180 ms first, and replacing anything past the
+ * cap got no animation at all and simply popped. It rose from below, which says
+ * "this list is arriving" when the list is already here. And it faded up from
+ * nothing in a slot the user had just emptied, so the sequence read as a hole
+ * that something grew back into.
+ *
+ * What actually happened is that one card was thrown off the start edge and
+ * another took its place, so the replacement comes in across the same axis, from
+ * the opposite edge — the deck advancing by one. It starts immediately, whatever
+ * its index: the user is looking straight at this slot, which is exactly the
+ * case a stagger is wrong for.
+ *
+ * ### Both
+ *
+ * Fade runs on the effects spring and the movement on the spatial one, which is
+ * the design system's split applied to a single entrance: the alpha must not
+ * overshoot, the movement should. The travel is a fraction of the row's own
+ * width rather than a fixed distance, so it reads the same on a phone and on a
+ * tablet.
  *
  * A staggered sequence is a chain of *delays*, and the system animator scale does
  * not scale delays — so reduce-motion has to switch this off explicitly rather
  * than rely on Compose shortening it.
  */
 @Composable
-private fun Modifier.rowEntrance(index: Int, rowId: Long, entered: MutableSet<Long>): Modifier {
+private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<Long>): Modifier {
+    val rowId = row.id
+    val replacing = row.arrivedAsReplacement
     val reduceMotion = LocalReduceMotion.current
     // Read and record in one step, during composition, so the row knows whether
     // this is its first appearance before any effect has had a chance to run.
     val alreadyEntered = remember(rowId) { !entered.add(rowId) }
 
-    // Only the first screenful animates.
+    // Only the first screenful of a batch animates.
     //
     // A staggered entrance explains where a *new list* came from. It explains
     // nothing about row 63 of an appended batch, which the user is already
     // scrolling towards at speed — there it is just a delay between arriving at
     // a row and being able to read it, which is exactly the "cards slowly pop
     // in" that makes a fast fling feel broken. Past the stagger cap, rows are
-    // simply there.
-    val animates = index < FlightMotion.EnterStaggerCap
+    // simply there. A replacement is exempt: its index says where it is in the
+    // list, not how far it is from the user's attention.
+    val animates = replacing || index < FlightMotion.EnterStaggerCap
 
     var visible by remember(rowId) { mutableStateOf(alreadyEntered || reduceMotion || !animates) }
     LaunchedEffect(rowId) {
         if (!visible) {
-            delay(FlightMotion.enterDelayMillis(index).toLong())
+            if (!replacing) delay(FlightMotion.enterDelayMillis(index).toLong())
             visible = true
         }
     }
@@ -710,16 +737,29 @@ private fun Modifier.rowEntrance(index: Int, rowId: Long, entered: MutableSet<Lo
         animationSpec = FlightMotion.effects(),
         label = "rowEntranceAlpha",
     )
-    val rise = with(LocalDensity.current) { EntranceRise.toPx() }
-    val translation by animateFloatAsState(
-        targetValue = if (visible) 0f else rise,
+    // One progress value for either axis: 0 is "off its mark", 1 is home. The
+    // spatial spring carries it past 1 and back, which is the overshoot that
+    // gives the card its weight — on the rise it is a settle, on the slide it is
+    // the card knocking against the edge it came to rest at.
+    val progress by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
         animationSpec = FlightMotion.spatial(),
-        label = "rowEntranceRise",
+        label = "rowEntranceTravel",
     )
+
+    val rise = with(LocalDensity.current) { EntranceRise.toPx() }
+    // A swipe carries the card towards the start edge, so its replacement comes
+    // from the end one — which is the right-hand side only in a left-to-right
+    // layout.
+    val fromEnd = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
 
     return graphicsLayer {
         this.alpha = alpha
-        translationY = translation
+        if (replacing) {
+            translationX = (1f - progress) * size.width * ReplacementSlideFraction * fromEnd
+        } else {
+            translationY = (1f - progress) * rise
+        }
     }
 }
 
@@ -925,6 +965,17 @@ private const val HeaderKey = "header"
 
 /** How far a row rises into place. Small: this is a hint of arrival, not a slide-in. */
 private val EntranceRise = 12.dp
+
+/**
+ * How far a replacement travels in, as a fraction of the row's width.
+ *
+ * Larger than [EntranceRise] is to a row's height, and deliberately: this one is
+ * a slide-in. The card it replaces left across the whole width, so a hint would
+ * not read as an answer to it — but a full width would make a repeatable action
+ * into a performance, and the card would spend most of the animation off screen
+ * where it cannot be read. A third is far enough to have an obvious direction.
+ */
+private const val ReplacementSlideFraction = 0.33f
 
 /** The card column's margin. Named because the header is an item inside it. */
 private val HorizontalGutter = 16.dp

@@ -77,6 +77,18 @@ class RouteRow(
      * composable — see that component for why.
      */
     val arc: FloatArray,
+    /**
+     * True when this row was generated to take a swiped row's place, rather
+     * than as part of a batch.
+     *
+     * It exists so the row can arrive by a different route than its neighbours
+     * did: a batch fades and rises into an empty list, but a replacement drops
+     * into a slot the user has just emptied, and the two want different motion.
+     * The list has no other way to tell them apart — a replacement is simply
+     * the next `id` at a position that used to hold another one — so the row
+     * carries the fact with it.
+     */
+    val arrivedAsReplacement: Boolean = false,
 ) {
     /**
      * True when the airframe needs more runway than the departure offers.

@@ -22,12 +22,11 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SheetState
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -38,7 +37,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.flow.first
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
@@ -81,18 +79,28 @@ fun PlanPickerSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         val focusRequester = remember { FocusRequester() }
         LaunchedEffect(target) {
-            // The sheet exists to be typed into, so it takes focus — but *after*
-            // it has settled, not while it is animating in.
+            // The sheet exists to be typed into, so it takes focus — one frame
+            // after it composes, so that the keyboard rises *with* the sheet.
             //
-            // Requesting focus during the first composition starts the input
-            // method service, and on a cold start that is expensive enough to
-            // block the main thread for over a second: measured at 104 skipped
-            // frames on the first open, with the sheet's slide, the keyboard's
-            // own animation and the result list all competing for the same frame.
-            // Waiting until the sheet is expanded moves that cost to a moment
-            // when nothing else is moving. The user still lands in the field.
-            snapshotFlow { sheetState.currentValue }
-                .first { it == SheetValue.Expanded }
+            // This waited for `SheetValue.Expanded` first, to keep the input
+            // method service's start-up off the frames the slide is running on.
+            // It did that, and it cost the thing the sheet is for: two
+            // animations that could overlap were run end to end instead.
+            // Measured on the emulator, on a debug build, first open after a
+            // cold start: tap to keyboard-shown 2.25 s, of which 1.55 s was the
+            // wait — a dead beat with a settled sheet and no keyboard, long
+            // enough to reach for the field a second time. Requesting a frame
+            // after composition instead starts the keyboard while the sheet is
+            // still sliding, and the same measurement is 1.33 s. (Both figures
+            // are inflated by the build — a debug APK runs interpreted — so
+            // read the difference, not the absolute.) No skipped-frame warning
+            // was logged either way.
+            //
+            // The frame is not decoration. `requestFocus` needs the node
+            // attached, and going straight from the effect's first resumption
+            // ties the IME start-up to the same frame as the sheet's first
+            // layout and the fifty suggestion rows underneath it.
+            withFrameNanos { }
             focusRequester.requestFocus()
         }
 

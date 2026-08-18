@@ -395,27 +395,76 @@ class PlanViewModel @Inject constructor(
     }
 
     /**
-     * Discards one route and generates a replacement into the gap it leaves.
+     * Discards one route and generates a new destination for the same flight.
      *
-     * The replacement is drawn from the same prepared batch, so it honours the
-     * mode, the locked departure and the filters the discarded route was
-     * generated under. If generation cannot produce one — a locked departure
-     * with almost nothing in range — the row is simply gone rather than
-     * replaced by a duplicate.
+     * Replace is not "give me another route" — pull-to-refresh does that, for
+     * the whole list. It is the answer to *"this leg, but somewhere else"*: the
+     * airframe and the field it is standing at are the parts the user did not
+     * ask to change, so they stay and only the far end moves. Re-rolling the
+     * batch's own request instead would change all three, and swiping away a
+     * 737 out of Schiphol could hand back a Cessna out of Anchorage.
+     *
+     * So the request is narrowed to this row — [RouteMode.Specific] for its
+     * airframe, its departure locked — while everything else comes from the
+     * prepared batch, which keeps the replacement generated under the same
+     * filters as the neighbours it lands between.
+     *
+     * A handful of candidates are generated rather than one, because a locked
+     * departure with little in range readily returns the destination just
+     * discarded, and a replace that hands back the same card reads as a broken
+     * swipe. The first candidate that is somewhere else wins; if they are all
+     * the same place then that is the only answer there is, and showing it
+     * beats leaving a hole. If generation produces nothing at all — an airframe
+     * that can reach nowhere from where it stands — the row is simply gone.
+     *
+     * ### The row is swapped, not removed and re-added
+     *
+     * The old row stays in the list until the new one exists, and then both
+     * happen in a single update. It is tempting to drop it first so the card
+     * leaves "under the finger", but the card has already left: the swipe
+     * carried it off screen, and what removing the row actually does is close
+     * the *slot*. Closing it and reopening it a few milliseconds later drags
+     * every card below up and back down for no reason anybody can see, and on a
+     * locked departure with little in range those milliseconds are not few.
+     * Held open, the gap is simply where the replacement appears.
+     *
+     * The position is therefore also resolved inside the update rather than
+     * before the generation, so a batch that arrived meanwhile cannot be spliced
+     * at a stale index.
      */
     fun replace(row: RouteRow) {
         viewModelScope.launch {
-            val position = routes.value.indexOf(row)
-            if (position < 0) return@launch
-            routes.update { it - row }
+            if (row !in routes.value) return@launch
 
-            val current = batch ?: return@launch
-            val replacement = runCatchingCancellable {
-                buildRows(current, current.request.copy(amount = 1))
-            }.getOrNull()?.firstOrNull() ?: return@launch
+            val current = batch
+            val candidates = if (current == null) {
+                emptyList()
+            } else {
+                runCatchingCancellable {
+                    buildRows(
+                        current,
+                        current.request.copy(
+                            mode = RouteMode.Specific(row.aircraft.id),
+                            lockedDepartureIcao = row.departure.icao,
+                            amount = REPLACEMENT_CANDIDATES,
+                        ),
+                        arrivedAsReplacement = true,
+                    )
+                }.getOrNull().orEmpty()
+            }
+
+            val replacement = candidates.firstOrNull { it.destination.id != row.destination.id }
+                ?: candidates.firstOrNull()
 
             routes.update { rows ->
-                rows.toMutableList().apply { add(position.coerceIn(0, size), replacement) }
+                val position = rows.indexOf(row)
+                if (position < 0) {
+                    rows
+                } else {
+                    rows.toMutableList().apply {
+                        if (replacement == null) removeAt(position) else set(position, replacement)
+                    }
+                }
             }
         }
     }
@@ -508,7 +557,11 @@ class PlanViewModel @Inject constructor(
      * back up by its code, which would be a binary search per row to recover
      * something never lost.
      */
-    private suspend fun buildRows(current: Batch, request: RouteRequest): List<RouteRow> {
+    private suspend fun buildRows(
+        current: Batch,
+        request: RouteRequest,
+        arrivedAsReplacement: Boolean = false,
+    ): List<RouteRow> {
         val generated = current.generator.generate(request)
         if (generated.isEmpty()) return emptyList()
 
@@ -527,11 +580,15 @@ class PlanViewModel @Inject constructor(
         }
 
         return withContext(defaultDispatcher) {
-            generated.mapNotNull { route -> toRow(route, bySlot) }
+            generated.mapNotNull { route -> toRow(route, bySlot, arrivedAsReplacement) }
         }
     }
 
-    private fun toRow(route: GeneratedRoute, bySlot: Map<Int, Airport>): RouteRow? {
+    private fun toRow(
+        route: GeneratedRoute,
+        bySlot: Map<Int, Airport>,
+        arrivedAsReplacement: Boolean,
+    ): RouteRow? {
         // A missing display row means the index and the database disagree, which
         // is a dataset defect rather than a user-facing one. Dropping the route
         // is better than showing a card with a blank airport on it.
@@ -555,6 +612,7 @@ class PlanViewModel @Inject constructor(
                 destLat = destination.latitude,
                 destLon = destination.longitude,
             ),
+            arrivedAsReplacement = arrivedAsReplacement,
         )
     }
 
@@ -660,6 +718,14 @@ class PlanViewModel @Inject constructor(
          * above it, the list visibly lags the keyboard.
          */
         const val SEARCH_DEBOUNCE_MILLIS = 120L
+
+        /**
+         * How many destinations [replace] generates to choose one from. Small,
+         * because the only thing the spares buy is a way past the destination
+         * just discarded, and a route is a binary search plus a bounded scan —
+         * eight of them do not cost a frame.
+         */
+        const val REPLACEMENT_CANDIDATES = 8
     }
 }
 

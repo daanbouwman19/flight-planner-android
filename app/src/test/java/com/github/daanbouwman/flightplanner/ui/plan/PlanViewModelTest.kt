@@ -19,6 +19,7 @@ import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.AirportIndexBuilder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -435,6 +436,26 @@ class PlanViewModelTest {
         // Only the swiped card moves, so only the swiped card animates.
         after[1].id shouldBe before[1].id
         after[3].id shouldBe before[3].id
+    }
+
+    @Test
+    fun `replace keeps the airframe and the departure and changes only the destination`() = planTest { model ->
+        model.generate()
+        advanceUntilIdle()
+
+        val before = model.uiState.value.routes
+        // Every row, not one: the point is that replace narrows the request to
+        // the row it was handed, and a batch generated under "Any" has many
+        // departures and many airframes in it, so one sample proves little.
+        before.forEachIndexed { position, target ->
+            model.replace(target)
+            advanceUntilIdle()
+
+            val replacement = model.uiState.value.routes[position]
+            replacement.aircraft.id shouldBe target.aircraft.id
+            replacement.departure.icao shouldBe target.departure.icao
+            replacement.destination.icao shouldNotBe target.destination.icao
+        }
     }
 
     @Test
