@@ -834,7 +834,7 @@ on the bar, so nothing is painted behind the clock and the invariant holds.
 | **F15** | `06h 18m` | `6:18`, which is how a flight plan writes it |
 | **F16** | RTL unverified | Verified under an Arabic app locale. It mirrors correctly — and exposed that distances and runways were being localised into Arabic-Indic digits while ETE stayed Latin. Aviation figures are chart figures: they now format in a fixed locale everywhere, and only the spoken description stays localised, because speech follows the language it is spoken in |
 
-### F10, which is not a code change
+### F10 — the navigation bar, still a decision and now a better one
 
 **Five bottom-bar destinations serve one action loop.** Plan generates, Logbook
 records it, Stats is a projection *of* Logbook, Airports duplicates a search the
@@ -842,12 +842,37 @@ departure picker already performs, and Fleet duplicates the aircraft picker. The
 bar's cost is already visible: Settings was evicted from it for space, which is
 the layout saying there is one destination too many.
 
-The proposal is Plan · Logbook · Fleet, with Stats as the Logbook's header summary
-and Airports as a search entry inside Plan — which frees the fifth slot for
-Settings. It is **not implemented**, because it deletes two destinations that
-Phases D and E are scoped to build, and that is a product decision rather than a
-defect to fix. The trigger is the same either way: decide before Phase D, because
-the cost of moving those screens rises the moment they exist.
+The review's proposal was Plan · Logbook · Fleet, with Stats folded into the
+Logbook, Airports folded into Plan, and **Settings taking the freed slot**. That
+last part is wrong, and it is worth writing down why: a bottom-bar slot is for a
+place you move between constantly, and Settings is somewhere you go once and come
+back from. Promoting it would repeat the mistake the bar is already making — a
+destination in the bar that does not earn its permanence — just with a different
+occupant.
+
+**The shape being considered instead is a Profile section.** One destination for
+the things that are about *you* rather than about the next flight: the logbook,
+the statistics drawn from it, and a settings entry point as an icon within it.
+That gives a bar of Plan · Fleet · Profile — or Plan · Fleet · Airports · Profile
+if browsing airports earns a slot of its own — and it puts Settings exactly one
+tap deeper than a section, which is the depth it deserves.
+
+Three things to weigh before this is settled:
+
+- **Logbook and Stats are the same subject at two levels of zoom.** Records and
+  the summary of those records belong on one screen, which is an argument for the
+  Profile shape independent of what it does to the bar.
+- **"Profile" has to mean something in an app with no account.** There is no sign
+  in, no server and no user record — so the name has to read as "your flying"
+  rather than as an account page, or it promises something the app does not have.
+- **It changes what Phase D builds.** Phase D is currently two screens, Logbook
+  and Fleet. Under this shape it is one section containing two views, and the
+  shared list-screen work it needs is the same either way.
+
+**Not implemented.** It was briefly built and reverted: the bar is still five
+destinations with Settings in the app bar, exactly as before. The trigger has not
+changed — decide before Phase D, because the cost of moving these screens rises
+the moment they exist.
 
 ### The measurement that was owed — and a retraction
 
@@ -975,6 +1000,13 @@ and the card→detail→back journey is continuous with no visual jump.
 ---
 
 ## 6. Phase D — Logbook and Fleet
+
+**Blocked on one decision, not on code.** F10 above is still open, and it decides
+whether this phase builds two sections or one: a Profile section holding the
+logbook and its statistics, with settings an icon inside it, changes what D1 sits
+in and folds E3 forward. The tasks below are the same work either way — only
+where they live changes — but deciding after they exist costs more than deciding
+now.
 
 | ID | Task | Notes |
 | --- | --- | --- |
