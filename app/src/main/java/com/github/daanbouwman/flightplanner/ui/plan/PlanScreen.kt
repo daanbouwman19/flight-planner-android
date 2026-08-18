@@ -1204,12 +1204,11 @@ private fun PlanEmptyFleetPreview() {
 private fun Modifier.fadeUnderStatusBar(height: Dp): Modifier =
     // No inset, no layer: nothing to fade under, nothing to composite.
     //
-    // The layer itself is free in practice. Five interleaved pairs on an SM-S942B,
-    // benchmark build, ten flings each: 9 ms p50 and 17-18 ms p90 with the fade
-    // against 9-10 ms and 18-24 ms without, GPU p50 4 ms either way — never worse
-    // with it. That was worth checking rather than assuming, because wrapping a
-    // scrolling list in an offscreen layer is exactly the shape of change that
-    // usually does cost frames.
+    // **The layer's cost is still unmeasured.** An A/B that appeared to clear it was
+    // void: the installs between pairs failed silently — a Windows adb handed a
+    // POSIX path — so both halves measured the same APK. Wrapping a scrolling list
+    // in an offscreen layer is exactly the shape of change that usually does cost
+    // frames, so it stays on P2's list until a macrobenchmark says otherwise.
     if (height <= 0.dp) {
         this
     } else {

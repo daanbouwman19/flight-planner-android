@@ -849,23 +849,44 @@ Phases D and E are scoped to build, and that is a product decision rather than a
 defect to fix. The trigger is the same either way: decide before Phase D, because
 the cost of moving those screens rises the moment they exist.
 
-### The measurement that was owed
+### The measurement that was owed — and a retraction
 
 The top fade wraps the list in an offscreen compositing layer, which is the shape
-of change that usually costs frames. On the emulator it sat inside that machine.s
-own noise band, which Phase B++ already established is wider than the effect being
-measured, so it was recorded as unverified rather than claimed as free.
+of change that usually costs frames, so Phase B++ recorded its cost as unverified
+rather than claiming it was free.
 
-Measured since, on an SM-S942B, benchmark build, five interleaved pairs of ten
-flings: **9 ms p50 and 17-18 ms p90 with the fade, against 9-10 ms and 18-24 ms
-without**, GPU p50 4 ms either way. It was never the worse of a pair. The layer
-costs nothing measurable on hardware.
+An A/B then appeared to clear it — five interleaved pairs, "never worse with the
+fade". **That result was void.** The installs between pairs failed silently: a
+Windows `adb` was handed a POSIX `/tmp/...` path from a shell with path
+conversion disabled, and the failures were suppressed with `>/dev/null 2>&1`. Both
+halves of every pair measured whatever was already on the phone. So the fade's
+cost is still unmeasured, and it belongs to P2.
 
-(Those figures are not comparable with the Phase B++ table above — different day,
-different thermal state, and a build with the arrowhead and graticule in it. Only
-the within-session pairing means anything, which is the whole reason for pairing.)
+Two things worth keeping from the wreckage.
 
----
+**The build type matters more than anything measured so far.** Verified installs,
+same phone, same harness, minutes apart:
+
+| Build | p50 | p90 | p95 | janky |
+| --- | --- | --- | --- | --- |
+| `benchmark` (release code) | 8 ms | 11–12 ms | 12 ms | 5.8 % / 6.2 % / 7.3 % |
+| `debug` | 8–9 ms | 16–18 ms | 21 ms | 9.9 % / 11.6 % |
+
+The median hardly moves — a cheap frame is cheap either way — and the tail halves.
+The expensive frames are the ones where a card composes and draws for the first
+time, which is precisely where a debuggable build loses.
+
+**The "same APK, wildly different numbers" anecdote was wrong.** Phase P blamed
+the fling pattern for a 5–7 ms session and a 9–12 ms session. It was not the
+pattern: the first session's installs worked and the second's did not, so it was
+`benchmark` against `debug`. The harness is cruder than a macrobenchmark, but it
+is not what produced that gap.
+
+The lesson is narrower than "the harness lies" and sharper: **never suppress the
+output of a command whose success you are about to depend on.** Every number in
+this document that came from an install is only as good as the install, and the
+one check that would have caught it — reading the `DEBUGGABLE` flag out of
+`dumpsys package` — takes one line.
 
 ## 4d. Phase P — Performance, before the next feature
 
@@ -889,21 +910,26 @@ smoothness is on. Sampled *during* a fling, `mActiveRenderFrameRate` is
 a 60 Hz reading suggests. Every earlier figure in this document was recorded
 without knowing which of the two applied.
 
-Against 8.33 ms, a synthetic-fling harness measured a 9 ms median and 10–14 %
-janky frames. Read that as "worth investigating", not as a verdict — see below.
+Against 8.33 ms, the `benchmark` build measures **8 ms p50 and 11–12 ms p90**, with
+~6 % of frames janky. The median is inside the budget and the tail is not, which is
+exactly the shape of "stutters at first, then smooths out" — and it is what P1
+exists to fix.
 
 ### Why the existing numbers cannot answer this
 
-The same APK, on the same phone, on the same day, measured **5–7 ms p50 and
-2.6–5.4 % janky** in one session and **9–12 ms p50 and 10–20 % janky** in
-another. The only differences were the fling pattern (eight back-to-back versus
-ten with pauses) and where the device was in its own warm-up. A harness whose
-output moves by 2× between runs of identical code cannot measure a change worth
-1 ms, and every conclusion in this document that rests on it is only trustworthy
-because it was an *interleaved A/B within one session* — never an absolute.
+Two sessions measured "the same APK" at **5–7 ms p50** and **9–12 ms p50**, and the
+first explanation offered here was the fling pattern. It was not: the second
+session's installs had failed silently, so it was the `benchmark` build against the
+`debug` one. Verified installs put release code at **8 ms p50, 11–12 ms p90, ~6 %
+janky** and debug at **8–9 ms p50, 16–18 ms p90, ~11 % janky** — the tail is what
+the build type moves.
 
-That is the same lesson the emulator taught in Phase B++, arriving a second time
-on real hardware: **pairs are evidence, absolutes are not.**
+What survives of the original point: this harness drives synthetic flings through
+`input motionevent` and reads `dumpsys gfxinfo`, which is enough to rank two builds
+in one sitting and not enough to defend an absolute. That is what P2 is for. And
+the reason the wrong explanation lasted an afternoon is that a failed install was
+silent — so P2's first job is to make the thing being measured impossible to
+mistake.
 
 ### Tasks
 
