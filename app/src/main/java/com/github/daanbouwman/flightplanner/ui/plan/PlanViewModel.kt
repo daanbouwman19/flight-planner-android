@@ -565,10 +565,35 @@ class PlanViewModel @Inject constructor(
         // generation, so an exception escaping it kills that coroutine — no later
         // mode change, filter change or refresh would ever produce a batch again —
         // and with no handler on `viewModelScope` it takes the process with it.
-        val airframes = runCatchingCancellable { fleetRepository.fleet() }
+        val existing = runCatchingCancellable { fleetRepository.fleet() }
             .onFailure { fail(it, PlanFailure.Unknown) }
             .getOrNull() ?: return null
 
+        // **Seed here, on first run.** `seedIfEmpty` is documented as "seeds the
+        // starter fleet on first run" and was wired to nothing that runs on a
+        // first run: the only caller was the on-device self-check, which lives
+        // behind Settings. So a genuinely fresh install opened on the Plan screen,
+        // found no airframes and showed "your fleet is empty" — an error about a
+        // state the app is supposed to set up for itself, reachable only by
+        // visiting a diagnostic screen the user has no reason to know about.
+        //
+        // This is the right place rather than `Application.onCreate` or a startup
+        // Initializer, both of which spend the cold-start budget on every launch
+        // to fix the first one. Generation already waits on the airport index and
+        // already runs off the main thread, so the seed rides along on a path that
+        // is behind the first frame by construction — and `seedIfEmpty` is a
+        // no-op the moment any airframe exists, which is every launch after this.
+        val airframes = if (existing.isEmpty()) {
+            runCatchingCancellable {
+                fleetRepository.seedIfEmpty()
+                fleetRepository.fleet()
+            }.onFailure { fail(it, PlanFailure.Unknown) }.getOrNull() ?: return null
+        } else {
+            existing
+        }
+
+        // Still empty after seeding is a real failure — the seed asset is missing
+        // or unreadable — and it keeps its own message rather than being retried.
         if (airframes.isEmpty()) {
             status.value = PlanStatus.Failed(PlanFailure.FleetEmpty)
             return null
