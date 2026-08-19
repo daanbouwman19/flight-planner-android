@@ -1,103 +1,52 @@
 package com.github.daanbouwman.flightplanner.ui
 
-import androidx.activity.BackEventCompat
-import androidx.activity.compose.PredictiveBackHandler
-import androidx.compose.animation.core.Animatable
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMap
-import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
-import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
-import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
-import com.github.daanbouwman.flightplanner.model.Airport
-import com.github.daanbouwman.flightplanner.model.Runway
-import com.github.daanbouwman.flightplanner.model.SurfaceKind
 import com.github.daanbouwman.flightplanner.navigation.Destination
 
 import com.github.daanbouwman.flightplanner.ui.chrome.SharedRouteKeys
-import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.ui.chrome.sharedRouteElement
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailContent
-import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailUiState
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailViewModel
-import com.github.daanbouwman.flightplanner.ui.detail.RouteLinks
-import com.github.daanbouwman.flightplanner.ui.detail.rememberRouteActionLauncher
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /**
  * One route, at the size a route deserves when it is the only thing on screen.
@@ -121,15 +70,27 @@ import kotlinx.coroutines.launch
  * The two `ValueChip`s that used to sit under the hero are gone: their figures
  * moved onto the spine. The screen says more than it did and has one row fewer.
  *
- * ### Back is progressive rather than binary
+ * ### Predictive back is the NavHost's, and this screen must keep out of its way
  *
- * As the gesture is dragged the screen shrinks, rounds and drifts away from the
- * swiped edge, so the user can see how far they have committed and can change
- * their mind — releasing under the threshold springs it back rather than
- * snapping. This matters most on the screen a user enters and leaves constantly,
- * which detail is. The spring that settles a cancelled gesture is the design
- * system's `spatial` token, so it is the same physics as every other movement in
- * the app; `:app` never writes a spec of its own.
+ * There is deliberately **no `PredictiveBackHandler` here**. There was one, and it
+ * was worse than nothing: it drew a peek — the screen shrinking, rounding and
+ * drifting off the swiped edge — over a black background, because the screen you
+ * are going *back to* was not composed. That is a screen leaving, not a preview of
+ * where you are going, and "predictive" is the second thing.
+ *
+ * `NavHost` already does the real version: a back gesture seeks the pop transition
+ * to the gesture's own progress, so the Plan screen is composed and fades in
+ * underneath while the detail fades out over it, and the shared elements travel
+ * back to the card as the finger moves. Registering a handler inside the
+ * destination **consumes the gesture before the NavHost sees it**, which is
+ * precisely how the peek came to be drawn over nothing.
+ *
+ * So the rule for this app is: let the navigation host own the back gesture, and
+ * spend the effort on transitions worth seeking rather than on a local imitation.
+ *
+ * **None of it is visible under three-button navigation**, where there is no back
+ * gesture for the platform to report progress for. Check that before concluding
+ * predictive back is broken.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -153,48 +114,11 @@ fun RouteDetailScreen(
     viewModel: RouteDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val backProgress = remember { Animatable(0f) }
-    var swipeEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
-    val settle = FlightMotion.spatial<Float>()
-
-    // With animations off, the gesture still works and still commits — it simply
-    // does not draw the peek. Reduce-motion disables the effect, not the feature.
-    val reduceMotion = LocalReduceMotion.current
-
-    PredictiveBackHandler { events ->
-        try {
-            events.collect { event ->
-                swipeEdge = event.swipeEdge
-                if (!reduceMotion) backProgress.snapTo(event.progress)
-            }
-            onBack()
-        } catch (cancellation: CancellationException) {
-            // The gesture was abandoned, not the coroutine: this callback is
-            // still live, so the screen can be sprung back into place here.
-            backProgress.animateTo(0f, settle)
-        }
-    }
-
     val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
         modifier = modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                val progress = backProgress.value
-                if (progress > 0f) {
-                    val scale = 1f - MAX_SCALE_DELTA * progress
-                    scaleX = scale
-                    scaleY = scale
-                    alpha = 1f - MAX_ALPHA_DELTA * progress
-                    translationX = when (swipeEdge) {
-                        BackEventCompat.EDGE_LEFT -> maxShift.toPx()
-                        else -> -maxShift.toPx()
-                    } * progress
-                    shape = RoundedCornerShape(maxCornerRadius * progress)
-                    clip = true
-                }
-            },
+            .fillMaxSize(),
         topBar = {
             TopAppBar(
                 title = {
@@ -343,11 +267,5 @@ private const val TitleArrowRtl = "←"
  */
 private const val ArrowOpticalLift = 0.08f
 
-/** How far the screen shrinks at full drag. Matches the platform's peek. */
-private const val MAX_SCALE_DELTA = 0.10f
 
-/** Enough fade to read as leaving, not enough to lose the content. */
-private const val MAX_ALPHA_DELTA = 0.25f
 
-private val maxShift = 24.dp
-private val maxCornerRadius = 28.dp

@@ -95,6 +95,16 @@ fun RouteDetailContent(
     onFlownConfirmed: () -> Unit,
     snackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier,
+    /**
+     * Whether the blocks stage themselves in on first composition.
+     *
+     * True on the screen, where arriving *is* the event and the stagger is the
+     * only thing announcing it. False in the pane, where the host already
+     * cross-fades one route's content out and the next one's in — staging on top
+     * of that is two motions for one change, and they agree with each other no
+     * better here than a staggered hero agreed with a shared element.
+     */
+    animateEntrance: Boolean = true,
 ) {
     // From the arguments rather than from the loaded state: the shared element
     // has to be matchable on the first frame, and the airports arrive a query
@@ -188,10 +198,10 @@ fun RouteDetailContent(
                 },
                 loading = state.loading,
                 snackbarHostState = snackbarHostState,
-                modifier = Modifier.enterStaggered(0),
+                modifier = Modifier.enterStaggered(0, animateEntrance),
             )
 
-            LegBlock(state = state, modifier = Modifier.enterStaggered(1))
+            LegBlock(state = state, modifier = Modifier.enterStaggered(1, animateEntrance))
 
             AirportBlock(
                 marker = SpineMarker.Dot,
@@ -205,18 +215,18 @@ fun RouteDetailContent(
                 },
                 loading = state.loading,
                 snackbarHostState = snackbarHostState,
-                modifier = Modifier.enterStaggered(2),
+                modifier = Modifier.enterStaggered(2, animateEntrance),
             )
         }
 
-        WeatherBlock(modifier = Modifier.enterStaggered(3))
+        WeatherBlock(modifier = Modifier.enterStaggered(3, animateEntrance))
 
         ActionsBlock(
             state = state,
             onMarkFlown = onMarkFlown,
             onFlownConfirmed = onFlownConfirmed,
             snackbarHostState = snackbarHostState,
-            modifier = Modifier.enterStaggered(4),
+            modifier = Modifier.enterStaggered(4, animateEntrance),
         )
     }
 }
@@ -797,19 +807,27 @@ private fun MarkFlownButton(marked: Boolean, onClick: () -> Unit) {
  * the first frame — switched off, not shortened.
  */
 @Composable
-private fun Modifier.enterStaggered(index: Int): Modifier {
+private fun Modifier.enterStaggered(index: Int, enabled: Boolean): Modifier {
     val reduceMotion = LocalReduceMotion.current
+    val off = reduceMotion || !enabled
     val spec = FlightMotion.spatial<Float>()
-    val progress = remember { Animatable(if (reduceMotion) 1f else 0f) }
+    val progress = remember { Animatable(if (off) 1f else 0f) }
 
-    LaunchedEffect(reduceMotion) {
-        if (reduceMotion) {
+    LaunchedEffect(off) {
+        if (off) {
             progress.snapTo(1f)
             return@LaunchedEffect
         }
         delay(FlightMotion.enterDelayMillis(index).toLong())
         progress.animateTo(1f, spec)
     }
+
+    // No layer at all when there is nothing to animate. At alpha 1 this is a
+    // render node rather than an offscreen buffer — `CompositingStrategy.Auto`
+    // only allocates one below full opacity — so the saving is a node and a draw
+    // wrapper per block, not a saveLayer. Small, but free: the pane recomposes
+    // these on every selection and none of them will ever move.
+    if (off) return this
 
     return graphicsLayer {
         alpha = progress.value

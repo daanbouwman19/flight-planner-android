@@ -629,7 +629,10 @@ tone-mapped container/on-container pairs that pass 4.5:1 in both light and dark 
 wallpaper.
 
 Edge-to-edge (`enableEdgeToEdge()`), globe under the status bar with a top scrim · predictive back
-via NavHost plus a `PredictiveBackHandler` on the detail sheet · `NavigationSuiteScaffold` (bottom
+**via the NavHost alone** — a `PredictiveBackHandler` inside a destination consumes the gesture
+before the host can seek its pop transition, so the screen being returned to is never composed and
+the "preview" previews nothing; Phase C shipped that and removed it ·
+`NavigationSuiteScaffold` (bottom
 bar → rail → drawer) and `ListDetailPaneScaffold` for Plan and Fleet, hinge-aware on foldables ·
 `Modifier.sharedBounds` on the ICAO pair and aircraft name between card and detail ·
 `Modifier.animateItem()` on list entrance · haptics on mark-as-flown, swipe threshold and

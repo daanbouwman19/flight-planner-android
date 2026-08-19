@@ -102,8 +102,16 @@ Rules that apply everywhere:
 
 - **Springs, not durations,** for anything a user can interrupt. A card mid-flight
   into detail must be able to reverse.
-- **Predictive back is not optional.** Every sheet and detail pane responds to the
-  back gesture progressively.
+- **Predictive back is not optional — and it belongs to the `NavHost`.** A back
+  gesture seeks the pop transition to the gesture's own progress, so the screen
+  being returned *to* is composed and animates in underneath while the outgoing
+  one animates out over it. Do **not** register a `PredictiveBackHandler` inside a
+  destination to draw a local peek: it consumes the gesture before the host sees
+  it, and the result is an outgoing screen sliding over a black background, which
+  is a screen leaving rather than a preview of where you are going. Phase C shipped
+  exactly that mistake and removed it. Spend the effort on transitions worth
+  seeking instead. (A handler is still right for something the host does not own —
+  a sheet, or an in-place state a back gesture should undo.)
 - **Honour reduce-motion.** When `ANIMATOR_DURATION_SCALE == 0`, inertia, stagger
   and count-ups are disabled — not merely shortened.
 - **Haptics on commitment, never on browse.** Mark-as-flown, swipe threshold
@@ -1197,7 +1205,7 @@ figures. The rest is what needed data or a calculation the screen did not have.
 | **C3** | Hero map area | ✅ `RouteMap` at 220 dp, the same component the card draws. **Deliberately a still image until Phase G** — it is the fallback the globe crossfades in over, so it is not throwaway work |
 | **C4** | Actions | ✅ Mark as flown, copy plan, SkyVector, SimBrief, Google Maps (per airport, as on the desktop), share. URLs ported field-for-field from `route_popup.rs` and unit-tested against those literals |
 | **C5** | Weather block | ✅ as a placeholder: the block states what is missing and holds its height, so Phase F fills it without a reflow |
-| **C6** | Detail motion | ✅ `sharedBounds` on the map, the ICAO pair and the aircraft name; the spine staggers in beneath the hero; distance counts up once; mark-as-flown plays a haptic confirmation and then hands back to the list. Making the map's flight clean needed a fix inside `RouteMap` — see below |
+| **C6** | Detail motion | ✅ `sharedBounds` on the map, the ICAO pair and the aircraft name; the spine staggers in beneath the hero; distance counts up once; mark-as-flown plays a haptic confirmation and then hands back to the list. On a two-pane window a new selection cross-fades the pane instead (`FlightMotion.paneContent`), and the content skips its own stagger there so one motion explains one change. Making the map's flight clean needed a fix inside `RouteMap`, and making back *predictive* meant deleting a handler rather than adding one — both below |
 
 **Done when:** ✅ — every element of the desktop's `route_popup.rs` has an
 equivalent, and the card→detail→back journey is continuous with no visual jump. The
@@ -1346,6 +1354,30 @@ as the landscape fix on the full screen, and the pane needed it too — so it no
 lives with the content, where a third host gets it without having to learn the
 lesson again. Hosts decide margins and alignment; the content decides how wide a
 line of it may get.
+
+### Two motion faults found by using it, not by reading it
+
+**Selecting a route in the two-pane layout changed nothing visibly.** The panel
+simply held different text a frame later. There is no navigation on a tablet, so
+none of the phase's transitions applied, and the staged entrance does not replay
+on a recomposition. It cross-fades now — `AnimatedContent` keyed on the *route's
+identity* rather than on the state, because one selection publishes twice (airports
+first, runways a query later) and keying on the state would have faded the panel a
+second time for a change the user did not make. The content skips its own stagger
+in that host, since the fade already explains the change.
+
+**Predictive back was not predictive, and the fix was to delete code.** Dragging
+back from the detail screen shrank and dimmed it over a black background: you could
+see the screen leaving and not the screen you were going to. The cause was this
+phase's own `PredictiveBackHandler`, which drew a local peek and — by registering
+inside the destination — consumed the gesture before `NavHost` could see it. The
+host already seeks the pop transition to the gesture's progress, composing Plan
+underneath and flying the shared elements back to the card as the finger moves.
+Removing the handler restored all of that. See the rule in §2.
+
+A third thing worth knowing before diagnosing either: **an emulator defaults to
+three-button navigation**, where there is no back gesture at all and no amount of
+correct code will show a preview.
 
 ### What the code review found
 

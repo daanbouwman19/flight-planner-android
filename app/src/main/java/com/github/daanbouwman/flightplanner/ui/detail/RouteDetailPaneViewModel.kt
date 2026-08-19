@@ -12,6 +12,25 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
+ * A selection and whatever has been read about it so far.
+ *
+ * The two travel together because the *selection* is the pane's identity and the
+ * loaded detail is only its content. Keying a transition on the content instead
+ * looked equivalent and was not: the first of three publishes has no airports yet,
+ * so a key derived from them read `null>null@null` and every selection cross-faded
+ * twice — out of the old route, into a blank skeleton headed " to ", and only then
+ * into the new one. Three overlapping copies is precisely the smear the key exists
+ * to avoid.
+ *
+ * [route] is known the instant the user taps, and never changes for a given
+ * selection. That is what makes it an identity.
+ */
+data class RouteDetailPaneState(
+    val route: Destination.RouteDetail,
+    val detail: RouteDetailUiState,
+)
+
+/**
  * The route shown in the detail *pane*, beside the list it was chosen from.
  *
  * The same job [RouteDetailViewModel] does for the full screen, minus the one
@@ -30,8 +49,8 @@ class RouteDetailPaneViewModel @Inject constructor(
     private val loader: RouteDetailLoader,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow<RouteDetailUiState?>(null)
-    val state: StateFlow<RouteDetailUiState?> = _state.asStateFlow()
+    private val _state = MutableStateFlow<RouteDetailPaneState?>(null)
+    val state: StateFlow<RouteDetailPaneState?> = _state.asStateFlow()
 
     /**
      * The load in flight, cancelled when a different route is chosen.
@@ -46,11 +65,11 @@ class RouteDetailPaneViewModel @Inject constructor(
         loading?.cancel()
         // The distance came with the selection, so the pane can state it while
         // the airports are still being read — exactly as the full screen does.
-        _state.value = RouteDetailUiState(distanceNm = route.distanceNm)
+        _state.value = RouteDetailPaneState(route, RouteDetailUiState(distanceNm = route.distanceNm))
         loading = viewModelScope.launch {
             val loaded = loader.load(route)
-            _state.value = loaded
-            _state.value = loader.withRunways(loaded)
+            _state.value = RouteDetailPaneState(route, loaded)
+            _state.value = RouteDetailPaneState(route, loader.withRunways(loaded))
         }
     }
 

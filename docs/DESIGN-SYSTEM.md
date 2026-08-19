@@ -91,6 +91,7 @@ object FlightMotion {
 
     @Composable fun sharedEnter(): EnterTransition      // fade only, no scale
     @Composable fun sharedExit(): ExitTransition
+    @Composable fun paneContent(): ContentTransform     // content replaced in place
     @Composable fun boundsTransform(): BoundsTransform  // how a shared element travels
     @Composable fun rememberCountUp(target: Int): Int   // one-shot emphasis on a figure
 }
@@ -104,6 +105,14 @@ underneath it — so a container scaling from 0.94 puts the travelling element a
 layout it is arriving into at two different sizes for the whole transition. A pair of
 screens that share an element uses these instead, and lets the element carry the
 movement on its own.
+
+**`paneContent` is for a panel that stays put and is now about something else** — a
+detail pane after a new selection. A fade-through, never a slide, because a slide
+claims a direction the selection does not have. The outgoing half runs on the *fast*
+effects spring and the incoming half on the default one, so the old content is gone
+before the new is fully there; faded at the same rate, two dense pages of figures
+overlap into a smear. Pair it with content that does not also stage its own
+entrance — same rule as the shared elements, one motion per change.
 
 **`rememberCountUp` is the one place in this file that uses a duration rather than a
 spring,** and deliberately: a spring's overshoot on a counter runs the figure past its

@@ -1,8 +1,10 @@
 package com.github.daanbouwman.flightplanner.ui.plan
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
@@ -38,12 +40,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailContent
+import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailPaneState
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailPaneViewModel
-import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailUiState
 import kotlinx.coroutines.launch
 
 /**
@@ -156,7 +159,7 @@ fun PlanRoute(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RouteDetailPane(
-    state: RouteDetailUiState?,
+    state: RouteDetailPaneState?,
     snackbarHostState: SnackbarHostState,
     onMarkFlown: (Destination.RouteDetail) -> Boolean,
     onFlownConfirmed: () -> Unit,
@@ -169,7 +172,51 @@ private fun RouteDetailPane(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.surface,
     ) { contentPadding ->
-        if (state?.departure == null && state?.loading != true) {
+        // Keyed on the **selection**, not on what has been loaded from it. One
+        // selection publishes three times — the codes alone, then the airports,
+        // then the runways — so a key read off the loaded state is absent on the
+        // first publish and the panel cross-fades twice per tap, through a blank
+        // skeleton, which is the smear this key exists to prevent. The route is
+        // known the instant the user taps and never changes; the rest is content.
+        //
+        // The transform is read outside the spec lambda, which is not composable —
+        // the same reason the navigation graph resolves its transitions up front.
+        val paneTransform = FlightMotion.paneContent()
+        AnimatedContent(
+            targetState = state,
+            transitionSpec = { paneTransform },
+            contentKey = { it?.route?.key() },
+            label = "route detail pane",
+        ) { current ->
+            RouteDetailPaneContent(
+                state = current,
+                contentPadding = contentPadding,
+                snackbarHostState = snackbarHostState,
+                onMarkFlown = onMarkFlown,
+                onFlownConfirmed = onFlownConfirmed,
+            )
+        }
+    }
+}
+
+/**
+ * One route's worth of pane, or the empty invitation.
+ *
+ * Split out of [RouteDetailPane] so that `AnimatedContent` composes a whole copy
+ * of it per route: the outgoing copy keeps showing the route it was given while
+ * it fades, rather than re-rendering with the incoming route's data half way
+ * through its own exit.
+ */
+@Composable
+private fun RouteDetailPaneContent(
+    state: RouteDetailPaneState?,
+    contentPadding: PaddingValues,
+    snackbarHostState: SnackbarHostState,
+    onMarkFlown: (Destination.RouteDetail) -> Boolean,
+    onFlownConfirmed: () -> Unit,
+) {
+    run {
+        if (state == null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -185,10 +232,13 @@ private fun RouteDetailPane(
                     textAlign = TextAlign.Center,
                 )
             }
-            return@Scaffold
+            return@run
         }
 
-        val route = state.toDestination()
+        // Both come from the selection, so the heading states the real codes from
+        // the first frame rather than waiting for a database read to name them.
+        val route = state.route
+        val detail = state.detail
         // Centred, because the content caps its own line length and a pane on a
         // desktop-sized window is wider than that cap. Left-aligned, the spine
         // would sit against the divider with a hand's width of nothing to its
@@ -217,10 +267,13 @@ private fun RouteDetailPane(
 
             RouteDetailContent(
                 route = route,
-                state = state,
+                state = detail,
                 onMarkFlown = { onMarkFlown(route) },
                 onFlownConfirmed = onFlownConfirmed,
                 snackbarHostState = snackbarHostState,
+                // The pane cross-fades between routes; staging each block in on
+                // top of that would be two motions explaining one change.
+                animateEntrance = false,
             )
         }
     }
@@ -231,15 +284,6 @@ private fun RouteRow.toDestination(): Destination.RouteDetail = Destination.Rout
     departureIcao = departure.icao,
     destinationIcao = destination.icao,
     aircraftId = aircraft.id,
-    distanceNm = distanceNm,
-)
-
-/** The same, recovered from a loaded pane state. */
-private fun RouteDetailUiState.toDestination():
-    Destination.RouteDetail = Destination.RouteDetail(
-    departureIcao = departure?.icao.orEmpty(),
-    destinationIcao = destination?.icao.orEmpty(),
-    aircraftId = aircraft?.id ?: 0,
     distanceNm = distanceNm,
 )
 

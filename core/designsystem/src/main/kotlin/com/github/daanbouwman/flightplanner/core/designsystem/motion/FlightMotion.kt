@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.compose.animation.BoundsTransform
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.ExitTransition
@@ -18,6 +19,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -152,6 +154,27 @@ object FlightMotion {
     /** Screen exit, the mirror of [sharedEnter]. */
     @Composable
     fun sharedExit(): ExitTransition = fadeOut(animationSpec = effects())
+
+    /**
+     * Content replaced **in place** — a detail pane showing a different item than
+     * it showed a moment ago.
+     *
+     * Nothing has moved and nothing has been navigated to: the panel is where it
+     * was and is now about something else. So this is a fade-through and not a
+     * slide, because a slide would claim a direction the selection does not have.
+     *
+     * The outgoing half runs on the *fast* effects spring and the incoming half on
+     * the default one, so the old content is gone before the new content is fully
+     * there. Faded together at the same rate, two dense pages of figures overlap
+     * in the middle and the result reads as a smear rather than as a change.
+     *
+     * Pair it with content that does **not** also stage its own entrance. This is
+     * the same rule the shared elements follow: one motion explains one thing, and
+     * two that disagree read as a fault.
+     */
+    @Composable
+    fun paneContent(): ContentTransform =
+        fadeIn(animationSpec = effects()) togetherWith fadeOut(animationSpec = effectsFast())
 
     /**
      * How a shared element travels between two screens.
