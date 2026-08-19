@@ -195,3 +195,68 @@ val CockpitColorScheme: ColorScheme = darkColorScheme(
     onTertiaryFixed = Color(0xFF001E2D),
     onTertiaryFixedVariant = Color(0xFF014C6A),
 )
+
+/**
+ * Chart: a printed aeronautical chart, not a fifth take on the light scheme.
+ *
+ * The surfaces are chart paper — a warm cream, not Material's cool
+ * near-white — and the primary is the navy ink a chart is actually printed in.
+ * Secondary takes a chart's water tint; tertiary takes the sepia a chart draws
+ * its contour lines in. No amber anywhere: that accent belongs to the runway,
+ * and this theme is the one place in the app that is deliberately looking at
+ * the chart instead of out of the cockpit at it.
+ *
+ * It **ignores dynamic colour by construction**, the same way [CockpitColorScheme]
+ * does: the theme's identity is a specific paper and a specific ink, and a
+ * wallpaper-derived scheme cannot promise either. [FlightPlannerTheme] enforces it.
+ */
+val ChartColorScheme: ColorScheme = lightColorScheme(
+    primary = Color(0xFF123A5E),
+    onPrimary = Color(0xFFF4EFE4),
+    primaryContainer = Color(0xFFD3E4F7),
+    onPrimaryContainer = Color(0xFF072542),
+    inversePrimary = Color(0xFF9CC6EE),
+    secondary = Color(0xFF3C6B79),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFD1E7EA),
+    onSecondaryContainer = Color(0xFF12333B),
+    tertiary = Color(0xFF7A5122),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFF2DFC0),
+    onTertiaryContainer = Color(0xFF4A3009),
+    background = Color(0xFFF4EFE4),
+    onBackground = Color(0xFF1E1B12),
+    surface = Color(0xFFF4EFE4),
+    onSurface = Color(0xFF1E1B12),
+    surfaceVariant = Color(0xFFE3DAC6),
+    onSurfaceVariant = Color(0xFF4B4438),
+    surfaceTint = Color(0xFF123A5E),
+    inverseSurface = Color(0xFF332F25),
+    inverseOnSurface = Color(0xFFF7F1E5),
+    error = Color(0xFFB02C34),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFFFFDAD7),
+    onErrorContainer = Color(0xFF92031E),
+    outline = Color(0xFF7C7566),
+    outlineVariant = Color(0xFFD6CCB5),
+    scrim = Color(0xFF000005),
+    surfaceBright = Color(0xFFF4EFE4),
+    surfaceDim = Color(0xFFD6CDB9),
+    surfaceContainer = Color(0xFFE9E2D3),
+    surfaceContainerHigh = Color(0xFFE3DBC9),
+    surfaceContainerHighest = Color(0xFFDDD5BF),
+    surfaceContainerLow = Color(0xFFEFE9DC),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    primaryFixed = Color(0xFFD3E4F7),
+    primaryFixedDim = Color(0xFF9CC6EE),
+    onPrimaryFixed = Color(0xFF041A2F),
+    onPrimaryFixedVariant = Color(0xFF072542),
+    secondaryFixed = Color(0xFFD1E7EA),
+    secondaryFixedDim = Color(0xFF9FC5CB),
+    onSecondaryFixed = Color(0xFF062024),
+    onSecondaryFixedVariant = Color(0xFF12333B),
+    tertiaryFixed = Color(0xFFF2DFC0),
+    tertiaryFixedDim = Color(0xFFD9AE6E),
+    onTertiaryFixed = Color(0xFF2A1B04),
+    onTertiaryFixedVariant = Color(0xFF4A3009),
+)

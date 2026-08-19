@@ -24,13 +24,14 @@ import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduce
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.rememberReduceMotion
 
 /**
- * The four looks the app offers.
+ * The five looks the app offers.
  *
  * [COCKPIT] is not a third dark mode. It is a near-black instrument panel with
  * amber accents, meant for flying at night, and it deliberately ignores dynamic
- * colour — see [FlightPlannerTheme].
+ * colour — see [FlightPlannerTheme]. [CHART] is its light-side counterpart: chart
+ * paper and navy ink, for the same reason and the same exemption.
  */
-enum class ThemeChoice { SYSTEM, LIGHT, DARK, COCKPIT }
+enum class ThemeChoice { SYSTEM, LIGHT, DARK, COCKPIT, CHART }
 
 /**
  * The app's theme. Everything Material 3 Expressive enters the app through here.
@@ -43,10 +44,11 @@ enum class ThemeChoice { SYSTEM, LIGHT, DARK, COCKPIT }
  *
  * Colour resolution, in order:
  *
- * 1. [ThemeChoice.COCKPIT] always wins and always uses [CockpitColorScheme].
- *    Dynamic colour is ignored on purpose: the theme exists so the screen stops
- *    competing with the pilot's dark adaptation, and a scheme derived from
- *    whatever the wallpaper happens to be cannot promise that.
+ * 1. [ThemeChoice.COCKPIT] and [ThemeChoice.CHART] always win and always use
+ *    [CockpitColorScheme] or [ChartColorScheme] respectively. Dynamic colour is
+ *    ignored on purpose for both: each theme's identity is a specific pair of
+ *    surfaces and ink, and a scheme derived from whatever the wallpaper happens
+ *    to be cannot promise that.
  * 2. Otherwise, if [dynamicColor] is on, the wallpaper scheme. No version guard:
  *    minSdk is 35, so dynamic colour (API 31+) is always available.
  * 3. Otherwise the brand fallback — avgas blue with runway-amber accents.
@@ -76,10 +78,12 @@ fun FlightPlannerTheme(
         ThemeChoice.LIGHT -> false
         ThemeChoice.DARK -> true
         ThemeChoice.COCKPIT -> true
+        ThemeChoice.CHART -> false
     }
     val context = LocalContext.current
     val colorScheme: ColorScheme = when {
         themeChoice == ThemeChoice.COCKPIT -> CockpitColorScheme
+        themeChoice == ThemeChoice.CHART -> ChartColorScheme
         dynamicColor ->
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         dark -> BrandDarkColorScheme

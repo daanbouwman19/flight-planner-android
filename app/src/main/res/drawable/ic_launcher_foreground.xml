@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Launcher glyph: a great-circle arc across a globe, which is the single image
-  that best describes what this app does.
+  Launcher glyph: a Fokker F.VII trimotor in plan view, rotated onto a heading
+  rather than sitting square to the mask.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -9,31 +9,23 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Globe disc -->
-    <path
-        android:fillColor="#1B4A7A"
-        android:pathData="M54,27 m-25,0 a25,25 0 1,0 50,0 a25,25 0 1,0 -50,0" />
-
-    <!-- Equator and meridian, to read as a sphere rather than a circle -->
-    <path
-        android:strokeColor="#4F8FC0"
-        android:strokeWidth="1.4"
-        android:pathData="M29,54 L79,54" />
-    <path
-        android:strokeColor="#4F8FC0"
-        android:strokeWidth="1.4"
-        android:pathData="M54,29 a11,25 0 0,1 0,50 a11,25 0 0,1 0,-50" />
-
-    <!-- Great-circle route arc with endpoint markers -->
-    <path
-        android:strokeColor="#FFC048"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:pathData="M36,64 Q54,38 72,58" />
-    <path
-        android:fillColor="#FFC048"
-        android:pathData="M36,64 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M72,58 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-35"
+        android:scaleX="0.96"
+        android:scaleY="0.96">
+        <path
+            android:fillColor="#123A5E"
+            android:pathData="M54,29 a3.5,3.5 0 0,1 3.5,3.5 v43 a3.5,3.5 0 0,1 -7,0
+                v-43 a3.5,3.5 0 0,1 3.5,-3.5z
+                M46,71 h16 a3,3 0 0,1 0,6 h-16 a3,3 0 0,1 0,-6z
+                M39,33 h2 a3,3 0 0,1 3,3 v8 a3,3 0 0,1 -3,3 h-2
+                a3,3 0 0,1 -3,-3 v-8 a3,3 0 0,1 3,-3z
+                M67,33 h2 a3,3 0 0,1 3,3 v8 a3,3 0 0,1 -3,3 h-2
+                a3,3 0 0,1 -3,-3 v-8 a3,3 0 0,1 3,-3z
+                M27,39 h54 a6,6 0 0,1 0,12 h-54 a6,6 0 0,1 0,-12z
+                M52,27 h4 a3.5,3.5 0 0,1 3.5,3.5 v3 a3.5,3.5 0 0,1 -3.5,3.5 h-4
+                a3.5,3.5 0 0,1 -3.5,-3.5 v-3 a3.5,3.5 0 0,1 3.5,-3.5z" />
+    </group>
 </vector>

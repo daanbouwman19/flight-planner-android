@@ -116,16 +116,17 @@ fun SettingsScreen(
 
             SwitchRow(
                 title = stringResource(R.string.settings_dynamic_colour),
-                // Cockpit resolves its own scheme, so the toggle would do nothing
-                // while it is selected. Disabled and explained rather than hidden:
-                // a control that vanishes is a control the user goes looking for.
-                detail = if (settings.themeChoice == ThemeChoice.COCKPIT) {
-                    stringResource(R.string.settings_dynamic_colour_cockpit)
-                } else {
-                    stringResource(R.string.settings_dynamic_colour_detail)
+                // Cockpit and Chart each resolve their own scheme, so the toggle
+                // would do nothing while either is selected. Disabled and explained
+                // rather than hidden: a control that vanishes is a control the user
+                // goes looking for.
+                detail = when (settings.themeChoice) {
+                    ThemeChoice.COCKPIT -> stringResource(R.string.settings_dynamic_colour_cockpit)
+                    ThemeChoice.CHART -> stringResource(R.string.settings_dynamic_colour_chart)
+                    else -> stringResource(R.string.settings_dynamic_colour_detail)
                 },
                 checked = settings.dynamicColour,
-                enabled = settings.themeChoice != ThemeChoice.COCKPIT,
+                enabled = !settings.themeChoice.ignoresDynamicColour,
                 onCheckedChange = viewModel::setDynamicColour,
             )
 
@@ -207,6 +208,7 @@ private val ThemeChoice.labelRes: Int
         ThemeChoice.LIGHT -> R.string.settings_theme_light
         ThemeChoice.DARK -> R.string.settings_theme_dark
         ThemeChoice.COCKPIT -> R.string.settings_theme_cockpit
+        ThemeChoice.CHART -> R.string.settings_theme_chart
     }
 
 private val ThemeChoice.detailRes: Int
@@ -215,7 +217,12 @@ private val ThemeChoice.detailRes: Int
         ThemeChoice.LIGHT -> R.string.settings_theme_light_detail
         ThemeChoice.DARK -> R.string.settings_theme_dark_detail
         ThemeChoice.COCKPIT -> R.string.settings_theme_cockpit_detail
+        ThemeChoice.CHART -> R.string.settings_theme_chart_detail
     }
+
+/** Cockpit and Chart each resolve their own scheme; see [FlightPlannerTheme]. */
+private val ThemeChoice.ignoresDynamicColour: Boolean
+    get() = this == ThemeChoice.COCKPIT || this == ThemeChoice.CHART
 
 @LightDarkPreview
 @Composable
