@@ -31,6 +31,20 @@ android {
             ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
         release {
+            // Debug-signed so that `installRelease` reaches a phone. Everything
+            // else about this build type is real — minified, shrunk, not
+            // debuggable, and running the committed baseline profile — so it is
+            // what to install when the question is how the app actually feels.
+            // Only the signature is local, which is exactly the part a store
+            // would replace, so this **installs and must never be published**;
+            // publishing needs a real key wired in here first.
+            //
+            // Before this, the only non-debuggable build that could be installed
+            // was `benchmarkRelease`, whose name is the baseline-profile plugin's
+            // and describes what it is for rather than what it is. Reaching for a
+            // variant named after benchmarking to answer "how does this feel on my
+            // phone" is how that question stops being asked.
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
