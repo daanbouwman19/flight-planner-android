@@ -119,6 +119,23 @@ object GreatCircle {
     }
 
     /**
+     * Final great-circle bearing, in degrees, 0–360: the heading the aircraft is
+     * on **as it arrives**, not the one it departed on.
+     *
+     * On a great circle those two are the same figure only on a meridian or on
+     * the equator; on an ocean crossing they differ by tens of degrees, which is
+     * the whole reason a route detail states both. EHAM to KJFK leaves on ≈291°
+     * and arrives on ≈229°.
+     *
+     * Derived from [initialBearingDeg] rather than from its own formula: the
+     * bearing back along the reversed leg, turned around. That is the same
+     * spherical identity written once instead of twice, so the two figures cannot
+     * drift apart under a later edit.
+     */
+    fun finalBearingDeg(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double =
+        (initialBearingDeg(lat2, lon2, lat1, lon1) + 180.0) % 360.0
+
+    /**
      * The maximum latitude separation, in radians, for a given range.
      *
      * Used as a cheap rejection test before the (still cheap, but not free)

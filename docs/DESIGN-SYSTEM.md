@@ -88,10 +88,28 @@ object FlightMotion {
     fun enterDelayMillis(index: Int): Int
     @Composable fun navEnter(): EnterTransition
     @Composable fun navExit(): ExitTransition
+
+    @Composable fun sharedEnter(): EnterTransition      // fade only, no scale
+    @Composable fun sharedExit(): ExitTransition
+    @Composable fun boundsTransform(): BoundsTransform  // how a shared element travels
+    @Composable fun rememberCountUp(target: Int): Int   // one-shot emphasis on a figure
 }
 
 @Composable fun rememberReduceMotion(): Boolean
 ```
+
+**`sharedEnter` / `sharedExit` exist because `navEnter` scales.** A shared element
+is drawn in an overlay, and an overlay does not inherit the transform on the screen
+underneath it — so a container scaling from 0.94 puts the travelling element and the
+layout it is arriving into at two different sizes for the whole transition. A pair of
+screens that share an element uses these instead, and lets the element carry the
+movement on its own.
+
+**`rememberCountUp` is the one place in this file that uses a duration rather than a
+spring,** and deliberately: a spring's overshoot on a counter runs the figure past its
+value and back, which reads as a mistake being corrected. It counts from zero on first
+composition and from wherever it is on a later change — *this value appeared* versus
+*this value changed* — and returns the target immediately under reduce motion.
 
 Each is a thin alias over `MaterialTheme.motionScheme`; none writes a spring
 constant. **Screens name an intent, never physics.**
@@ -113,6 +131,7 @@ Those must consult `rememberReduceMotion()` and **switch off**, not merely short
 ```kotlin
 val FlightTypography: Typography
 fun TextStyle.withTabularFigures(): TextStyle    // fontFeatureSettings = "tnum"
+fun TextStyle.asChartFigure(): TextStyle         // tnum + TextDirection.Ltr
 
 val FlightShapeScale: Shapes                     // includes the expressive tiers
 ```
@@ -120,6 +139,17 @@ val FlightShapeScale: Shapes                     // includes the expressive tier
 Numerics use tabular figures so ICAO codes, distances, runway lengths and times do
 not jitter in width as they change — essential in a list of routes where the eye
 scans a column.
+
+**Use `asChartFigure` for a string that is *entirely* a figure**, and
+`withTabularFigures` for prose that happens to contain one. The difference is
+direction, and it only shows up under an RTL locale: the bidi algorithm reorders a
+run of neutral characters in an RTL paragraph, so `1,308 NM` arrives as `NM 1,308`,
+a coordinate pair swaps its halves, and a runway line comes out backwards. A runway
+ident, a heading, a distance and a coordinate read left to right on every
+aeronautical publication in the world, including in countries that read right to
+left — this is the same rule `asFigure` applies to the digits, carried through to
+the order the fields come out in. Do **not** put it on a sentence: a sentence
+follows the language it is written in.
 
 `ValueChip` arranges its label and value with `SpaceBetween` for the same reason.
 When the chip is sized to its content the two arrangements are identical; it only
@@ -247,6 +277,13 @@ Notes that are easy to get wrong:
   whose corner radii round away the tip at eight pixels a side — and, when the
   window frames no coastline at all, a graticule at the land fill's own contrast,
   so an inland card reads as a place rather than as a failed load.
+  **It crops its own drawing.** The outline is projected with a margin, so the map
+  paints past its own bounds by design, and for a long time it let the `Card` around
+  it do the cropping. That broke the first time it was used as a shared element: a
+  shared element is rendered in an overlay where no ancestor clip applies, and every
+  off-window coastline had the whole screen to draw on. The crop is a `clipRect`
+  inside the draw scope rather than `Modifier.clipToBounds()`, which is a
+  `graphicsLayer` and would put an offscreen layer on every card in the list.
 - **`SwipeActionBackground` takes colours rather than choosing them.** "Confirm"
   and "destroy" are the caller's semantics. Pass the *solid* roles, not the
   containers: a pale container behind a `surfaceContainer` card is two

@@ -150,4 +150,16 @@ sealed interface PlanEvent {
 
     /** A route was logged. Carries what the undo action needs to describe itself. */
     data class FlightLogged(val departureIcao: String, val destinationIcao: String) : PlanEvent
+
+    /**
+     * Logging a route failed, and the row has been put back.
+     *
+     * Worth an event of its own because the two ways in are not equally visible.
+     * Swiped from the list, a failure explains itself: the card the user pushed
+     * away comes back under their finger. Marked from the *detail* screen, the
+     * user has already been given a confirmation haptic and returned to a list
+     * they were not looking at when it happened — so without this they would be
+     * told the flight was logged, and nothing would say otherwise.
+     */
+    data object FlightLogFailed : PlanEvent
 }

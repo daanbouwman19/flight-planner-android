@@ -24,6 +24,19 @@ sealed interface Destination {
     @Serializable
     sealed interface TopLevel : Destination
 
+    /**
+     * The Plan section: the list, and the detail of a route in it.
+     *
+     * A graph rather than two sibling destinations because they share state that
+     * has to outlive the navigation between them. `PlanViewModel` is scoped to
+     * this entry, so the detail screen can mark a route flown through the same
+     * instance that owns the list and its undo — one write path instead of two
+     * that must be kept in step. It is not itself a [TopLevel]: the bar selects
+     * [Plan], and the graph is only where the two screens' shared lifetime lives.
+     */
+    @Serializable
+    data object PlanGraph : Destination
+
     @Serializable
     data object Plan : TopLevel
 

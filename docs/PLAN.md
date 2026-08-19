@@ -105,10 +105,10 @@ it lives on Android.
 
 | Desktop (`route_popup.rs`) | Android |
 | --- | --- |
-| Copyable `ICAO to ICAO` heading | ✓ |
+| Copyable `ICAO to ICAO` heading | ✓ as a heading; the *copy* is the Copy plan action, which copies the same summary the desktop does |
 | Distance in NM | ✓ |
 | Estimated flight time from cruise speed, 300 kt fallback (`calculate_flight_time`) | ✓ ported incl. the 60-minute rollover |
-| Copy route summary with "Copied!" feedback | ✓ |
+| Copy route summary with "Copied!" feedback | ✓ — no in-app confirmation, because Android draws its own the moment anything is copied |
 | Aircraft manufacturer + variant | ✓ |
 | **3D globe**: great-circle arc, green DEP / red DEST markers, recenter, compass reset | §5 |
 | Per-airport elevation with a Google Maps link | ✓ |

@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 
 /**
  * A labelled figure — "DIST 3,451 nm", "RWY 12,467 ft".
@@ -71,7 +72,10 @@ fun ValueChip(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(text = value, style = MaterialTheme.typography.labelLarge)
+            // The value is always a figure — that is what this component is for —
+            // so it is set as one: tabular, and left to right even under an RTL
+            // locale, where the bidi algorithm would otherwise deliver `NM 2,847`.
+            Text(text = value, style = MaterialTheme.typography.labelLarge.asChartFigure())
         }
     }
 }

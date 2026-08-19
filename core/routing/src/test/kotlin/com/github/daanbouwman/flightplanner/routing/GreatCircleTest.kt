@@ -173,6 +173,63 @@ class InitialBearingTest {
     }
 }
 
+class FinalBearingTest {
+
+    @Test
+    fun `a leg along a meridian or the equator arrives on the heading it left on`() {
+        // The two cases where the great circle is also a rhumb line, so there is
+        // no convergence of the meridians for the heading to follow.
+        abs(GreatCircle.finalBearingDeg(0.0, 0.0, 10.0, 0.0) - 0.0) shouldBeLessThan 0.001
+        abs(GreatCircle.finalBearingDeg(0.0, 0.0, 0.0, 10.0) - 90.0) shouldBeLessThan 0.001
+    }
+
+    @Test
+    fun `a high-latitude crossing arrives on a markedly different heading`() {
+        // EHAM to KJFK: out over Scotland heading west-north-west, in over Long
+        // Island heading south-west. This is the case the second figure exists
+        // for — a screen stating one bearing for this leg would be 62° out by the
+        // time the aircraft arrived.
+        //
+        // The two expected values are the spherical-Earth figures, computed from
+        // the formula rather than recalled from a chart. A real flight plan's
+        // headings also carry magnetic variation, which this app does not model.
+        val ehamLat = 52.3086
+        val ehamLon = 4.7639
+        val kjfkLat = 40.6398
+        val kjfkLon = -73.7789
+
+        val initial = GreatCircle.initialBearingDeg(ehamLat, ehamLon, kjfkLat, kjfkLon)
+        val final = GreatCircle.finalBearingDeg(ehamLat, ehamLon, kjfkLat, kjfkLon)
+
+        abs(initial - 290.56) shouldBeLessThan 0.01
+        abs(final - 228.98) shouldBeLessThan 0.01
+    }
+
+    @Test
+    fun `the final bearing is the reversed leg's initial bearing, turned around`() {
+        val random = Random(20260819)
+        repeat(500) {
+            val lat1 = random.nextDouble(-85.0, 85.0)
+            val lon1 = random.nextDouble(-180.0, 180.0)
+            val lat2 = random.nextDouble(-85.0, 85.0)
+            val lon2 = random.nextDouble(-180.0, 180.0)
+
+            val final = GreatCircle.finalBearingDeg(lat1, lon1, lat2, lon2)
+            val reciprocal = (GreatCircle.initialBearingDeg(lat2, lon2, lat1, lon1) + 180.0) % 360.0
+
+            abs(final - reciprocal) shouldBeLessThan 0.001
+        }
+    }
+
+    @Test
+    fun `the result stays in range across the date line`() {
+        val final = GreatCircle.finalBearingDeg(0.0, 179.0, 0.0, -179.0)
+        final shouldBeGreaterThan 0.0
+        final shouldBeLessThan 360.0
+        abs(final - 90.0) shouldBeLessThan 0.001
+    }
+}
+
 class AirportIndexInvariantTest {
 
     @Test

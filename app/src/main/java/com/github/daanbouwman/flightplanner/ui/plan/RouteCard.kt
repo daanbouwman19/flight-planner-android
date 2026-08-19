@@ -27,7 +27,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.chrome.SharedRouteKeys
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
+import com.github.daanbouwman.flightplanner.ui.chrome.sharedRouteElement
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.FlightRulesBadge
@@ -35,6 +37,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDa
 import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMap
 import com.github.daanbouwman.flightplanner.core.designsystem.components.ValueChip
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.model.FlightRules
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
@@ -147,11 +150,36 @@ fun RouteCard(
             // resolves to nothing at all. `matchParentSize` takes no part in
             // sizing the card and adopts whatever height the content settled on,
             // which is what a background is.
-            RouteMap(
-                arc = row.arc,
-                outline = outline,
-                modifier = Modifier.matchParentSize(),
-            )
+            // The map is what the detail screen's hero *is*, so it travels rather
+            // than cross-fading — it is the element that makes the two screens
+            // read as one thing at two sizes.
+            //
+            // The key is on a wrapper rather than on `RouteMap` itself, and the
+            // wrapper is what carries `matchParentSize`. That modifier is parent
+            // data — it tells this Box to measure the child at the card's own size
+            // once the card has been sized — and a shared element wants to impose
+            // the bounds it has animated to. Separated, each does one job, and this
+            // side mirrors the detail's hero exactly: a container that holds the
+            // bounds, a map that fills it.
+            //
+            // The overspill this used to paint mid-flight was `RouteMap`'s, not
+            // this modifier's: the component drew past its own bounds and let the
+            // `Card` crop it, and a shared element is rendered in an overlay where
+            // no ancestor clip applies. It crops itself now.
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .sharedRouteElement(
+                        SharedRouteKeys.map(row.departure.icao, row.destination.icao, row.aircraft.id),
+                        remeasure = false,
+                    ),
+            ) {
+                RouteMap(
+                    arc = row.arc,
+                    outline = outline,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -182,7 +210,11 @@ private fun AircraftLine(row: RouteRow) {
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .sharedRouteElement(
+                    SharedRouteKeys.aircraft(row.departure.icao, row.destination.icao, row.aircraft.id),
+                ),
         )
         Text(
             text = row.aircraft.category,
@@ -220,6 +252,11 @@ private fun AirportLine(row: RouteRow) {
             runwayTooShort = row.departureRunwayTooShort,
             alignment = Alignment.Start,
             textAlign = TextAlign.Start,
+            sharedKey = SharedRouteKeys.departure(
+                row.departure.icao,
+                row.destination.icao,
+                row.aircraft.id,
+            ),
         )
         Box(modifier = Modifier.weight(1f))
         AirportEnd(
@@ -228,6 +265,11 @@ private fun AirportLine(row: RouteRow) {
             runwayTooShort = row.destinationRunwayTooShort,
             alignment = Alignment.End,
             textAlign = TextAlign.End,
+            sharedKey = SharedRouteKeys.destination(
+                row.departure.icao,
+                row.destination.icao,
+                row.aircraft.id,
+            ),
         )
     }
 }
@@ -239,6 +281,7 @@ private fun AirportEnd(
     runwayTooShort: Boolean,
     alignment: Alignment.Horizontal,
     textAlign: TextAlign,
+    sharedKey: String,
 ) {
     val tooShortLabel = stringResource(R.string.plan_runway_short)
     Column(
@@ -252,10 +295,11 @@ private fun AirportEnd(
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             textAlign = textAlign,
+            modifier = Modifier.sharedRouteElement(sharedKey),
         )
         Text(
             text = stringResource(R.string.plan_runway_value, runwayFt.asFigure()),
-            style = MaterialTheme.typography.labelSmall.withTabularFigures(),
+            style = MaterialTheme.typography.labelSmall.asChartFigure(),
             // Colour carries the warning rather than a separate icon, so the
             // figure and the judgement of it are the same glyphs. The
             // description says it in words for anyone the colour does not reach.

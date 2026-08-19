@@ -6,9 +6,14 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -16,13 +21,16 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
+import kotlin.math.roundToInt
 
 /**
  * The app's motion vocabulary.
@@ -124,6 +132,80 @@ object FlightMotion {
     @Composable
     fun navExit(): ExitTransition =
         fadeOut(animationSpec = effects()) + scaleOut(animationSpec = spatial(), targetScale = 1.04f)
+
+    /**
+     * Screen entrance for a pair of screens that share an element.
+     *
+     * A plain fade, with **no scale** — and that is the whole reason it exists
+     * separately from [navEnter]. A shared element is rendered in an overlay
+     * above both screens, and an overlay is not subject to the transform on the
+     * screen underneath it. So a container scaling from 0.94 puts the travelling
+     * element and the layout it is travelling into at two different sizes for the
+     * length of the transition, which reads as the element flashing at its final
+     * size. Fading the screens and letting the shared element carry the movement
+     * is also the better division of labour: one thing explains the navigation
+     * rather than two competing for it.
+     */
+    @Composable
+    fun sharedEnter(): EnterTransition = fadeIn(animationSpec = effects())
+
+    /** Screen exit, the mirror of [sharedEnter]. */
+    @Composable
+    fun sharedExit(): ExitTransition = fadeOut(animationSpec = effects())
+
+    /**
+     * How a shared element travels between two screens.
+     *
+     * `Modifier.sharedBounds` defaults to a spec of its own, which is one more
+     * place motion could be tuned from — so the app names this instead and the
+     * physics stays where every other spec lives. Spatial rather than effects:
+     * the whole point of a shared element is that something with a position and a
+     * size *moves*, and the slight overshoot is what sells the continuity.
+     *
+     * The bounds are ignored deliberately. A spring's duration follows from the
+     * distance it has to cover, so a long move already takes longer than a short
+     * one without anyone scaling a figure by hand.
+     */
+    @OptIn(ExperimentalSharedTransitionApi::class)
+    @Composable
+    fun boundsTransform(): BoundsTransform {
+        val spec = spatial<Rect>()
+        return remember(spec) { BoundsTransform { _, _ -> spec } }
+    }
+
+    /**
+     * A figure that counts up to [target] once, for the eye to land on.
+     *
+     * Worth animating only where the number is the reason the screen exists —
+     * the distance on a route detail, a total on a statistics card. A count-up on
+     * every figure in a list is an app that fidgets.
+     *
+     * **It counts from where it is, not from zero, when [target] changes.** The
+     * first run starts at zero because there is nothing to move from; a later
+     * change animates from the figure already on screen, which is what makes the
+     * motion say *this value changed* rather than *this value appeared*.
+     *
+     * Under reduce motion it returns [target] immediately — switched off, not
+     * shortened, per this file's contract.
+     */
+    @Composable
+    fun rememberCountUp(target: Int): Int {
+        if (LocalReduceMotion.current) return target
+
+        val figure = remember { Animatable(0f) }
+        LaunchedEffect(target) {
+            figure.animateTo(
+                targetValue = target.toFloat(),
+                // A duration rather than a spring, and the one place in this file
+                // that is right: a spring's overshoot on a counter would run the
+                // figure past its value and back, which reads as a mistake being
+                // corrected. Decelerating, so it settles on the number rather
+                // than stopping at it.
+                animationSpec = tween(durationMillis = EmphasisMillis, easing = LinearOutSlowInEasing),
+            )
+        }
+        return figure.value.roundToInt()
+    }
 }
 
 /**

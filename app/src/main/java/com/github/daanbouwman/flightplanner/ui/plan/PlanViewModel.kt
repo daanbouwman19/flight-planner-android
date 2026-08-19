@@ -338,12 +338,39 @@ class PlanViewModel @Inject constructor(
                 // user cannot detect or correct.
                 Log.e(TAG, "Marking ${row.departure.icao} to ${row.destination.icao} flown failed", failure)
                 restore(row, position, generation)
+                _events.trySend(PlanEvent.FlightLogFailed)
                 return@launch
             }
 
             undoLog = logged
             _events.trySend(PlanEvent.FlightLogged(row.departure.icao, row.destination.icao))
         }
+    }
+
+    /**
+     * Marks the route with these codes flown, for a caller holding the codes but
+     * not the row.
+     *
+     * The route detail screen is that caller: it is entered with navigation
+     * arguments, because a generated route has no identity to look up. Routing it
+     * back through here rather than letting it write for itself is what keeps one
+     * mark-flown path and one undo — the row leaves the list, the logbook and the
+     * airframe are written together, and the snackbar the Plan screen already
+     * shows is the only place the reversal lives.
+     *
+     * Returns false when no such row is in the current batch, which is what
+     * "after process death" and "after the list was regenerated" both look like
+     * from here. There is then nothing to remove and nothing to offer an undo on,
+     * so the caller is told rather than the flight being logged irreversibly.
+     */
+    fun markFlown(departureIcao: String, destinationIcao: String, aircraftId: Int): Boolean {
+        val row = routes.value.firstOrNull {
+            it.departure.icao == departureIcao &&
+                it.destination.icao == destinationIcao &&
+                it.aircraft.id == aircraftId
+        } ?: return false
+        markFlown(row)
+        return true
     }
 
     /**

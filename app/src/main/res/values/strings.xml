@@ -66,6 +66,8 @@
     <string name="plan_action_undo">Undo</string>
     <!-- Snackbar after a route is swiped into the logbook. %1$s and %2$s are ICAO codes. -->
     <string name="plan_flight_logged">Logged %1$s to %2$s</string>
+    <!-- Shown when the two writes behind "mark as flown" did not both land. -->
+    <string name="plan_flight_log_failed">That flight could not be logged. The route is back in the list.</string>
 
     <string name="plan_swipe_mark_flown">Mark flown</string>
     <string name="plan_swipe_replace">Replace</string>
@@ -136,9 +138,63 @@
     <string name="settings_self_check_action">Run on-device self-check</string>
 
     <!-- Route detail -->
-    <string name="route_detail_title">%1$s → %2$s</string>
+    <!-- Spoken for the app bar title, which is drawn as two codes and an arrow. -->
+    <string name="route_detail_title_spoken">%1$s to %2$s</string>
     <string name="route_detail_departure">DEPARTURE</string>
     <string name="route_detail_destination">DESTINATION</string>
     <string name="route_detail_loading_airport">Reading the airport…</string>
     <string name="route_detail_missing_airport">This airport is not in the dataset.</string>
+
+    <!-- Headings, in degrees true. %1$s is already formatted as 093°. -->
+    <string name="route_detail_heading_out">DEP HDG %1$s</string>
+    <string name="route_detail_heading_in">ARR HDG %1$s</string>
+    <!-- Field elevation. %1$s is in feet, already grouped. -->
+    <string name="route_detail_elevation">ELEV %1$s ft</string>
+    <!-- Provenance for the estimate. %1$s is a cruise speed in knots, already grouped. -->
+    <string name="route_detail_cruise">at %1$s kt cruise</string>
+
+    <!-- One runway end: ident, true heading, length × width, surface. -->
+    <!-- One runway end. The line is assembled from the fields that are known. -->
+    <string name="route_detail_runway_size">%1$s × %2$s ft</string>
+    <!-- Used where the dataset publishes no width, which is 7.6 % of runway ends. -->
+    <string name="route_detail_runway_length">%1$s ft</string>
+    <string name="route_detail_runway_lit">Lit</string>
+    <!-- Runway surfaces, from the normalised classification rather than the raw
+         upstream column — see RunwayLine for why. -->
+    <string name="surface_hard">Hard</string>
+    <string name="surface_grass">Grass</string>
+    <string name="surface_gravel">Gravel</string>
+    <string name="surface_dirt">Dirt</string>
+    <string name="surface_sand">Sand</string>
+    <string name="surface_water">Water</string>
+    <string name="surface_snow_ice">Snow or ice</string>
+    <string name="route_detail_runway_short_note">Shorter than this aircraft needs</string>
+    <plurals name="route_detail_runways_more">
+        <item quantity="one">%1$d more runway</item>
+        <item quantity="other">%1$d more runways</item>
+    </plurals>
+    <string name="route_detail_runways_fewer">Show fewer</string>
+
+    <!-- Weather. A placeholder until the weather phase; it says so rather than looking broken. -->
+    <string name="route_detail_weather">WEATHER</string>
+    <!-- The detail pane before a route has been chosen from the list beside it. -->
+    <string name="route_detail_pane_empty">Choose a route to see its fields, runways and headings.</string>
+    <string name="route_detail_weather_pending">Live weather is not in this version yet. The flight category and the raw METAR for both fields will appear here.</string>
+
+    <!-- Actions -->
+    <string name="route_detail_action_mark_flown">Mark as flown</string>
+    <string name="route_detail_action_marked_flown">Marked as flown</string>
+    <string name="route_detail_action_copy">Copy plan</string>
+    <string name="route_detail_action_skyvector">SkyVector</string>
+    <string name="route_detail_action_simbrief">SimBrief</string>
+    <string name="route_detail_action_share">Share</string>
+    <string name="route_detail_action_share_title">Flight plan</string>
+    <string name="route_detail_action_map">Map</string>
+    <string name="route_detail_action_copy_coordinates">Copy coordinates</string>
+    <!-- Shown when SimBrief cannot take this route. -->
+    <string name="route_detail_simbrief_needs_icao">SimBrief needs real ICAO codes, and one of these fields has none.</string>
+    <!-- Shown when nothing on the phone can open a link. -->
+    <string name="route_detail_no_app">No app on this phone can open that.</string>
+    <!-- Shown when the route has left the list, so marking it flown has no undo. -->
+    <string name="route_detail_mark_flown_unavailable">Generate this route again to mark it flown.</string>
 </resources>

@@ -4,6 +4,7 @@ package com.github.daanbouwman.flightplanner.core.designsystem.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextDirection
 
 /**
  * The OpenType feature tag for tabular (fixed-width) figures.
@@ -18,6 +19,32 @@ const val TabularFigures: String = "tnum"
 
 /** Returns this style with tabular figures switched on. */
 fun TextStyle.withTabularFigures(): TextStyle = copy(fontFeatureSettings = TabularFigures)
+
+/**
+ * Returns this style set the way a chart sets a figure: tabular, and **laid out
+ * left to right whatever the app's language is**.
+ *
+ * The direction is the part that is easy to miss and impossible to unsee. Under
+ * an RTL locale the bidirectional algorithm reorders a run of neutral characters
+ * in an RTL paragraph, so a perfectly correct string arrives on screen backwards:
+ * `1,308 NM` renders as `NM 1,308`, `25.9089, 54.5394` as `54.5394 ,25.9089`, and
+ * a runway line as `ft · Hard 175 × 8,345 · 127° · 12`. Every one of those is a
+ * *chart figure* — a runway ident, a heading, a distance, a coordinate — and a
+ * chart figure reads left to right on every aeronautical publication in the
+ * world, including in countries that read right to left.
+ *
+ * This is the same rule the app already applies to digits (`asFigure` formats in
+ * a fixed locale so a distance never becomes Arabic-Indic), carried through to
+ * the one thing that rule missed: the order the fields come out in.
+ *
+ * **It is not a substitute for [withTabularFigures] on prose.** Apply it only to
+ * a string that is entirely a figure. A sentence with a number in it is prose,
+ * and prose follows the language it is written in.
+ */
+fun TextStyle.asChartFigure(): TextStyle = copy(
+    fontFeatureSettings = TabularFigures,
+    textDirection = TextDirection.Ltr,
+)
 
 private val Base = Typography()
 

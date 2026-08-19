@@ -10,6 +10,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -72,7 +73,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
-import com.github.daanbouwman.flightplanner.ui.chrome.windowWidthDp
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
@@ -167,6 +167,7 @@ fun PlanScreen(
 
     val undoLabel = stringResource(R.string.plan_action_undo)
     val loggedMessage = stringResource(R.string.plan_flight_logged)
+    val logFailedMessage = stringResource(R.string.plan_flight_log_failed)
     LaunchedEffect(viewModel) {
         viewModel.events.collectLatest { event ->
             when (event) {
@@ -183,6 +184,13 @@ fun PlanScreen(
                         duration = SnackbarDuration.Long,
                     )
                     if (result == SnackbarResult.ActionPerformed) viewModel.undoMarkFlown()
+                }
+
+                PlanEvent.FlightLogFailed -> {
+                    snackbarHostState.showSnackbar(
+                        message = logFailedMessage,
+                        duration = SnackbarDuration.Long,
+                    )
                 }
             }
         }
@@ -216,12 +224,21 @@ fun PlanScreen(
     // more, which the list does by itself as you approach the end. What remained was
     // a permanent 56 dp obstruction over the content, flickering into view on launch
     // a moment before the routes it was offering to generate had already arrived.)
-    Box(
+    // `BoxWithConstraints`, so the centring below is measured against **the space
+    // this screen was actually given** rather than against the window.
+    //
+    // Those were the same thing until the Plan screen could be a *pane*. Asked for
+    // the window's width while occupying the left half of a tablet, it computed
+    // over a thousand dp of centring margin for a pane a few hundred dp wide, and
+    // rendered nothing at all — a blank column beside a working detail pane. A
+    // screen that reads the window is a screen that assumes it is the window.
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .then(contentInsets.modifier)
             .nestedScroll(chromeScroll),
     ) {
+        val availableWidth = maxWidth
         val insets = contentInsets.asPaddingValues()
         val layoutDirection = LocalLayoutDirection.current
         // On a tall window wider than a column wants to be, the extra width becomes
@@ -236,7 +253,7 @@ fun PlanScreen(
         val slack = if (compactHeight) {
             0.dp
         } else {
-            ((windowWidthDp() - MaxContentWidth) / 2).coerceAtLeast(0.dp)
+            ((availableWidth - MaxContentWidth) / 2).coerceAtLeast(0.dp)
         }
         val contentPadding = PaddingValues(
             start = insets.calculateStartPadding(layoutDirection) + HorizontalGutter + slack,

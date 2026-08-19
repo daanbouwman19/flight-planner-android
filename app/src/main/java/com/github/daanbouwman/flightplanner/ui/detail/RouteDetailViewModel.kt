@@ -4,17 +4,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
-import com.github.daanbouwman.flightplanner.core.database.repository.AirportRepository
-import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
+import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.routing.FlightTime
 import com.github.daanbouwman.flightplanner.routing.GeoArc
-import com.github.daanbouwman.flightplanner.routing.GreatCircle
-import com.github.daanbouwman.flightplanner.routing.RouteArc
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
-import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +28,31 @@ data class RouteDetailUiState(
     val arc: GeoArc? = null,
     val outline: WorldOutline = WorldOutline.Empty,
     /**
+     * The heading the leg leaves on and the one it arrives on, in degrees true.
+     *
+     * Two figures rather than one because on any leg that is not a meridian or
+     * the equator they differ — by 62° on EHAM–KJFK — and a pilot reading a
+     * single "bearing" would have the wrong one for half the flight.
+     */
+    val initialBearingDeg: Int? = null,
+    val finalBearingDeg: Int? = null,
+    /**
+     * Every runway end at each field, longest first.
+     *
+     * Empty means *not read yet* rather than *none*: the ETL admits no airport
+     * without at least one open runway of known length, so a field with no rows
+     * cannot reach this screen. The blocks fall back to the denormalised longest
+     * figure until these land, which is why the read does not gate the first
+     * emission.
+     */
+    val departureRunways: List<Runway> = emptyList(),
+    val destinationRunways: List<Runway> = emptyList(),
+    /**
+     * The shortest runway this airframe can leave from, in feet. An end below it
+     * is marked, exactly as the Plan card marks one.
+     */
+    val requiredRunwayFt: Int = 0,
+    /**
      * True until both airports have been read, so the screen can show a skeleton
      * instead of a half-populated card. It is not a *failure* state: the codes
      * came through the navigation arguments, so the header is drawable from the
@@ -41,21 +62,20 @@ data class RouteDetailUiState(
 )
 
 /**
- * Reads the two airports a route detail is about.
+ * Holds the state of one route detail screen.
  *
- * The destination carries codes rather than an id — a generated route has no
- * identity to look up, it exists only in the batch that produced it — so the
- * screen has to resolve those codes into airports itself. That is two indexed
- * lookups, which is why this is a plain load rather than anything shared with
- * the Plan screen's ViewModel: reading a route again is cheaper than keeping one
- * alive across a navigation.
+ * The reading itself belongs to [RouteDetailLoader], which is what lets the same
+ * load serve a detail *pane* — selected in a list beside it, with no
+ * `SavedStateHandle` of navigation arguments to read. What is left here is the
+ * part that is genuinely about being a ViewModel: a scope to load in, and a
+ * `StateFlow` to publish into.
+ *
+ * It publishes twice, deliberately; see [RouteDetailLoader] for why.
  */
 @HiltViewModel
 class RouteDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val airportRepository: AirportRepository,
-    private val fleetRepository: FleetRepository,
-    private val worldOutlineLoader: WorldOutlineLoader,
+    private val loader: RouteDetailLoader,
 ) : ViewModel() {
 
     private val route: Destination.RouteDetail = savedStateHandle.toRoute()
@@ -65,34 +85,9 @@ class RouteDetailViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val departure = airportRepository.findByIcao(route.departureIcao)
-            val destination = airportRepository.findByIcao(route.destinationIcao)
-            val aircraft = fleetRepository.byId(route.aircraftId)
-
-            val arc = if (departure != null && destination != null) {
-                RouteArc.sampleGeographic(
-                    depLat = departure.latitude,
-                    depLon = departure.longitude,
-                    destLat = destination.latitude,
-                    destLon = destination.longitude,
-                    samples = RouteArc.CARD_SAMPLES,
-                )
-            } else {
-                null
-            }
-
-            _state.value = RouteDetailUiState(
-                departure = departure,
-                destination = destination,
-                aircraft = aircraft,
-                distanceNm = route.distanceNm,
-                flightTime = aircraft?.let {
-                    GreatCircle.flightTime(route.distanceNm.toDouble(), it.cruiseSpeedKt)
-                },
-                arc = arc,
-                outline = worldOutlineLoader.load(),
-                loading = false,
-            )
+            val loaded = loader.load(route)
+            _state.value = loaded
+            _state.value = loader.withRunways(loaded)
         }
     }
 }

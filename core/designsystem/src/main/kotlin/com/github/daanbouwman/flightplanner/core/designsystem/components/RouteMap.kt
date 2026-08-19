@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import kotlin.math.sqrt
@@ -135,80 +136,102 @@ fun RouteMap(
                 val endpointStroke = EndpointStrokeDp.dp.toPx()
 
                 onDrawBehind {
-                    drawPath(landPath, landColor)
-                    graticulePath?.let {
+                    // **The map crops itself.** Everything below is projected with
+                    // a margin — see `OutlineMargin` above — so a coast just off
+                    // the window still contributes the segment that enters it, and
+                    // a trimmed stroke ends outside the visible area rather than
+                    // inside it. That means this component routinely paints beyond
+                    // its own bounds and, until now, relied on whatever card or
+                    // surface contained it to crop the overspill.
+                    //
+                    // That assumption held everywhere except the one place it
+                    // mattered: a shared-element transition renders the map in an
+                    // overlay, where **no ancestor clip applies at all**, so the
+                    // margin and every off-window coastline painted across the
+                    // whole screen while the map flew between the card and the
+                    // detail's hero.
+                    //
+                    // `clipRect` rather than `Modifier.clipToBounds()`: the
+                    // modifier is a `graphicsLayer`, which would add an offscreen
+                    // layer per card to a list Phase P spent its time keeping
+                    // smooth. This is a clip on the canvas that is already being
+                    // drawn into, and it costs nothing.
+                    clipRect {
+                        drawPath(landPath, landColor)
+                        graticulePath?.let {
+                            drawPath(
+                                path = it,
+                                color = landColor,
+                                style = Stroke(width = coastWidth, cap = StrokeCap.Round),
+                            )
+                        }
+                        // Bevel joins and butt caps, where the route below keeps round
+                        // ones. The coast is a few thousand segments per card redrawn
+                        // every frame, and a round join is an arc constructed at every
+                        // vertex; at 1 dp wide and 16 % opacity that arc is sub-pixel
+                        // and invisible, so it is pure cost. The route is a few dozen
+                        // segments and is the thing being looked at, so it keeps them.
                         drawPath(
-                            path = it,
-                            color = landColor,
-                            style = Stroke(width = coastWidth, cap = StrokeCap.Round),
+                            path = coastPath,
+                            color = coastColor,
+                            style = Stroke(width = coastWidth, join = StrokeJoin.Bevel, cap = StrokeCap.Butt),
                         )
-                    }
-                    // Bevel joins and butt caps, where the route below keeps round
-                    // ones. The coast is a few thousand segments per card redrawn
-                    // every frame, and a round join is an arc constructed at every
-                    // vertex; at 1 dp wide and 16 % opacity that arc is sub-pixel
-                    // and invisible, so it is pure cost. The route is a few dozen
-                    // segments and is the thing being looked at, so it keeps them.
-                    drawPath(
-                        path = coastPath,
-                        color = coastColor,
-                        style = Stroke(width = coastWidth, join = StrokeJoin.Bevel, cap = StrokeCap.Butt),
-                    )
 
-                    // Casing first, then the line: round joins and caps are what
-                    // make the pair read as one ribbon instead of as a stack of
-                    // segments with mitred corners showing through.
-                    drawPath(
-                        path = routePath,
-                        color = casingColor,
-                        style = Stroke(width = casingWidth, join = StrokeJoin.Round, cap = StrokeCap.Round),
-                    )
-                    drawPath(
-                        path = routePath,
-                        color = routeColor,
-                        style = Stroke(width = routeWidth, join = StrokeJoin.Round, cap = StrokeCap.Round),
-                    )
-
-                    // The arrowhead, cased like everything else. It is what makes
-                    // direction readable at a glance: the codes are pinned to the
-                    // card's edges, so on a westbound leg the departure code sits
-                    // on the left while its marker sits on the right, and a 4 dp
-                    // ring against a 4 dp dot is too fine a distinction to carry
-                    // that alone.
-                    arrow?.let {
+                        // Casing first, then the line: round joins and caps are what
+                        // make the pair read as one ribbon instead of as a stack of
+                        // segments with mitred corners showing through.
                         drawPath(
-                            path = it,
+                            path = routePath,
                             color = casingColor,
-                            style = Stroke(
-                                width = 2f * CasingDp.dp.toPx(),
-                                join = StrokeJoin.Round,
-                                cap = StrokeCap.Round,
-                            ),
+                            style = Stroke(width = casingWidth, join = StrokeJoin.Round, cap = StrokeCap.Round),
                         )
-                        drawPath(path = it, color = routeColor)
-                    }
+                        drawPath(
+                            path = routePath,
+                            color = routeColor,
+                            style = Stroke(width = routeWidth, join = StrokeJoin.Round, cap = StrokeCap.Round),
+                        )
 
-                    // Departure hollow, destination filled: the chart convention
-                    // for "from here to there", which the arrowhead now states
-                    // outright rather than implying.
-                    drawCircle(
-                        color = casingColor,
-                        radius = endpointRadius + CasingDp.dp.toPx(),
-                        center = departure,
-                        style = Stroke(width = endpointStroke + 2f * CasingDp.dp.toPx()),
-                    )
-                    drawCircle(
-                        color = routeColor,
-                        radius = endpointRadius,
-                        center = departure,
-                        style = Stroke(width = endpointStroke),
-                    )
-                    drawCircle(
-                        color = casingColor,
-                        radius = endpointRadius + CasingDp.dp.toPx(),
-                        center = destination,
-                    )
-                    drawCircle(color = routeColor, radius = endpointRadius, center = destination)
+                        // The arrowhead, cased like everything else. It is what makes
+                        // direction readable at a glance: the codes are pinned to the
+                        // card's edges, so on a westbound leg the departure code sits
+                        // on the left while its marker sits on the right, and a 4 dp
+                        // ring against a 4 dp dot is too fine a distinction to carry
+                        // that alone.
+                        arrow?.let {
+                            drawPath(
+                                path = it,
+                                color = casingColor,
+                                style = Stroke(
+                                    width = 2f * CasingDp.dp.toPx(),
+                                    join = StrokeJoin.Round,
+                                    cap = StrokeCap.Round,
+                                ),
+                            )
+                            drawPath(path = it, color = routeColor)
+                        }
+
+                        // Departure hollow, destination filled: the chart convention
+                        // for "from here to there", which the arrowhead now states
+                        // outright rather than implying.
+                        drawCircle(
+                            color = casingColor,
+                            radius = endpointRadius + CasingDp.dp.toPx(),
+                            center = departure,
+                            style = Stroke(width = endpointStroke + 2f * CasingDp.dp.toPx()),
+                        )
+                        drawCircle(
+                            color = routeColor,
+                            radius = endpointRadius,
+                            center = departure,
+                            style = Stroke(width = endpointStroke),
+                        )
+                        drawCircle(
+                            color = casingColor,
+                            radius = endpointRadius + CasingDp.dp.toPx(),
+                            center = destination,
+                        )
+                        drawCircle(color = routeColor, radius = endpointRadius, center = destination)
+                    }
                 }
             },
     )

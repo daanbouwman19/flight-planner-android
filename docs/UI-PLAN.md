@@ -1181,25 +1181,198 @@ priced and found not worth what it costs in image quality.
 
 ## 5. Phase C — Route detail
 
-**This is the next work item.** Phase P is closed, and feature work resumes here.
+**Complete.** C1–C6 are built and verified on a device, in one window and in two.
+The `ModalBottomSheet` half of C1 is deliberately rejected rather than deferred —
+see below.
 
 **Part of this landed early.** Resolving F8 of the design review — tapping a card
 reached a placeholder — turned the detail destination into a real screen: the map
 at 220 dp, both airports with their names, municipality and runway, and the two
-figures. What is left is what needs data or a calculation the screen does not have
-yet, which is most of C2 and all of C4–C6.
+figures. The rest is what needed data or a calculation the screen did not have.
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| **C1** | Detail container | Partly done: a full screen with predictive back, which is what the review needed. Still to do — `ModalBottomSheet` on compact and a `ListDetailPaneScaffold` pane on expanded |
-| **C2** | Route facts | Partly done: distance, estimated time, longest runway per end. Still to do — initial and final bearing, elevations, surface |
+| **C1** | Detail container | ✅ and partly **rejected**. Compact keeps the full screen with predictive back; the `ModalBottomSheet` is not built and will not be — see below. `ListDetailPaneScaffold` carries the list and the detail side by side wherever the window has room for two panes, with `PlanRoute` making that one decision. `RouteDetailContent` and `RouteDetailLoader` are extracted so one layout and one load serve both hosts |
+| **C2** | Route facts | ✅ Initial and final bearing (`GreatCircle.finalBearingDeg`, new), field elevation, and **every runway end** at both fields — ident, true heading, length × width, surface, lighting — collapsed to the longest with a disclosure |
 | **C3** | Hero map area | ✅ `RouteMap` at 220 dp, the same component the card draws. **Deliberately a still image until Phase G** — it is the fallback the globe crossfades in over, so it is not throwaway work |
-| **C4** | Actions | Mark as flown, copy plan, SkyVector, SimBrief, Google Maps, share — the last four via `ACTION_VIEW` intents |
-| **C5** | Weather block | Decoded METAR layout, raw text in monospace. Placeholder until Phase F |
-| **C6** | Detail motion | `sharedBounds` on the ICAO pair and aircraft name from the card; facts stagger in beneath the hero; distance counts up once; mark-as-flown plays a confirmation with haptic |
+| **C4** | Actions | ✅ Mark as flown, copy plan, SkyVector, SimBrief, Google Maps (per airport, as on the desktop), share. URLs ported field-for-field from `route_popup.rs` and unit-tested against those literals |
+| **C5** | Weather block | ✅ as a placeholder: the block states what is missing and holds its height, so Phase F fills it without a reflow |
+| **C6** | Detail motion | ✅ `sharedBounds` on the map, the ICAO pair and the aircraft name; the spine staggers in beneath the hero; distance counts up once; mark-as-flown plays a haptic confirmation and then hands back to the list. Making the map's flight clean needed a fix inside `RouteMap` — see below |
 
-**Done when:** every element of the desktop's `route_popup.rs` has an equivalent,
-and the card→detail→back journey is continuous with no visual jump.
+**Done when:** ✅ — every element of the desktop's `route_popup.rs` has an
+equivalent, and the card→detail→back journey is continuous with no visual jump. The
+two that are *deliberately* still placeholders are the ones another phase owns: the
+3D globe is G, and live METAR is F, for which C5 reserves the space.
+
+### The layout: the leg is the page's structure
+
+Two equal panels with an arrow between them is the obvious answer and it throws
+away something true — **the initial bearing belongs to the departure and the final
+bearing belongs to the destination** (they differ by 62° on EHAM–KJFK), and the
+distance and the estimate belong to the span between them. So the page is a
+**spine**: a hairline rail with a hollow ring at the departure end and a filled dot
+at the destination end, which are the two markers `RouteMap` already draws on the
+arc. Each figure sits where it is true. The pair of `ValueChip`s under the hero was
+removed to pay for it: the screen says more than it did with one row fewer.
+
+The runway list is collapsed to the longest plus a count. Not to save ink — a hub
+with ten ends and a strip with two would otherwise move the leg's figures by 400 dp,
+so whether the distance was on the first screenful would depend on which airport
+the generator happened to pick.
+
+### Three decisions worth keeping
+
+**The `ModalBottomSheet` was rejected, not forgotten.** At the height this content
+needs it is a full screen with a drag handle, and it forfeits the shared-element
+continuity C6 exists to create. The full-screen destination already had predictive
+back, which is what the design review actually asked for.
+
+**The scaffold is used only where it has something to offer.** `ListDetailPaneScaffold`
+would happily collapse to one pane on a phone and swap the detail in over the list,
+and that is a *worse* phone experience than the destination that exists: no app bar,
+a binary back gesture instead of a progressive one, and no shared element, so a route
+would appear rather than arrive from its card. `PlanRoute` therefore branches on
+`maxHorizontalPartitions` — the adaptive library's own answer to "is there room for
+two panes", the same family of decision the navigation suite already makes, so the
+two cannot disagree about what kind of window this is.
+
+**The list pane is the whole Plan screen**, not a reduced one. The header, filters,
+swipe grammar and undo snackbar are what that screen *is*, and a tablet has no less
+use for them. The only thing a wider window changes is what a tap on a card means,
+which is a lambda.
+
+**The map flies from the card to the hero, and the bug was `RouteMap`'s, not the
+transition's.** During the flight the map painted far outside the bounds it had
+animated to, spilling across the whole screen. Two wrong diagnoses came first — the
+hero being double-animated, and the container's scale fighting the overlay — and
+both produced real improvements that are still in (see below) without touching the
+artifact.
+
+The actual cause was one line that was never written: **`RouteMap` had no clip of
+its own.** Its own KDoc says it projects the outline *with a margin*, "so a coast
+just off the card still contributes the segment that enters it, and a stroke's
+trimmed end falls outside the visible area rather than inside it" — that is a
+component deliberately painting past its bounds and relying on the `Card` around it
+to crop the overspill. A shared element is rendered in an **overlay, where no
+ancestor clip applies at all**, so every off-window coastline suddenly had the whole
+screen to draw on. `RouteMap` now crops itself with a `clipRect` inside its draw
+scope — not `Modifier.clipToBounds()`, which is a `graphicsLayer` and would add an
+offscreen layer per card to the list Phase P spent its time keeping smooth.
+
+Two things that made this hard to see. The element's *own* clip is useless here:
+placed inside `sharedBounds` it clips to the size being measured, not the size being
+drawn. And `RemeasureToBounds` is the only resize mode material3 1.5.0-alpha26
+offers — `ScaleToBounds` is absent — so the map genuinely re-projects at every size
+it passes through on the way, which is why nothing about the flight could be
+"scaled" out of trouble.
+
+Worth keeping from the two wrong turns, because both are independently right:
+**nothing that is a shared element is also staggered in** (fading a thing in while
+it travels animates it twice, and the two do not agree), and **screens that share an
+element use `FlightMotion.sharedEnter` rather than `navEnter`** (an overlay does not
+inherit the container's scale).
+
+**The shared ICAO pair lands in the app bar, not on the spine.** The spine's two
+codes are the obvious target and the destination's block can sit below the fold; a
+shared element flying to something off screen reads as a glitch. The title is on
+screen at both ends of the journey, every time — which is why it is three nodes
+rather than one formatted string.
+
+### What the device found that the build did not
+
+Every one of these compiled, passed tests and looked right in a preview.
+
+- **Repeated spaces in a string resource are folded to one**, so the runway line's
+  columns arrived as `197 ft ASP`. It is middot-separated now.
+- **The raw `surface` column is unusable for display.** The dataset spells one
+  surface at least five ways — `ASP` (19,738 rows), `ASPH`, `ASPH-G`, `Asphalt`,
+  `PEM` — so a route really did show `ASP` at one end and `ASPHALT` at the other,
+  and 3,000-odd rows are `X`, `N`, `G`, `C` or empty. The screen shows the ETL's
+  normalised `SurfaceKind` instead, and says nothing where that is `UNKNOWN`. **A
+  divergence from the desktop**, which prints the column.
+- **7.6 % of runway ends publish no width** and the ETL writes zero, so the line
+  read `3,444 × 0 ft`. The width is dropped when it is absent.
+- **823 airports record an elevation of exactly zero**, which OurAirports uses for
+  "not published" as well as for sea level. An inland strip stated as sea level is a
+  wrong figure on an instrument, so the elevation is omitted at zero.
+- **RTL reordered every figure on the screen.** F16 fixed the *digits* — a distance
+  must not become Arabic-Indic — and missed the *order*: under an Arabic locale the
+  bidi algorithm delivered `NM 1,308`, `54.5394 ,25.9089` and
+  `ft · Hard 175 × 8,345 · 127° · 12`. `TextStyle.asChartFigure()` now pairs tabular
+  figures with `TextDirection.Ltr`, and `ValueChip` uses it, so the route cards were
+  fixed by the same change. The title's arrow is mirrored by hand, since the `Row`
+  reverses but the glyph does not.
+- **The title's arrow was a type step smaller than the codes**, so centring two
+  different line boxes put it visibly low. It is the same style now, de-emphasised
+  by colour.
+
+### What tapping it on a device found
+
+All three owed checks are done. Two passed as built; one did not.
+
+- **Mark as flown, end to end** ✅ — the screen hands back, the snackbar reads
+  "Logged OIKK to UWWG", and the not-flown count moves 103 → 102, which is the
+  proof that *both* writes landed rather than just the logbook row. Undo returns
+  it to 103.
+- **The five external actions** ✅ — SkyVector loads with its Flight Plan bar,
+  SimBrief Dispatch boots, the Maps intent resolves to `com.google.android.apps.maps`
+  rather than a browser, the share sheet carries `Boeing 777-200ER: YMAV -> VDTI
+  (3705 nm)` under a "Flight plan" title, and Android's own clipboard confirmation
+  shows the same string — which is why there is no snackbar for a copy.
+- **Landscape** ❌ **— and it was as bad as F3 predicted.** The app bar plus a
+  220 dp hero *is* the window: every fact on the screen sat below the fold, behind
+  a map that at that aspect is mostly empty. Two fixes, both reusing what the Plan
+  screen already had: the hero drops to the card's own `CompactCardHeight` of
+  132 dp when `isCompactHeight()`, and the column is capped at `MaxContentWidth`
+  and centred, because an 800 dp-wide window otherwise sets an airport's full name
+  on one line running the whole way across.
+
+### The second pane found a third instance of the same bug
+
+**A screen that reads the window is a screen that assumes it is the window.** The
+Plan screen centred its column by computing `(windowWidthDp() - MaxContentWidth) / 2`,
+which was correct for exactly as long as the screen *was* the window. Placed in a
+pane on a tablet it asked for the window's 1,706 dp, computed over a thousand dp of
+centring margin for a pane a few hundred dp wide, and rendered **nothing at all** —
+a blank column beside a working detail pane, with no crash and no warning. It
+measures itself with `BoxWithConstraints` now.
+
+That is the same mistake as F3's landscape and as this phase's own landscape
+finding, in a third disguise: a layout deciding from something other than the space
+it was actually given. Worth looking for by name whenever a screen gains a new host.
+
+The line-length cap moved into `RouteDetailContent` for the same reason. It started
+as the landscape fix on the full screen, and the pane needed it too — so it now
+lives with the content, where a third host gets it without having to learn the
+lesson again. Hosts decide margins and alignment; the content decides how wide a
+line of it may get.
+
+### What the code review found
+
+Six findings, all fixed. Two are worth carrying forward as general lessons.
+
+- **A delayed `onBack()` can pop twice, and the second pop empties the app.** The
+  mark-as-flown confirmation waits half a second before handing back, and a
+  destination stays composed for the length of its exit transition — so tapping
+  the app bar's back arrow during that half-second popped `RouteDetail` and then,
+  from the still-live effect, popped `Plan` as well. `Plan` is the start
+  destination of both its graph and the root, so the back stack emptied and the
+  app showed nothing at all. Any navigation on a delay needs the lifecycle check
+  this one now has.
+- **`RemeasureToBounds` is wrong for a canvas.** It re-lays-out the child at the
+  animated bounds every frame, and `RouteMap` builds its geometry in a
+  `drawWithCache` keyed on size — so a remeasured map re-projected 122 coastline
+  rings sixty times a second for the length of the transition, which is exactly
+  the work that cache exists to prevent. Text still wants remeasuring; the map now
+  scales, which is also the more honest motion for it.
+
+Also fixed: the confirmation state is `rememberSaveable`, so a rotation inside the
+window cannot strand the screen; a failed write now emits `PlanEvent.FlightLogFailed`
+and says so, because from the detail screen a failure was otherwise silent after a
+confirmation haptic; the Maps URL uses fixed decimals, since `Double.toString`
+turns a coordinate near the equator into `4.0E-4` and Maps does not resolve it; and
+`rememberRouteActionLauncher` no longer keys on an unstable lambda that defeated
+the `remember` it looked like it had.
 
 ---
 

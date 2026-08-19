@@ -22,3 +22,24 @@ import java.util.Locale
  * it is spoken in.
  */
 fun Int.asFigure(): String = String.format(Locale.ROOT, "%,d", this)
+
+/**
+ * A heading, the way a chart writes one: three digits and a degree sign, `093°`.
+ *
+ * Padded to three digits for the same reason a runway is `09` and never `9` —
+ * headings are read as a fixed-width field, and `93°` next to `291°` costs the
+ * eye a moment that a leading zero does not. Fixed-locale for the reason
+ * [asFigure] is.
+ */
+fun Int.asBearing(): String = String.format(Locale.ROOT, "%03d°", this)
+
+/**
+ * A coordinate pair at the precision the desktop app copies, `52.3086, 4.7639`.
+ *
+ * Four decimals is about 11 m, which is finer than an airport reference point is
+ * published to and coarse enough to stay readable. Ported from
+ * `render_airport_elevation_with_map_link` so a coordinate copied here and one
+ * copied there are the same string.
+ */
+fun coordinates(latitude: Double, longitude: Double): String =
+    String.format(Locale.ROOT, "%.4f, %.4f", latitude, longitude)
