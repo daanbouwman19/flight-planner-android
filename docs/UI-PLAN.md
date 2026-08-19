@@ -36,10 +36,13 @@ spherical interpolation plus an equirectangular projection, and
 `AirportSlotSearch`, which ranks over the index's primitive arrays rather than
 materialising 24,000 wrapper objects per keystroke.
 
-Cold start was last measured at ~370 ms against a 500 ms budget, **before Phase
-B**. Nothing in Phase B runs before the first frame, but that is reasoning rather
-than a measurement, and the caveat in CLAUDE.md about emulator drift applies to
-whoever measures it next.
+Cold start is **169 ms median `timeToInitialDisplayMs`** against a 500 ms budget —
+twelve controlled cold launches from `:macrobenchmark` on the SM-S942B. That
+supersedes the ~370 ms this section carried from before Phase B, which was a
+hand-picked median of `am start -W` on an emulator: different hardware, not a
+regression that was fixed. It also retires the emulator-drift caveat that used to
+be attached to it. What the figure still does not cover is the splash the app holds
+*after* the first frame, until the index and the stored theme settle — see Phase P.
 
 ---
 
@@ -888,7 +891,10 @@ fade". **That result was void.** The installs between pairs failed silently: a
 Windows `adb` was handed a POSIX `/tmp/...` path from a shell with path
 conversion disabled, and the failures were suppressed with `>/dev/null 2>&1`. Both
 halves of every pair measured whatever was already on the phone. So the fade's
-cost is still unmeasured, and it belongs to P2.
+cost is still unmeasured. P2 built the instrument that can settle it and did not
+settle it: `:macrobenchmark` measures one APK per run, and this needs an A/B of
+two, so what is outstanding is a run to schedule rather than something P2's
+existence delivered.
 
 Two things worth keeping from the wreckage.
 
