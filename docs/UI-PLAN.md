@@ -606,6 +606,14 @@ in `remember`, never per frame; and if that is still not enough, snap frames to 
 levels and cache them as `ImageBitmap`s. Measure with `dumpsys gfxinfo` while
 flinging, before and after.
 
+> **How this turned out, from P3.** The first two mitigations were built and are
+> what ships. The third was built and rejected: an `ImageBitmap` per card at full
+> resolution is *slower* than stroking the paths, because allocating 2.3 MB every
+> time a card enters composition costs more than the per-frame stroking it saves,
+> and the reduced resolutions that are faster are visibly soft. The estimate above
+> was also wrong about where the cost sits — it is per-frame rasterisation, not the
+> clip and projection, which cache and cost ~0.1 ms. See Phase P.
+
 ### What B11 turned out to be
 
 The findings above held. Three things they did not predict, and the numbers as
@@ -922,11 +930,16 @@ this document that came from an install is only as good as the install, and the
 one check that would have caught it — reading the `DEBUGGABLE` flag out of
 `dumpsys package` — takes one line.
 
-## 4d. Phase P — Performance, before the next feature
+## 4d. Phase P — Performance, before the next feature ✅ CLOSED
 
-**This is the next work item, ahead of Phase C.** Not because the app is slow —
-it is not — but because the two things that would tell us are missing, and every
-screen built from here adds surface to whatever they would have found.
+**Closed after P1, P2 and P3. P4 is deferred deliberately — see the tasks table.**
+The list is smooth enough on the target device, and the remaining tail costs more
+in image quality than it returns in frames. Feature work resumes at Phase C.
+
+It was inserted ahead of Phase C not because the app was slow — it was not — but
+because the two things that would tell us were missing, and every screen built
+from here adds surface to whatever they would have found. That held: the
+instrument found three separate things the reasoning had wrong.
 
 ### What is actually observed
 
@@ -1077,30 +1090,98 @@ explanation is offered here for the 168.7 that P2 recorded and this session coul
 not reproduce; the honest reading is that the table above supersedes it, not that
 something regressed.
 
+### What P3 found, including that it was aimed at the wrong half
+
+P3 was written as "move `MapFrame.projectOutline` off the UI thread". Before doing
+that, the map's cost was split in two and each half measured with
+`flingBaselineProfile` — compute (project and build the `Path`s) against draw
+(rasterise them). Three builds, same device, same session:
+
+| | CPU P50 / P90 / P95 / P99 | overrun P50 / P90 / P95 / P99 |
+| --- | --- | --- |
+| Compute **and** draw — as shipped | 4.7 / 6.9 / 7.8 / 11.7 | 1.1 / 4.8 / 5.3 / 7.4 |
+| Compute, do not draw | 3.8 / 5.4 / 6.1 / 8.5 | −1.4 / 2.0 / 3.6 / 5.1 |
+| Neither | 3.8 / 5.3 / 5.9 / 8.3 | −1.4 / 3.1 / 3.7 / 4.9 |
+
+Read the CPU column; overrun at P90 carries about ±1 ms of noise here, which is
+why the middle row appears to beat the bottom one.
+
+**The compute is free and the drawing is everything.** Rows two and three are the
+same to within noise, so projecting and path-building cost about 0.1 ms at P90 —
+because `drawWithCache` already caches them, so they run once per card entering
+composition. Rasterising costs 1.5 ms at P90 and 3.2 ms at P99, because
+`onDrawBehind` runs *per frame per visible card*. P3 as written would have
+addressed roughly three per cent of the map's cost.
+
+**The mitigation this component was designed with was tried and rejected.** B11's
+notes list "snap frames to a handful of zoom levels and cache them as
+`ImageBitmap`s" as the third mitigation if the first two were not enough. Caching
+each card's land and coast into a tile and blitting it was built and measured at
+three resolutions:
+
+| Tile | Sharp? | overrun P50 / P90 / P99 |
+| --- | --- | --- |
+| Full resolution | yes | 3.2 / 5.3 / 9.2 — **worse than not caching** |
+| Half | visibly soft | −0.4 / 4.0 / 6.9 |
+| Quarter | blurry, rejected on sight | −0.8 / 1.6 / 5.6 |
+
+**A full-resolution tile is slower than the thing it replaces.** It is 2.3 MB
+allocated every time a card enters composition, tens of times a second during a
+fling, and that burst costs more than the per-frame stroking it removes. The
+tile's speed and its blurriness are therefore the same knob: it only pays by
+resampling. On a card whose subject is a coastline, that is the wrong currency,
+and the quarter-scale build was rejected by looking at it.
+
+**What was kept is the part that was free.** The coast is stroked with bevel
+joins and butt caps instead of round ones. A round join constructs an arc at every
+vertex, and the coast has a few thousand per card; at 1 dp wide and 16 % opacity
+that arc is sub-pixel. The route keeps round joins — it is a few dozen segments
+and it is the thing being looked at. Verified on device, not from a preview.
+
+| | overrun P50 / P90 / P99 |
+| --- | --- |
+| Before | 1.1 / 4.8 / 7.4 |
+| **Bevel and butt** | 0.6 / 4.8 / **6.9** |
+| *Floor, no map at all* | −1.4 / 3.1 / 4.9 |
+
+0.5 ms at P99 and a median frame that finishes early rather than late, for no
+visual cost. P90 did not move. That is a small result honestly obtained, and it is
+where Phase P stops: the remaining tail is worth less than the sharpness it would
+cost.
+
 ### Tasks
 
 | ID | Task | Notes |
 | --- | --- | --- |
 | **P1** | Baseline profile | ✅ `BaselineProfileGenerator` in `:macrobenchmark` writes `app/src/main/generated/baselineProfiles/`, committed: 22,655 rules, 1,633 of them this app's own code, 9,250 bytes once compiled into the APK against 7,472 for the libraries alone. Worth **25 ms of cold start** and, on the fling, frame duration but not overrun — see above. `androidx.baselineprofile` also replaced the hand-written `benchmark` build type with its own `benchmarkRelease`, so the measurement task is now `connectedBenchmarkReleaseAndroidTest` |
 | **P2** | Macrobenchmark module | ✅ `:macrobenchmark`. `PlanScrollBenchmark` (`FrameTimingMetric` over a down-and-back-up fling) and `StartupBenchmark` (`StartupTimingMetric`, cold), each in **three** compilation modes since P1 — none, baseline-profile-only, and partial with warm-ups. Only the fling is inside `measureBlock`; launching, generating fifty routes and the staggered entrance happen in `setupBlock`. See [the module README](../macrobenchmark/README.md) |
-| **P3** | Projection off the UI thread | `MapFrame.projectOutline` runs in `drawWithCache` — on the UI thread, for every card entering composition during a fling. It needs the canvas aspect ratio, so moving it means deciding that ratio before measurement (a fixed card aspect, or a two-pass measure) rather than reading it from the canvas. **Now the indicated cause of the tail.** P1 made the code measurably cheaper to run and the overrun tail did not follow, which is the signature of work that is on the wrong thread rather than work that is slow |
-| **P4** | A budget, written down | **Now ready.** P1 supplies the two numbers to write down: a `frameOverrunMs` P90 for the fling and a `timeToInitialDisplayMs` median for the cold start, both from `:macrobenchmark`, so a regression is a failed check rather than an opinion. Set them against the baseline-profile row, not `Partial` — that is the mode a shipped app is actually in on first launch |
+| **P3** | ~~Projection off the UI thread~~ → cheaper coast stroke | ✅ **as a different change, because the premise was wrong.** The projection costs ~0.1 ms at P90; rasterising costs 1.5 ms at P90 and 3.2 ms at P99, per frame per visible card. Moving the projection would have addressed ~3 % of the map. Raster-caching the map was built and rejected — full resolution is *slower* than not caching, and the resolutions that are faster are visibly soft. What shipped is bevel joins and butt caps on the coast: 0.5 ms at P99, no visual cost. See above |
+| **P4** | A budget, written down | **Deferred by decision, not by oversight.** The numbers exist and could be asserted today — `frameOverrunMs` P90 and `timeToInitialDisplayMs` median, both from the baseline-profile mode. They are not, because a threshold on a number that moves ±1 ms between runs on an idle device buys flaky builds rather than protection, and the list is smooth enough that a regression worth catching would be seen before it would be measured. Revisit when a regression is noticed by eye, or when a device farm makes the numbers steady enough to assert |
 
-**Order: P2 ✅, P1 ✅, re-measured ✅ — then P3, which the numbers now ask for.**
-The IDs are stable, so they are not renumbered, but the instrument came before the
-change and paid for itself twice. First by trimming the expected prize before
-anyone wrote the profile. Then, less comfortably, by showing that the pair of
-numbers P2 quoted for that prize could not have measured a baseline profile at
-all — `None` resets the profile away and `Partial` warms the JIT past it — which
-is a mistake that would have survived indefinitely if P1 had been argued about
-instead of run.
+**Order as run: P2 ✅, P1 ✅, re-measure ✅, P3 ✅ — and P4 deliberately not.**
+The IDs are stable, so they are not renumbered. The instrument came before the
+change and paid for itself three times, each time by contradicting something this
+document had already written down:
 
-**Done when:** the first fling after a cold start is indistinguishable from the
-tenth, and `:macrobenchmark` reports it rather than a person judging it by eye.
+1. The prize from AOT compilation was smaller than "the single largest win
+   available to a Compose app" implied — known *before* the profile was written.
+2. The pair of numbers P2 quoted for that prize could not have measured a baseline
+   profile at all: `None` resets the profile away and `Partial` warms the JIT past
+   it. That needed a third compilation mode, and the mistake would have survived
+   indefinitely if P1 had been argued about instead of run.
+3. P3 was aimed at the compute half of a cost that is almost entirely in the draw
+   half — and the mitigation B11 had pre-registered for that half turns out, at the
+   only resolution worth shipping, to be slower than the problem.
+
+**Done when:** ✅ — the list is smooth enough on the target device, `:macrobenchmark`
+says so rather than a person judging it by eye, and the remaining tail has been
+priced and found not worth what it costs in image quality.
 
 ---
 
 ## 5. Phase C — Route detail
+
+**This is the next work item.** Phase P is closed, and feature work resumes here.
 
 **Part of this landed early.** Resolving F8 of the design review — tapping a card
 reached a placeholder — turned the detail destination into a real screen: the map

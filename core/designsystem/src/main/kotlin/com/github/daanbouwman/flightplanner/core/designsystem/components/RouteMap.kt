@@ -143,10 +143,16 @@ fun RouteMap(
                             style = Stroke(width = coastWidth, cap = StrokeCap.Round),
                         )
                     }
+                    // Bevel joins and butt caps, where the route below keeps round
+                    // ones. The coast is a few thousand segments per card redrawn
+                    // every frame, and a round join is an arc constructed at every
+                    // vertex; at 1 dp wide and 16 % opacity that arc is sub-pixel
+                    // and invisible, so it is pure cost. The route is a few dozen
+                    // segments and is the thing being looked at, so it keeps them.
                     drawPath(
                         path = coastPath,
                         color = coastColor,
-                        style = Stroke(width = coastWidth, join = StrokeJoin.Round, cap = StrokeCap.Round),
+                        style = Stroke(width = coastWidth, join = StrokeJoin.Bevel, cap = StrokeCap.Butt),
                     )
 
                     // Casing first, then the line: round joins and caps are what
