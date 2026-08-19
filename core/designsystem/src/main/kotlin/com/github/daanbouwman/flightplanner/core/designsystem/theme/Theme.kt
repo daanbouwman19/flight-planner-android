@@ -48,7 +48,7 @@ enum class ThemeChoice { SYSTEM, LIGHT, DARK, COCKPIT }
  *    competing with the pilot's dark adaptation, and a scheme derived from
  *    whatever the wallpaper happens to be cannot promise that.
  * 2. Otherwise, if [dynamicColor] is on, the wallpaper scheme. No version guard:
- *    minSdk is 36, so dynamic colour (API 31+) is always available.
+ *    minSdk is 35, so dynamic colour (API 31+) is always available.
  * 3. Otherwise the brand fallback — avgas blue with runway-amber accents.
  *
  * Flight-rules colours bypass all of that and are provided through

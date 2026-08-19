@@ -10,9 +10,9 @@
         this flag the platform keeps serving the legacy KEYCODE_BACK path: no
         back-to-home preview, no cross-activity animation, and Compose's
         PredictiveBackHandler never receives progress, so a sheet or a detail pane
-        can only snap shut instead of following the finger. minSdk is 36, so there
-        is no fallback to keep and no version guard to write — the flag is simply
-        on.
+        can only snap shut instead of following the finger. The flag arrived in
+        API 33 and minSdk is 35, so there is no fallback to keep and no version
+        guard to write — it is simply on.
     -->
     <application
         android:name=".FlightPlannerApplication"

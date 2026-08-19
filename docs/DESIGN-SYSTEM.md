@@ -32,7 +32,7 @@ and `FlightTypography`. Scheme selection, in order:
    accents. It **ignores `dynamicColor` deliberately** — the theme exists so the
    screen stops competing with the pilot's dark adaptation, and a scheme derived
    from whatever the wallpaper happens to be cannot promise that.
-2. `dynamicColor` on → wallpaper scheme. No version guard; `minSdk` is 36.
+2. `dynamicColor` on → wallpaper scheme. No version guard; `minSdk` is 35 and dynamic colour is API 31+.
 3. Otherwise → `BrandLightColorScheme` / `BrandDarkColorScheme`, avgas blue with
    runway-marking amber.
 

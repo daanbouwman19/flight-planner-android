@@ -23,15 +23,24 @@ ksp = "2.3.11"
 # --- sdk ---
 compileSdk = "37"
 targetSdk = "36"
-# Android 16. This is a new app for modern devices with a small user base, so the
+# Android 15. This is a new app for modern devices with a small user base, so the
 # floor is set at the platform the design language actually assumes rather than at
-# the widest reach. It is a deliberate trade of install base for a simpler app:
-# dynamic colour, predictive back, edge-to-edge enforcement, per-app language,
-# Vulkan 1.3 and the whole java.time surface are all unconditionally present, so
-# none of them needs a Build.VERSION.SDK_INT guard, a compat wrapper or a fallback
-# branch. Every such guard is a code path that cannot be exercised on any device
-# this app runs on, which makes it untestable rather than merely redundant.
-minSdk = "36"
+# the widest reach — but it is set at the *lowest* platform that assumes it, which
+# is 35 rather than 36.
+#
+# It was 36, and nothing the app is built on needed that. Every capability the
+# design language rests on arrived earlier and is still unconditionally present
+# here: dynamic colour is 31, per-app language and predictive back are 33,
+# edge-to-edge enforcement follows `targetSdk` 35+ and so applies unchanged, and
+# `java.time` has been available since 26. So the trade 36 was making — install
+# base for simplicity — was buying no simplicity that 35 does not also buy.
+#
+# The invariant it exists to support is unchanged and still binding: no
+# `Build.VERSION.SDK_INT` guards. A guard below the floor is a branch no supported
+# device can take, so it cannot be exercised and rots silently. Lowering the floor
+# moves the line; it does not introduce guards above it. If something genuinely
+# needs an API newer than this, raise the floor rather than branch under it.
+minSdk = "35"
 # --- androidx / compose ---
 composeBom = "2026.08.00"
 # material3 is pinned ABOVE the BOM on purpose. The BOM resolves 1.4.0, and the

@@ -143,7 +143,7 @@ it lives on Android.
 New repo `J:\projects\flight-planner-android` → `git@github.com:daanbouwman19/flight-planner-android.git`,
 MIT, appId `com.github.daanbouwman.flightplanner`. Git LFS for `*.db` and screenshot goldens.
 
-**SDK levels**: `minSdk 36` (**Android 16**), `targetSdk 36` (Play requires it from 31 Aug 2026),
+**SDK levels**: `minSdk 35` (**Android 15**), `targetSdk 36` (Play requires it from 31 Aug 2026),
 `compileSdk 37`.
 
 The floor was originally 28 to maximise reach. It is now 36 because this is a new app for modern

@@ -126,7 +126,7 @@ Three things learned while building it, worth carrying forward:
   `1.5.0-alpha26`. Screens must reach Expressive only through
   `:core:designsystem`; that containment is the entire mitigation for the alpha.
   See [API-GROUND-TRUTH.md](API-GROUND-TRUTH.md).
-- **`minSdk` is now 36**, so no `SDK_INT` guards anywhere.
+- **`minSdk` is 35** (it was 36 until Phase C closed), so no `SDK_INT` guards anywhere.
 - **The flight-rules palette needed retuning.** Checking 4.5:1 text contrast was
   not sufficient: at the conventional tone-90 the five pastels compress toward
   white, and IFR and LIFR sat 0.05 apart in normalised RGB — two near-identical

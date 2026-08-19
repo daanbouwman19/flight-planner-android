@@ -44,11 +44,17 @@ is what keeps motion coherent and retunable in one place.
 
 ### No `Build.VERSION.SDK_INT` guards
 
-`minSdk` is **36** (Android 16). Dynamic colour, predictive back, edge-to-edge
-enforcement, per-app language and all of `java.time` are unconditionally present.
-A guard for an API level below `minSdk` is a branch no supported device can take,
-so it cannot be tested and rots silently. Lint does **not** reliably flag these —
-`ObsoleteSdkInt` missed one — so this is on you, not on tooling.
+`minSdk` is **35** (Android 15). Dynamic colour (31), predictive back and per-app
+language (33), edge-to-edge enforcement (which follows `targetSdk` 35+) and all of
+`java.time` (26) are unconditionally present. A guard for an API level below
+`minSdk` is a branch no supported device can take, so it cannot be tested and rots
+silently. Lint does **not** reliably flag these — `ObsoleteSdkInt` missed one — so
+this is on you, not on tooling.
+
+**It was 36, and the floor moved down rather than the rule loosening.** Nothing the
+app is built on needed 36, so the higher floor was spending install base on a
+simplicity it was not buying. If a future API genuinely needs a newer platform,
+raise this floor rather than branch beneath it.
 
 ### Cold start stays under 500 ms
 

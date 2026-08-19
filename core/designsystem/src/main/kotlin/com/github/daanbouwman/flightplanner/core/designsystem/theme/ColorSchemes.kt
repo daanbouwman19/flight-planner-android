@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.Color
  * The brand fallback schemes.
  *
  * These are what the app wears when dynamic colour is switched off in Settings.
- * There is no availability case to handle: minSdk is 36, so dynamic colour is
+ * There is no availability case to handle: minSdk is 35, so dynamic colour is
  * always present. Both are written out role by role rather than
  * letting `lightColorScheme()` fill the gaps from its purple baseline: a scheme
  * with three roles overridden and forty-five inherited is a scheme that looks

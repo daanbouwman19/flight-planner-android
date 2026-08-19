@@ -6,7 +6,7 @@ by reading documentation. Documentation for Compose Material 3 in this era
 describes several release trains at once, so it cannot tell you whether a symbol
 exists *in the version you resolve*. Only the compiler can.
 
-**Platform floor: `minSdk 36` (Android 16).** Everything below assumes it. Because
+**Platform floor: `minSdk 35` (Android 15).** Everything below assumes it. Because
 the floor is the platform the design language targets, there are **no
 `Build.VERSION.SDK_INT` guards anywhere in this app** — dynamic colour, predictive
 back, edge-to-edge enforcement and per-app language are all unconditionally
