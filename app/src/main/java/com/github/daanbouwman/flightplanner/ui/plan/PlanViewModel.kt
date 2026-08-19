@@ -3,6 +3,7 @@ package com.github.daanbouwman.flightplanner.ui.plan
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.daanbouwman.flightplanner.core.database.airport.NameIndexState
 import com.github.daanbouwman.flightplanner.core.database.repository.AirportRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.LogbookRepository
@@ -41,7 +42,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -219,7 +222,7 @@ class PlanViewModel @Inject constructor(
             // the picker is usually ready before it is opened; starting it from a
             // ViewModel rather than from Application.onCreate keeps it off the
             // cold-start path. The repository makes the call idempotent.
-            runCatching { airportRepository.prepareNameIndex(indexProvider.get()) }
+            runCatchingCancellable { airportRepository.prepareNameIndex(indexProvider.get()) }
         }
 
         // Open with routes already on screen.
@@ -699,13 +702,38 @@ class PlanViewModel @Inject constructor(
     private val aircraftQuery = MutableStateFlow("")
 
     /**
+     * The departure query, re-emitted when the name index becomes available.
+     *
+     * [searchAirports] reads `nameIndexOrNull()` at the instant it runs, so a
+     * query typed during the build is answered by codes alone and would *stay*
+     * that way. That inverts the whole point of [searchScope]: the strip
+     * explaining the narrow result disappears the moment the index lands, and
+     * the narrow result it was explaining does not. It is also what would make
+     * [retryNameSearch] look inert — the notice goes away, the list does not
+     * change. Folding readiness in here re-ranks the query already on screen.
+     *
+     * Only the not-ready → ready edge is news, and only for a query that
+     * consults names at all — a blank query lists the largest airports off the
+     * runway index alone — so the other transitions are dropped rather than
+     * costing a second scan and a second display read on every cold start.
+     */
+    private val airportSearches: Flow<String> = combine(
+        airportQuery,
+        airportRepository.nameIndexState.map { it is NameIndexState.Ready }.distinctUntilChanged(),
+    ) { query, namesReady -> query to namesReady }
+        .distinctUntilChanged { (lastQuery, _), (query, namesReady) ->
+            lastQuery == query && (!namesReady || query.isBlank())
+        }
+        .map { (query, _) -> query }
+
+    /**
      * Ranked airports for the departure picker.
      *
      * Debounced because the scan runs over the whole index and a fast typist
      * outruns it otherwise; [mapLatest] because a superseded query's results are
      * worthless, so the scan for it is cancelled rather than awaited.
      */
-    val airportResults: StateFlow<List<Airport>> = airportQuery
+    val airportResults: StateFlow<List<Airport>> = airportSearches
         .debounce { if (it.isBlank()) 0L else SEARCH_DEBOUNCE_MILLIS }
         .mapLatest { searchAirports(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
@@ -715,12 +743,64 @@ class PlanViewModel @Inject constructor(
             .mapLatest { (query, airframes) -> searchAircraft(query, airframes) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
 
+    /**
+     * Whether the departure picker can rank by name, and if not, why.
+     *
+     * Exposed beside [airportResults] rather than folded into [uiState] for the
+     * same reason [worldOutline] is: it changes a handful of times early in the
+     * process's life and only the picker reads it, so putting it in the state a
+     * fifty-row list recomposes from would spend every batch on it.
+     *
+     * `WhileSubscribed` like the results themselves — the sheet is what
+     * subscribes, and the repository's flow is a plain `StateFlow` that costs
+     * nothing to leave running when it does not.
+     */
+    val searchScope: StateFlow<SearchScope> = airportRepository.nameIndexState
+        .map { state ->
+            when (state) {
+                is NameIndexState.Ready -> SearchScope.Full
+                is NameIndexState.Failed -> SearchScope.NamesUnavailable
+                // Idle is "nobody has asked yet", which from the picker's side is
+                // indistinguishable from a build in flight: both mean names do not
+                // rank *yet* and something is about to fix that. `init` starts the
+                // build, so Idle is only ever the first few milliseconds.
+                NameIndexState.Idle, NameIndexState.Building -> SearchScope.NamesLoading
+            }
+        }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            SearchScope.NamesLoading,
+        )
+
     fun setAirportQuery(query: String) {
         airportQuery.value = query
     }
 
     fun setAircraftQuery(query: String) {
         aircraftQuery.value = query
+    }
+
+    /**
+     * Rebuilds the airport name index after a failed build.
+     *
+     * The repository treats `Failed` as a legitimate starting point and makes the
+     * call idempotent, so this is safe to hammer: a build already in flight, or
+     * one that has already succeeded, ignores it. That is what lets the picker
+     * offer a plain Retry without tracking whether one is already running.
+     *
+     * That reasoning covers the repository and not the line above it: if the
+     * *airport* index is what failed to load, `prepareNameIndex` is never
+     * reached, the state stays `Failed`, and the button changes nothing on
+     * screen however often it is pressed. Nothing here can fix that — but a
+     * silent failure and a dead button look identical in a bug report, so say
+     * which one it was.
+     */
+    fun retryNameSearch() {
+        viewModelScope.launch {
+            runCatchingCancellable { airportRepository.prepareNameIndex(indexProvider.get()) }
+                .onFailure { Log.w(TAG, "Retrying the airport name index failed", it) }
+        }
     }
 
     private suspend fun searchAirports(query: String): List<Airport> {

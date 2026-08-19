@@ -178,7 +178,23 @@ private class FakeAirportRepository(private val world: Fixture) : AirportReposit
     var displayQueries = 0
         private set
 
-    override val nameIndexState: StateFlow<NameIndexState> = MutableStateFlow(NameIndexState.Idle)
+    /**
+     * Backing for [nameIndexState], so a test can decide when — and whether —
+     * ranked search becomes available. `Idle` to start with, which is what the
+     * real repository reports until something asks it to build.
+     */
+    private val nameIndex = MutableStateFlow<NameIndexState>(NameIndexState.Idle)
+
+    /** How many times [prepareNameIndex] has been asked for a build. */
+    var prepareCalls = 0
+        private set
+
+    override val nameIndexState: StateFlow<NameIndexState> = nameIndex
+
+    /** Moves the name index to [state], as a real background build would. */
+    fun settleNameIndex(state: NameIndexState) {
+        nameIndex.value = state
+    }
 
     override suspend fun findByIcao(icao: String): Airport? = world.airports.firstOrNull { it.icao == icao }
     override suspend fun findById(id: Int): Airport? = world.airports.firstOrNull { it.id == id }
@@ -200,7 +216,9 @@ private class FakeAirportRepository(private val world: Fixture) : AirportReposit
         airportsByIds(slots.map { index.ids[it] })
 
     override suspend fun runwaysFor(airportId: Int): List<Runway> = emptyList()
-    override fun prepareNameIndex(index: AirportIndex) = Unit
+    override fun prepareNameIndex(index: AirportIndex) {
+        prepareCalls++
+    }
     override fun nameIndexOrNull(): AirportNameIndex? = null
 }
 
@@ -243,6 +261,7 @@ class PlanViewModelTest {
         backgroundScope.launch(dispatcher) { model.uiState.collect {} }
         backgroundScope.launch(dispatcher) { model.airportResults.collect {} }
         backgroundScope.launch(dispatcher) { model.aircraftResults.collect {} }
+        backgroundScope.launch(dispatcher) { model.searchScope.collect {} }
         advanceUntilIdle()
         body(model)
     }
@@ -546,5 +565,50 @@ class PlanViewModelTest {
         advanceUntilIdle()
         model.airportResults.value.shouldHaveSize(0)
     }
-}
 
+    @Test
+    fun `search scope follows the name index, and retry asks for a rebuild`() {
+        val airports = FakeAirportRepository(fixture)
+        return planTest(airports = airports) { model ->
+            // `init` asks for the build once, off the startup path. Until it
+            // lands, a keystroke matches ICAO codes and nothing else.
+            airports.prepareCalls shouldBe 1
+            model.searchScope.value shouldBe SearchScope.NamesLoading
+
+            airports.settleNameIndex(NameIndexState.Building)
+            advanceUntilIdle()
+            // Idle and Building are the same thing from the picker's side: names
+            // do not rank yet, and something is already fixing that.
+            model.searchScope.value shouldBe SearchScope.NamesLoading
+
+            airports.settleNameIndex(NameIndexState.Failed(IllegalStateException("no rows")))
+            advanceUntilIdle()
+            // Distinct from loading, because it does not resolve on its own —
+            // which is the whole reason the picker offers a Retry for this state
+            // and not for the one above.
+            model.searchScope.value shouldBe SearchScope.NamesUnavailable
+
+            model.retryNameSearch()
+            advanceUntilIdle()
+            airports.prepareCalls shouldBe 2
+        }
+    }
+
+    /*
+     * `SearchScope.Full` is deliberately not asserted here. Reaching it needs a
+     * `NameIndexState.Ready`, which carries an `AirportNameIndex` whose
+     * constructor and builder are both `internal` to `:core:database` — as is
+     * the repository that builds one — so this module cannot make one, and
+     * widening that API for a test would be a worse trade than the gap. The
+     * `when` behind the mapping is exhaustive over a sealed interface, so a
+     * state cannot be silently dropped from it.
+     *
+     * The same gap covers the other half of that transition: `airportSearches`
+     * re-emits the current query when the index turns Ready, so the list stops
+     * being ICAO-only at the same moment the notice above it goes away. That
+     * edge is unreachable from here for the reason above, and unobservable even
+     * if it were — `FakeAirportRepository.nameIndexOrNull()` returns null, so a
+     * re-ranked search would return exactly what the first one did. Covering it
+     * needs an instrumented test in `:core:database` against a real Room build.
+     */
+}
