@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.macrobenchmark
 
+import androidx.benchmark.macro.BaselineProfileMode
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.FrameTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
@@ -34,17 +35,26 @@ import org.junit.runner.RunWith
  * per-process: without the kill, iteration 2 onwards would measure an already-hot
  * process and the median would quietly describe the case nobody complained about.
  *
- * ### What the two compilation modes mean
+ * ### What the three compilation modes mean
  *
  * - [CompilationMode.None] is the app with no compiled code at all: every frame
- *   runs interpreted until the JIT catches up. It is the worst case, and the
- *   closest thing to the first fling after a fresh install.
- * - [CompilationMode.Partial] is the app as a user has it after a while — and,
- *   once P1 lands, the app as it is on the *first* run too, because a baseline
- *   profile is what moves the first case toward the second.
+ *   runs interpreted until the JIT catches up. It is the floor.
+ * - [flingBaselineProfile]'s mode — `Partial(Require, warmupIterations = 0)` — is
+ *   the app on its **first** launch after an install, with the baseline profile
+ *   applied and nothing else. This is the case P1 exists to improve, and it is the
+ *   case a user meets once per install.
+ * - [CompilationMode.Partial] with its default three warm-up iterations is the app
+ *   after a while: profile-guided compilation on top of a JIT that has already
+ *   seen the journey. It is the ceiling.
  *
- * The gap between them is the size of the prize P1 is playing for, measured
- * before P1 is written rather than argued about afterwards.
+ * **The middle one had to be added for P1 to be measurable at all.** With only the
+ * outer two, a baseline profile cannot show up in either: `None` issues
+ * `cmd package compile --reset`, which discards the installed profile along with
+ * everything else, and `Partial()` warms the JIT three times before measuring, so
+ * it arrives at a hot process whether or not a profile helped it get there. P2
+ * reported the None-to-Partial gap as "the size of the prize P1 is playing for".
+ * That was the wrong pair of numbers: it is the distance between the floor and the
+ * ceiling, and a profile only ever buys part of it.
  */
 @RunWith(AndroidJUnit4::class)
 class PlanScrollBenchmark {
@@ -54,6 +64,21 @@ class PlanScrollBenchmark {
 
     @Test
     fun flingNoCompilation() = fling(CompilationMode.None())
+
+    /**
+     * The first fling after an install, with only the baseline profile compiled.
+     *
+     * `Require` rather than `UseIfAvailable`: if the profile is missing this must
+     * fail rather than quietly measure [flingNoCompilation] a second time and
+     * report it as P1 having achieved nothing.
+     */
+    @Test
+    fun flingBaselineProfile() = fling(
+        CompilationMode.Partial(
+            baselineProfileMode = BaselineProfileMode.Require,
+            warmupIterations = 0,
+        ),
+    )
 
     @Test
     fun flingPartialCompilation() = fling(CompilationMode.Partial())

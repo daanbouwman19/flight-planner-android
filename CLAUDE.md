@@ -55,11 +55,11 @@ so it cannot be tested and rots silently. Lint does **not** reliably flag these 
 **Measure it with `:macrobenchmark`, not by hand.**
 
 ```bash
-./gradlew :macrobenchmark:connectedBenchmarkAndroidTest \
+./gradlew :macrobenchmark:connectedBenchmarkReleaseAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.github.daanbouwman.flightplanner.macrobenchmark.StartupBenchmark
 ```
 
-Twelve cold launches, ~35 seconds, on the `benchmark` variant. Latest figure:
+Twelve cold launches, ~35 seconds, on the `benchmarkRelease` variant. Latest figure:
 **169 ms median `timeToInitialDisplayMs`** on the SM-S942B. The older ~370 ms
 came off an emulator and is different hardware, not a regression that was fixed.
 
@@ -80,6 +80,16 @@ particular:
   identical code. `:macrobenchmark` has no debug variant for this reason, and
   `androidx.benchmark.suppressErrors` must stay unset so the library keeps
   refusing a debuggable target.
+- **`app/src/main/generated/baselineProfiles/` is generated and committed. Never
+  hand-edit it.** It is worth 25 ms of cold start. Regenerate with
+  `./gradlew :app:generateBaselineProfile`, which drives the app on a physical
+  device and rewrites both files; commit the result. It does not run as part of an
+  ordinary build, by design.
+- **A baseline profile is invisible to `CompilationMode.None` and to
+  `CompilationMode.Partial()`.** The first resets the installed profile away, the
+  second warms the JIT three times before measuring. Read the
+  `...BaselineProfile` benchmarks instead — `Partial(Require, warmupIterations =
+  0)` — which are the only ones in a state a shipped app is ever in.
 
 Every caveat below applies to hand-measurement, which is now the fallback rather
 than the method:

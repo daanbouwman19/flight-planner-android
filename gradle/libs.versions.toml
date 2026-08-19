@@ -87,7 +87,19 @@ kotest = "6.2.4"
 turbine = "1.2.1"
 robolectric = "4.16.1"
 roborazzi = "1.72.0"
-benchmark = "1.4.1"
+# benchmark also versions the `androidx.baselineprofile` Gradle plugin, published
+# from the same release train, so the two move together or not at all.
+#
+# This is an rc rather than the 1.4.1 stable because 1.4.1 does not work here.
+# Applied to `:app` on AGP 9.3.1 its plugin dies at apply time with "Module `:app`
+# is not a supported android module" — it looks up `androidComponents` by type and
+# comes back empty against AGP 9, which is a version gap and not a mistake in this
+# build: the extension is registered, and a probe in the same build script finds
+# it. 1.5.0-rc01 applies cleanly and creates the expected variants. Staying on
+# 1.4.1 for the library while taking the rc for the plugin is not an option,
+# because the two share internal contracts.
+benchmark = "1.5.0-rc01"
+profileinstaller = "1.4.1"
 
 [libraries]
 # --- compose (versions come from the BOM) ---
@@ -111,6 +123,11 @@ compose-material3-adaptive-navigation-suite = { group = "androidx.compose.materi
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "splashscreen" }
 androidx-startup = { group = "androidx.startup", name = "startup-runtime", version.ref = "startup" }
+# Already present transitively via Compose, but declared: it is what actually
+# applies the baseline profile on first run, so the profile is worthless without
+# it. A load-bearing dependency should not arrive by accident from someone else's
+# POM that is free to drop it.
+androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
@@ -190,6 +207,7 @@ room-gradle-plugin = { group = "androidx.room", name = "room-gradle-plugin", ver
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 android-test = { id = "com.android.test", version.ref = "agp" }
+androidx-baselineprofile = { id = "androidx.baselineprofile", version.ref = "benchmark" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

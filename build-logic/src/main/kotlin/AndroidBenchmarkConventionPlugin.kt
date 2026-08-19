@@ -11,16 +11,25 @@ import org.gradle.kotlin.dsl.configure
  * minSdk and the JVM target come from one place — but it also carries the two
  * settings that decide whether the measurement means anything:
  *
- * - **The `benchmark` build type only.** `:app`'s debug APK is `debuggable`, and
- *   a debuggable process runs largely interpreted. Every number taken from one
- *   describes the debugger. The `benchmark` variant is release code that can be
- *   installed without release keys, so it is the only variant this module builds;
- *   there is deliberately no debug counterpart to pick by accident.
+ * - **No debug variant.** `:app`'s debug APK is `debuggable`, and a debuggable
+ *   process runs largely interpreted. Every number taken from one describes the
+ *   debugger, so `connectedDebugAndroidTest` must not exist to be picked by
+ *   accident. The build types that remain both come from `release`, by way of
+ *   `androidx.baselineprofile` applied in the consuming module: `benchmarkRelease`
+ *   is minified release code, debug-signed and profileable — the variant every
+ *   number is taken from — and `nonMinifiedRelease` exists only so a generated
+ *   profile names real classes instead of `a.b.c`.
  * - **No `androidx.benchmark.suppressErrors`.** The library refuses to run
  *   against a debuggable or unrooted-emulator target, and that refusal is the
  *   check that would have caught an afternoon of comparing a `benchmark` build
  *   against a `debug` one. Suppressing it would restore exactly the failure mode
  *   this module exists to remove.
+ *
+ * This plugin used to hand-write a `benchmark` build type here and a matching one
+ * in `:app`. Both are gone: `androidx.baselineprofile` produces the same thing,
+ * and keeping a third build type alongside its two made the test module a cross
+ * product — `connectedBenchmarkBenchmarkAndroidTest` and three siblings, two of
+ * them measuring a non-minified target.
  */
 class AndroidBenchmarkConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
@@ -42,22 +51,6 @@ class AndroidBenchmarkConventionPlugin : Plugin<Project> {
                 targetCompatibility = JVM_VERSION
             }
 
-            // A `create`d build type inherits no signing config, and an unsigned
-            // test APK fails to install with INSTALL_PARSE_FAILED_NO_CERTIFICATES —
-            // which reads like a broken APK rather than a missing four lines.
-            val debugSigning = signingConfigs.getByName("debug")
-
-            buildTypes {
-                // The test APK itself must be debuggable — the benchmark library
-                // needs to read its own results back out — while the *target* it
-                // measures is release code. Those are different APKs, so there is
-                // no contradiction here.
-                create("benchmark") {
-                    signingConfig = debugSigning
-                    isDebuggable = true
-                    matchingFallbacks += listOf("release")
-                }
-            }
         }
 
         // Removes the variant that would measure `:app`'s debug APK. Leaving it

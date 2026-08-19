@@ -23,7 +23,7 @@ Verified against the source tree, not against the plan.
 | `:core:network` | **Empty.** No sources at all. Phase F |
 | `:feature:globe` | `FilamentProbe` only. Vulkan confirmed working, `FEATURE_LEVEL_3` |
 | `:app` | Shell, navigation, the self-check, the Plan screen, the route detail and Settings. Logbook, Fleet, Airports and Stats are still placeholders |
-| `:macrobenchmark` | **The instrument, from P2.** `FrameTimingMetric` over a scripted fling and `StartupTimingMetric` over a cold start, both on the `benchmark` variant. See [the module README](../macrobenchmark/README.md) |
+| `:macrobenchmark` | **The instrument, from P2.** `FrameTimingMetric` over a scripted fling and `StartupTimingMetric` over a cold start, both on the `benchmarkRelease` variant, plus `BaselineProfileGenerator` from P1. See [the module README](../macrobenchmark/README.md) |
 
 The three gaps the original plan did not cover — the index carrying no display
 data (**G-a**), the missing `SearchScorer` and `FlightStatisticsCalculator`
@@ -145,10 +145,10 @@ badly during that session — the same unchanged APK read a 424 ms median and th
 with commits interleaved, or via `:macrobenchmark`. One change is worth checking
 specifically: reduce-motion is now resolved in `FlightPlannerTheme`, which puts a
 `Settings.Global` read and a `ContentObserver` registration on the startup path.
-Small, but it was not there before. The app also still has no baseline profile
-of its own — though the APK does carry the AndroidX libraries' merged one, and
-P2's first measurement put the whole of AOT compilation's effect on the fling at
-around 7 % at P90. See Phase P.
+Small, but it was not there before. The app now also carries a baseline profile of
+its own, on top of the AndroidX libraries' merged one, which P1 measured at 25 ms
+of cold start — so a startup figure taken before P1 is not comparable to one taken
+after. See Phase P.
 
 | ID | Task | Notes |
 | --- | --- | --- |
@@ -1012,21 +1012,88 @@ already in the APK, so the code Partial adds on top is only this app's own.
 last, on a device that had just been flinging for five minutes. Re-running one
 startup benchmark now costs 35 seconds, which is the point.
 
+### What P1 found, including that the question above was mis-posed
+
+**The two modes above cannot measure a baseline profile.** The paragraph headed
+"compilation barely moves it" calls None → Partial "precisely the first fling
+comparison P1 is meant to win". It is not, and no arrangement of those two modes
+is. `CompilationMode.None` issues `cmd package compile --reset`, which discards
+the installed profile along with everything else; `CompilationMode.Partial()`
+defaults to **three warm-up iterations**, so it reaches a hot process whether or
+not a profile helped it get there. The distance between them is floor to ceiling,
+and a profile was only ever going to buy part of it.
+
+So a third mode was added — `Partial(BaselineProfileMode.Require, warmupIterations
+= 0)`, an installed profile and an unwarmed JIT, which is the state a user is in
+exactly once per install. `Require` rather than `UseIfAvailable` so that a missing
+profile fails the run instead of quietly re-measuring `None` and reporting that P1
+achieved nothing.
+
+**The fling, three ways.** Ten iterations each, process killed before every one,
+`PlanScrollBenchmark` run on its own:
+
+| `frameDurationCpuMs` | P50 | P90 | P95 | P99 |
+| --- | --- | --- | --- | --- |
+| None | 5.0 | 7.3 | 8.6 | 12.1 |
+| **Baseline profile** | 4.7 | 6.9 | 7.8 | 11.7 |
+| Partial (3 warm-ups) | 4.6 | 6.7 | 7.7 | 11.1 |
+
+| `frameOverrunMs` | P50 | P90 | P95 | P99 |
+| --- | --- | --- | --- | --- |
+| None | 1.4 | 4.9 | 5.5 | 7.5 |
+| **Baseline profile** | 1.1 | 4.8 | 5.3 | 7.4 |
+| Partial (3 warm-ups) | 0.6 | 4.6 | 5.0 | 6.7 |
+
+**The profile buys CPU time and does not buy the tail.** Of the floor-to-ceiling
+gap in frame *duration* it recovers about two thirds at P90 and nearly all of it
+at P95. Of the gap in *overrun* — the number this module says to read, because it
+is measured against each frame's own deadline — it recovers roughly a sixth at P90
+and an eighth at P99. Frames are getting cheaper to compute and are still missing
+their deadline by the same margin, which is what it looks like when the tail is
+not about how fast the code runs. **P3 is now the indicated cause**, and it is no
+longer an inference from AOT having failed to claim the tail — it is that making
+the code demonstrably faster did not move it.
+
+**Cold start is where the profile pays.** `StartupBenchmark` run on its own, on a
+device reporting `Thermal Status: 0`, twelve iterations each:
+
+| `timeToInitialDisplayMs` | min | median | max |
+| --- | --- | --- | --- |
+| None | 190.3 | 206.7 | 240.5 |
+| **Baseline profile** | 156.9 | **181.8** | 214.7 |
+| Partial (3 warm-ups) | 147.8 | 174.9 | 210.0 |
+
+**25 ms, about 12 %, and 78 % of everything compilation had to give.** That is a
+first launch after install, and it is the one launch a user cannot avoid. It is
+also the only place P1 delivered.
+
+**`None` is not reproducible across sessions and should not be quoted.** Its
+median has now been measured three times on the same device — 168.7 ms in P2,
+226.4 ms in a full suite this session, 206.7 ms alone — while `Partial` over the
+same three runs sat at 198.6, 172.9 and 174.9. Interpreted code is the mode most
+exposed to whatever else the scheduler is doing, so the two-way comparisons in the
+tables above are trustworthy *within* a run and the absolutes are not. No
+explanation is offered here for the 168.7 that P2 recorded and this session could
+not reproduce; the honest reading is that the table above supersedes it, not that
+something regressed.
+
 ### Tasks
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| **P1** | Baseline profile | Still worth doing, but the first measurement has already trimmed the expected prize to roughly 7 % at P90 — see above. What it is now good for is deciding whether that 7 % is the whole story or whether an app-specific profile moves it further than the library one did |
-| **P2** | Macrobenchmark module | ✅ `:macrobenchmark`. `PlanScrollBenchmark` (`FrameTimingMetric` over a down-and-back-up fling) and `StartupBenchmark` (`StartupTimingMetric`, cold), each in a no-compilation and a partial-compilation variant. Only the fling is inside `measureBlock`; launching, generating fifty routes and the staggered entrance happen in `setupBlock`. See [the module README](../macrobenchmark/README.md) |
-| **P3** | Projection off the UI thread | `MapFrame.projectOutline` runs in `drawWithCache` — on the UI thread, for every card entering composition during a fling. It needs the canvas aspect ratio, so moving it means deciding that ratio before measurement (a fixed card aspect, or a two-pass measure) rather than reading it from the canvas. **Now the more likely candidate for the tail**, since AOT compilation did not claim it |
-| **P4** | A budget, written down | Ready to write once P1 has been measured: a `frameOverrunMs` P90 for the fling and a `timeToInitialDisplayMs` median for the cold start, both from `:macrobenchmark`, so a regression is a failed check rather than an opinion |
+| **P1** | Baseline profile | ✅ `BaselineProfileGenerator` in `:macrobenchmark` writes `app/src/main/generated/baselineProfiles/`, committed: 22,655 rules, 1,633 of them this app's own code, 9,250 bytes once compiled into the APK against 7,472 for the libraries alone. Worth **25 ms of cold start** and, on the fling, frame duration but not overrun — see above. `androidx.baselineprofile` also replaced the hand-written `benchmark` build type with its own `benchmarkRelease`, so the measurement task is now `connectedBenchmarkReleaseAndroidTest` |
+| **P2** | Macrobenchmark module | ✅ `:macrobenchmark`. `PlanScrollBenchmark` (`FrameTimingMetric` over a down-and-back-up fling) and `StartupBenchmark` (`StartupTimingMetric`, cold), each in **three** compilation modes since P1 — none, baseline-profile-only, and partial with warm-ups. Only the fling is inside `measureBlock`; launching, generating fifty routes and the staggered entrance happen in `setupBlock`. See [the module README](../macrobenchmark/README.md) |
+| **P3** | Projection off the UI thread | `MapFrame.projectOutline` runs in `drawWithCache` — on the UI thread, for every card entering composition during a fling. It needs the canvas aspect ratio, so moving it means deciding that ratio before measurement (a fixed card aspect, or a two-pass measure) rather than reading it from the canvas. **Now the indicated cause of the tail.** P1 made the code measurably cheaper to run and the overrun tail did not follow, which is the signature of work that is on the wrong thread rather than work that is slow |
+| **P4** | A budget, written down | **Now ready.** P1 supplies the two numbers to write down: a `frameOverrunMs` P90 for the fling and a `timeToInitialDisplayMs` median for the cold start, both from `:macrobenchmark`, so a regression is a failed check rather than an opinion. Set them against the baseline-profile row, not `Partial` — that is the mode a shipped app is actually in on first launch |
 
-**Order: P2 ✅, then P1, then re-measure — then P3 if the numbers still ask for
-it.** They now look more likely to. The IDs are stable, so they are not
-renumbered, but the instrument came before the change, and it has already paid
-for itself: the P90 gap AOT compilation was expected to close turns out to be
-small, which is a thing worth knowing *before* writing a baseline profile rather
-than after.
+**Order: P2 ✅, P1 ✅, re-measured ✅ — then P3, which the numbers now ask for.**
+The IDs are stable, so they are not renumbered, but the instrument came before the
+change and paid for itself twice. First by trimming the expected prize before
+anyone wrote the profile. Then, less comfortably, by showing that the pair of
+numbers P2 quoted for that prize could not have measured a baseline profile at
+all — `None` resets the profile away and `Partial` warms the JIT past it — which
+is a mistake that would have survived indefinitely if P1 had been argued about
+instead of run.
 
 **Done when:** the first fling after a cold start is indistinguishable from the
 tenth, and `:macrobenchmark` reports it rather than a person judging it by eye.
@@ -1179,7 +1246,7 @@ filling holes, so either can slip without blocking the rest.
 The parity matrix in [PLAN.md](PLAN.md) §1 is the acceptance checklist, walked on
 a real device — an emulator is not representative for Filament. Beyond it:
 
-- Cold start stays under 500 ms, measured on the `benchmark` variant. Debug-build
+- Cold start stays under 500 ms, measured on the `benchmarkRelease` variant. Debug-build
   numbers are meaningless: the same code measured 872 ms debug against 157 ms
   non-debuggable.
 - No dropped frames flinging the route list, measured by macrobenchmark.

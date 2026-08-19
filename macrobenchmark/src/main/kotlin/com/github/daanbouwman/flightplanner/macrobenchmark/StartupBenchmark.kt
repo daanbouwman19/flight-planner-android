@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.macrobenchmark
 
+import androidx.benchmark.macro.BaselineProfileMode
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.StartupTimingMetric
@@ -41,6 +42,22 @@ class StartupBenchmark {
 
     @Test
     fun startupNoCompilation() = startup(CompilationMode.None())
+
+    /**
+     * The first launch after an install, with only the baseline profile compiled.
+     *
+     * See `PlanScrollBenchmark` for why this mode has to exist separately: neither
+     * of the two either side of it has a baseline profile installed *and* an
+     * unwarmed JIT, which is the only state in which a profile is what made the
+     * difference.
+     */
+    @Test
+    fun startupBaselineProfile() = startup(
+        CompilationMode.Partial(
+            baselineProfileMode = BaselineProfileMode.Require,
+            warmupIterations = 0,
+        ),
+    )
 
     @Test
     fun startupPartialCompilation() = startup(CompilationMode.Partial())

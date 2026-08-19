@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.flightplanner.android.benchmark)
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 android {
@@ -17,6 +18,14 @@ android {
     }
 
     experimentalProperties["android.experimental.self-instrumenting"] = true
+}
+
+baselineProfile {
+    // One physical device, the same one every other number in docs/UI-PLAN.md
+    // comes from. A managed virtual device would generate a profile too, but a
+    // profile is a claim about which code paths are hot, and an emulator's are
+    // not this phone's.
+    useConnectedDevices = true
 }
 
 dependencies {

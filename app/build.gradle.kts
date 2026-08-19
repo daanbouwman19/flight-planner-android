@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.flightplanner.android.compose)
     alias(libs.plugins.flightplanner.android.hilt)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.androidx.baselineprofile)
 }
 
 android {
@@ -34,21 +35,39 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
-        create("benchmark") {
-            // A release build that can be installed without release keys.
-            //
-            // This exists because a debug APK is `debuggable`, and a debuggable
-            // process runs largely interpreted: measured here, fifty short-range
-            // routes cost 110 ms on device against 2 ms on a warm JVM, entirely
-            // because ART never compiles the code. Any startup or throughput
-            // number taken from a debug build is measuring the debugger, not the
-            // app, so timings are only meaningful on this variant.
-            initWith(buildTypes.getByName("release"))
-            signingConfig = signingConfigs.getByName("debug")
-            matchingFallbacks += listOf("release")
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
-        }
+        // There is deliberately no hand-written `benchmark` build type here any
+        // more. `androidx.baselineprofile` creates two of its own from `release`,
+        // and the first is what that one was: `benchmarkRelease` is minified,
+        // non-debuggable, debug-signed and — the part that used to need a
+        // hand-written `<profileable>` manifest — profileable. `nonMinifiedRelease`
+        // is the same minus minification, which is what a profile has to be
+        // generated against if its rules are to name real classes rather than
+        // `a.b.c`. Keeping a third, near-identical build type alongside them only
+        // multiplied the test module's variants. See macrobenchmark/README.md.
     }
+}
+
+// The two build types above arrive from the plugin at `finalizeDsl`, which is
+// after this script runs, so their ABI filters cannot be set in `buildTypes`.
+// Without this they inherit `release`'s four ABIs — ~32 MB of Filament and
+// bundled SQLite that no measurement uses, installed and uninstalled around
+// every benchmark run.
+androidComponents.finalizeDsl { extension ->
+    listOf("benchmarkRelease", "nonMinifiedRelease").forEach { name ->
+        extension.buildTypes.getByName(name).ndk.abiFilters += listOf("arm64-v8a", "x86_64")
+    }
+}
+
+baselineProfile {
+    // Generating a profile means installing two APKs, driving the app on a
+    // physical device and pulling a file back — minutes, not seconds. It must not
+    // happen because somebody ran `assembleRelease`. The profile is regenerated
+    // deliberately, by `:app:generateBaselineProfile`, and committed.
+    automaticGenerationDuringBuild = false
+
+    // Every variant reads one profile from `src/main`, rather than a copy per
+    // variant that can drift apart.
+    mergeIntoMain = true
 }
 
 dependencies {
@@ -59,9 +78,20 @@ dependencies {
     implementation(projects.core.designsystem)
     implementation(projects.feature.globe)
 
+    // The producer of the baseline profile. `targetProjectPath` in
+    // `:macrobenchmark` points the other way — that is how the test module finds
+    // the app to measure — and the plugin needs both directions before
+    // `generateBaselineProfile` does anything. Without this it succeeds, writes
+    // nothing, and says so only in a warning.
+    baselineProfile(projects.macrobenchmark)
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.startup)
+    // What actually applies the baseline profile on first run. It arrives
+    // transitively through Compose as well, but a profile is inert without it,
+    // and a load-bearing dependency should not rest on someone else's POM.
+    implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
