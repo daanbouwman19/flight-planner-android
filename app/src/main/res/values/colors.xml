@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Matches the globe backdrop colour ported from the desktop renderer. -->
-    <color name="splash_background">#081426</color>
-    <color name="ic_launcher_background">#081426</color>
+    <!-- Chart paper. Shared with the splash screen, so both move together. -->
+    <color name="splash_background">#F4EFE4</color>
+    <color name="ic_launcher_background">#F4EFE4</color>
 </resources>

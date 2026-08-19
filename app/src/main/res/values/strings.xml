@@ -135,9 +135,12 @@
     <string name="settings_theme_dark_detail">Always dark, whatever the system does.</string>
     <string name="settings_theme_cockpit">Cockpit</string>
     <string name="settings_theme_cockpit_detail">Near-black with amber accents, for flying at night.</string>
+    <string name="settings_theme_chart">Chart</string>
+    <string name="settings_theme_chart_detail">Chart paper with navy ink, always light.</string>
     <string name="settings_dynamic_colour">Colours from your wallpaper</string>
     <string name="settings_dynamic_colour_detail">Off uses the app’s own palette: avgas blue and runway amber.</string>
     <string name="settings_dynamic_colour_cockpit">Cockpit sets its own colours.</string>
+    <string name="settings_dynamic_colour_chart">Chart sets its own colours.</string>
     <string name="settings_empty_message">Units, weather provider and dataset information are still to come.</string>
     <string name="settings_self_check_action">Run on-device self-check</string>
 
