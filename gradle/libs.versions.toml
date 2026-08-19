@@ -205,4 +205,5 @@ flightplanner-android-library = { id = "flightplanner.android.library" }
 flightplanner-android-compose = { id = "flightplanner.android.compose" }
 flightplanner-android-hilt = { id = "flightplanner.android.hilt" }
 flightplanner-android-room = { id = "flightplanner.android.room" }
+flightplanner-android-benchmark = { id = "flightplanner.android.benchmark" }
 flightplanner-jvm-library = { id = "flightplanner.jvm.library" }

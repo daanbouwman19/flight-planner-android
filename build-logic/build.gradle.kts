@@ -50,6 +50,10 @@ gradlePlugin {
             id = "flightplanner.android.room"
             implementationClass = "AndroidRoomConventionPlugin"
         }
+        register("androidBenchmark") {
+            id = "flightplanner.android.benchmark"
+            implementationClass = "AndroidBenchmarkConventionPlugin"
+        }
         register("jvmLibrary") {
             id = "flightplanner.jvm.library"
             implementationClass = "JvmLibraryConventionPlugin"

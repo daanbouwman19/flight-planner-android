@@ -52,17 +52,38 @@ so it cannot be tested and rots silently. Lint does **not** reliably flag these 
 
 ### Cold start stays under 500 ms
 
-Last trustworthy figure ~370 ms, measured on an idle host (see the caveat below —
-later readings that session are not comparable). Anything added to
-`Application.onCreate`, a Hilt `@Singleton` constructor, or an `androidx.startup`
-Initializer runs before first frame and spends that budget. In particular:
+**Measure it with `:macrobenchmark`, not by hand.**
+
+```bash
+./gradlew :macrobenchmark:connectedBenchmarkAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.github.daanbouwman.flightplanner.macrobenchmark.StartupBenchmark
+```
+
+Twelve cold launches, ~35 seconds, on the `benchmark` variant. Latest figure:
+**169 ms median `timeToInitialDisplayMs`** on the SM-S942B. The older ~370 ms
+came off an emulator and is different hardware, not a regression that was fixed.
+
+Anything added to `Application.onCreate`, a Hilt `@Singleton` constructor, or an
+`androidx.startup` Initializer runs before first frame and spends that budget. In
+particular:
 
 - The airport index loads from a **prebuilt binary asset** via `AirportIndexLoader`.
   Rebuilding it from SQLite rows was measured at 646 ms and was deleted. It must
   not come back.
+- `timeToInitialDisplay` stops at the first frame, and this app holds a splash
+  screen *after* that until the index and the stored theme settle. A regression in
+  the index load therefore shows up as a longer splash a user can see and **not**
+  in this number. Covering it would need `reportFullyDrawn`, which the app does
+  not call.
 - **A debug APK is `debuggable` and runs largely interpreted, so timings taken
   from it are meaningless** — 872 ms debug versus 157 ms non-debuggable for
-  identical code. Measure on the `benchmark` build type only.
+  identical code. `:macrobenchmark` has no debug variant for this reason, and
+  `androidx.benchmark.suppressErrors` must stay unset so the library keeps
+  refusing a debuggable target.
+
+Every caveat below applies to hand-measurement, which is now the fallback rather
+than the method:
+
 - Measure a median of ~12 launches and discard scheduler outliers. Do not measure
   immediately after install: the first runs include dex verification and JIT
   warm-up and read ~130 ms high.
@@ -70,10 +91,11 @@ Initializer runs before first frame and spends that budget. In particular:
   same idle host.** Measured here: one unchanged APK gave a 424 ms median and then
   ~712 ms later in the same session, after a series of Gradle builds had loaded the
   host — a drift far larger than most regressions worth hunting. A before/after
-  comparison spanning a work session therefore proves nothing. To attribute a
-  startup change to a code change, build both commits and **interleave** their
-  measurements, or use `:macrobenchmark`, which controls iterations properly.
-  Otherwise report the number as unverified rather than reporting drift as a result.
+  comparison spanning a work session therefore proves nothing.
+- Order matters even inside one `:macrobenchmark` run: the startup benchmark that
+  ran last, after five minutes of flinging, reported a 30 ms higher median than
+  the one that ran first on the same code. Re-run the one you care about on its
+  own rather than reading a suite in sequence.
 
 ### The system bars stay empty
 

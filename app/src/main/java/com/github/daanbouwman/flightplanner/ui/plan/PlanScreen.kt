@@ -63,6 +63,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -693,7 +694,7 @@ private fun RouteList(
 
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag(PlanRouteListTag),
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -1044,6 +1045,16 @@ private const val SkeletonDelayMillis = 150L
  * the next batch is already in place by the time the fling reaches it.
  */
 private const val LoadMoreThreshold = 20
+
+/**
+ * The handle `:macrobenchmark` uses to find the route list.
+ *
+ * A `com.android.test` module measures the app's APK rather than compiling
+ * against it, so there is no symbol to share: `PlanScrollBenchmark` repeats this
+ * string as a literal. Renaming it here alone does not fail a build — it fails
+ * the benchmark, at run time, as an object that never appears.
+ */
+private const val PlanRouteListTag = "plan:routeList"
 
 private const val AppendingKey = "appending"
 

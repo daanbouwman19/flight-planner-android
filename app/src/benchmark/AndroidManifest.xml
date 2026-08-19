@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        Lets the shell profile this process without making it debuggable.
+
+        Macrobenchmark reads frame timings out of the target with `perfetto`, and
+        a process that is neither debuggable nor profileable yields nothing. The
+        alternative — measuring the debug APK, which *is* debuggable — is the one
+        thing this whole module exists to prevent, so the release code is opened
+        up instead of the measurement being moved to a debuggable build.
+
+        This file is the `benchmark` source set only. The release APK that ships
+        does not merge it.
+    -->
+    <application>
+        <profileable android:shell="true" />
+    </application>
+
+</manifest>

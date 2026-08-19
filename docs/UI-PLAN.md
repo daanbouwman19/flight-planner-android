@@ -23,6 +23,7 @@ Verified against the source tree, not against the plan.
 | `:core:network` | **Empty.** No sources at all. Phase F |
 | `:feature:globe` | `FilamentProbe` only. Vulkan confirmed working, `FEATURE_LEVEL_3` |
 | `:app` | Shell, navigation, the self-check, the Plan screen, the route detail and Settings. Logbook, Fleet, Airports and Stats are still placeholders |
+| `:macrobenchmark` | **The instrument, from P2.** `FrameTimingMetric` over a scripted fling and `StartupTimingMetric` over a cold start, both on the `benchmark` variant. See [the module README](../macrobenchmark/README.md) |
 
 The three gaps the original plan did not cover — the index carrying no display
 data (**G-a**), the missing `SearchScorer` and `FlightStatisticsCalculator`
@@ -141,8 +142,10 @@ badly during that session — the same unchanged APK read a 424 ms median and th
 with commits interleaved, or via `:macrobenchmark`. One change is worth checking
 specifically: reduce-motion is now resolved in `FlightPlannerTheme`, which puts a
 `Settings.Global` read and a `ContentObserver` registration on the startup path.
-Small, but it was not there before. There is also still no baseline profile, which
-remains the largest single startup win available to a Compose app.
+Small, but it was not there before. The app also still has no baseline profile
+of its own — though the APK does carry the AndroidX libraries' merged one, and
+P2's first measurement put the whole of AOT compilation's effect on the fling at
+around 7 % at P90. See Phase P.
 
 | ID | Task | Notes |
 | --- | --- | --- |
@@ -924,8 +927,12 @@ screen built from here adds surface to whatever they would have found.
 Flinging the route list **stutters for the first second or two, then smooths out,
 and generation itself is very smooth once it has run a few times.** That shape —
 bad at first, fine later, on the same code and the same data — is warm-up, not
-throughput: ART interpreting and then compiling. It is exactly what a baseline
-profile exists for, and this app does not have one.
+throughput: ART interpreting and then compiling. It is what a baseline profile
+exists for, and this app has no profile of its own. It is not, however, running
+with none at all: the `benchmark` APK ships a 7,472-byte
+`assets/dexopt/baseline.prof`, merged by AGP from the profiles the AndroidX
+libraries bundle in their own artifacts. Compose is therefore already covered;
+this app's own code is what is not.
 
 ### What the budget actually is
 
@@ -935,10 +942,9 @@ smoothness is on. Sampled *during* a fling, `mActiveRenderFrameRate` is
 a 60 Hz reading suggests. Every earlier figure in this document was recorded
 without knowing which of the two applied.
 
-Against 8.33 ms, the `benchmark` build measures **8 ms p50 and 11–12 ms p90**, with
-~6 % of frames janky. The median is inside the budget and the tail is not, which is
-exactly the shape of "stutters at first, then smooths out" — and it is what P1
-exists to fix.
+`FrameTimingMetric` settles this properly: `frameOverrunMs` is measured against
+each frame's *own* deadline, so it stays correct whatever the panel is doing and
+no longer depends on anybody having sampled the refresh rate by hand.
 
 ### Why the existing numbers cannot answer this
 
@@ -949,31 +955,75 @@ session's installs had failed silently, so it was the `benchmark` build against 
 janky** and debug at **8–9 ms p50, 16–18 ms p90, ~11 % janky** — the tail is what
 the build type moves.
 
-What survives of the original point: this harness drives synthetic flings through
-`input motionevent` and reads `dumpsys gfxinfo`, which is enough to rank two builds
-in one sitting and not enough to defend an absolute. That is what P2 is for. And
-the reason the wrong explanation lasted an afternoon is that a failed install was
-silent — so P2's first job is to make the thing being measured impossible to
-mistake.
+What survives of the original point: that harness drove synthetic flings through
+`input motionevent` and read `dumpsys gfxinfo`, which is enough to rank two builds
+in one sitting and not enough to defend an absolute. And the reason the wrong
+explanation lasted an afternoon is that a failed install was silent — so P2's first
+job was to make the thing being measured impossible to mistake. It is: the
+`:macrobenchmark` convention plugin disables the debug variant outright, so
+`connectedDebugAndroidTest` does not exist to be run by accident, and
+`androidx.benchmark.suppressErrors` is unset, so the library's own refusal to
+measure a debuggable target stays armed.
+
+### What the instrument says
+
+First full run, `:macrobenchmark` on SM-S942B, 7 m 39 s for all four benchmarks.
+Ten iterations per fling, twelve per startup, process killed before each one.
+
+| Benchmark | | | | |
+| --- | --- | --- | --- | --- |
+| | **P50** | **P90** | **P95** | **P99** |
+| `flingNoCompilation` — `frameDurationCpuMs` | 4.8 | 7.2 | 8.4 | 12.5 |
+| `flingNoCompilation` — `frameOverrunMs` | 0.8 | 4.7 | 5.3 | 7.4 |
+| `flingPartialCompilation` — `frameDurationCpuMs` | 4.7 | 6.7 | 7.7 | 11.4 |
+| `flingPartialCompilation` — `frameOverrunMs` | 0.7 | 4.6 | 5.1 | 7.5 |
+
+| Benchmark | min | median | max |
+| --- | --- | --- | --- |
+| `startupNoCompilation` — `timeToInitialDisplayMs` | 160.7 | **168.7** | 208.2 |
+| `startupPartialCompilation` — `timeToInitialDisplayMs` | 162.0 | 198.6 | 226.6 |
+
+Three things follow, and one non-thing.
+
+**Cold start is comfortable.** 169 ms median against a 500 ms budget, from a
+controlled instrument rather than a hand-picked median of `am start -W`. This is
+the first cold-start figure in this document that does not need the paragraph of
+caveats in `CLAUDE.md` attached to it.
+
+**The median fling is inside budget and the tail is not.** 4.8 ms at P50 against
+8.33 ms, but P99 frame duration is 12.5 ms and P99 overrun is +7.4 ms. That is the
+shape the complaint describes, and it is now a number rather than an impression.
+
+**Compilation barely moves it.** None → Partial is 7.2 → 6.7 ms at P90 and 12.5 →
+11.4 ms at P99: real, but around 7 %. Both modes were measured against a killed
+process, so this is precisely the "first fling" comparison P1 is meant to win, and
+it is a much smaller prize than "the single largest win available to a Compose
+app" implies. The likely reason is in the paragraph above — the library profile is
+already in the APK, so the code Partial adds on top is only this app's own.
+
+**The non-thing:** `startupPartialCompilation`'s median came in 30 ms *above*
+`startupNoCompilation`'s, which is not a result anybody should believe. It ran
+last, on a device that had just been flinging for five minutes. Re-running one
+startup benchmark now costs 35 seconds, which is the point.
 
 ### Tasks
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| **P1** | Baseline profile | The single largest startup and first-scroll win available to a Compose app, and the thing that most directly addresses "stutters at first, then smooths out". The `benchmark` variant it needs already exists. **Do it second** — see the order below |
-| **P2** | Macrobenchmark module | `FrameTimingMetric` over a scripted fling, with iterations and warm-up controlled, replacing `input motionevent` plus `dumpsys gfxinfo`. This is the instrument; P1 without it is a change nobody can grade |
-| **P3** | Projection off the UI thread | `MapFrame.projectOutline` runs in `drawWithCache` — on the UI thread, for every card entering composition during a fling. It needs the canvas aspect ratio, so moving it means deciding that ratio before measurement (a fixed card aspect, or a two-pass measure) rather than reading it from the canvas |
-| **P4** | A budget, written down | Once P2 can measure it: a p90 figure for the fling and a cold-start figure, both on the `benchmark` variant, so a regression is a failed check rather than an opinion |
+| **P1** | Baseline profile | Still worth doing, but the first measurement has already trimmed the expected prize to roughly 7 % at P90 — see above. What it is now good for is deciding whether that 7 % is the whole story or whether an app-specific profile moves it further than the library one did |
+| **P2** | Macrobenchmark module | ✅ `:macrobenchmark`. `PlanScrollBenchmark` (`FrameTimingMetric` over a down-and-back-up fling) and `StartupBenchmark` (`StartupTimingMetric`, cold), each in a no-compilation and a partial-compilation variant. Only the fling is inside `measureBlock`; launching, generating fifty routes and the staggered entrance happen in `setupBlock`. See [the module README](../macrobenchmark/README.md) |
+| **P3** | Projection off the UI thread | `MapFrame.projectOutline` runs in `drawWithCache` — on the UI thread, for every card entering composition during a fling. It needs the canvas aspect ratio, so moving it means deciding that ratio before measurement (a fixed card aspect, or a two-pass measure) rather than reading it from the canvas. **Now the more likely candidate for the tail**, since AOT compilation did not claim it |
+| **P4** | A budget, written down | Ready to write once P1 has been measured: a `frameOverrunMs` P90 for the fling and a `timeToInitialDisplayMs` median for the cold start, both from `:macrobenchmark`, so a regression is a failed check rather than an opinion |
 
-**Order: P2, then P1, then re-measure — then P3 only if the numbers still ask for
-it.** The IDs are stable, so they are not renumbered, but the instrument comes
-before the change. Building the macrobenchmark first means the baseline profile
-arrives with a before-and-after instead of an impression, and it is the only way
-to know whether P3 is worth doing at all: the projection may turn out to cost
-less than the warm-up it is currently hidden behind.
+**Order: P2 ✅, then P1, then re-measure — then P3 if the numbers still ask for
+it.** They now look more likely to. The IDs are stable, so they are not
+renumbered, but the instrument came before the change, and it has already paid
+for itself: the P90 gap AOT compilation was expected to close turns out to be
+small, which is a thing worth knowing *before* writing a baseline profile rather
+than after.
 
 **Done when:** the first fling after a cold start is indistinguishable from the
-tenth, and P2 reports it rather than a person judging it by eye.
+tenth, and `:macrobenchmark` reports it rather than a person judging it by eye.
 
 ---
 
@@ -1078,7 +1128,7 @@ default until that is settled.
 | ID | Task | Notes |
 | --- | --- | --- |
 | **H1** | ~~Baseline profile~~ | **Moved to P1.** It is the instrument, not the polish |
-| **H2** | ~~Macrobenchmark~~ | **Moved to P2**, for the same reason. What stays in H is extending it to the globe, once there is a globe |
+| **H2** | ~~Macrobenchmark~~ | **Done as P2.** `:macrobenchmark` exists and reports. What stays in H is extending it to the globe, once there is a globe |
 | **H3** | Glance widget | "Today's challenge" — one route seeded by `LocalDate.toEpochDay()`, deterministic across the day. Nearly free given the seeded RNG |
 | **H4** | Shortcuts | Generate route, log a flight, last route |
 | **H5** | Screenshot goldens | Roborazzi across light/dark, LTR/RTL, font scale 1.0/2.0, three window sizes. The globe is stubbed — it is covered by G1's math tests plus a device smoke check |
