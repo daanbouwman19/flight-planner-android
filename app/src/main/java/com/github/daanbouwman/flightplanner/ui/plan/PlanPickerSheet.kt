@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -23,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -32,6 +34,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -70,11 +75,13 @@ fun PlanPickerSheet(
     airports: List<Airport>,
     aircraft: List<AircraftSpec>,
     hasSelection: Boolean,
+    searchScope: SearchScope,
     sheetState: SheetState,
     onQueryChange: (String) -> Unit,
     onPickAirport: (Airport) -> Unit,
     onPickAircraft: (AircraftSpec) -> Unit,
     onClearSelection: () -> Unit,
+    onRetrySearch: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -197,7 +204,17 @@ fun PlanPickerSheet(
             }
 
             when (target) {
-                PickerTarget.Departure -> AirportResults(query, airports, onPickAirport)
+                PickerTarget.Departure -> {
+                    // Only while there is a query to narrow. With the field empty
+                    // the list below is "Largest airports", which is ranked by
+                    // runway length out of the in-memory index and does not touch
+                    // the name index at all — so nothing is degraded and saying so
+                    // would be noise on the state the sheet opens in.
+                    if (query.isNotBlank()) {
+                        SearchScopeNotice(searchScope, onRetrySearch)
+                    }
+                    AirportResults(query, airports, onPickAirport)
+                }
                 PickerTarget.Aircraft -> AircraftResults(query, aircraft, onPickAircraft)
             }
         }
@@ -287,6 +304,73 @@ private fun AircraftResults(
     }
 }
 
+/**
+ * Says so when the search behind the field is narrower than the field promises.
+ *
+ * The placeholder offers "Code, name or city", and for the first moments after a
+ * cold start — or permanently, if the build failed — only the first of the three
+ * is true. Without this, typing "Schiphol" comes back empty and reads as *this app
+ * does not have Schiphol*, which is the wrong conclusion about the wrong thing.
+ * The point is to move the blame from the airport to the index.
+ *
+ * A tonal strip rather than [EmptyState] or an error colour: the rows underneath
+ * it are real and pickable, so this annotates a working list rather than replacing
+ * a broken one. Only the failed case gets a button, because the loading case
+ * resolves itself in well under a second and a Retry on it would be an invitation
+ * to press something that does nothing.
+ *
+ * A polite live region, because it appears and disappears on its own schedule —
+ * a background build, not anything the user did — and can therefore change under
+ * someone who is already typing. It has to merge its descendants to be one: a
+ * live region announces the text of the node it is set on, and the [Surface]
+ * carries none of its own. The Retry button stays separately focusable, because
+ * a child that merges its own descendants is not absorbed by a merging parent.
+ */
+@Composable
+private fun SearchScopeNotice(
+    scope: SearchScope,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val message = when (scope) {
+        // Nothing is degraded, so nothing is said. Guarded here as well as at the
+        // call site so this can never draw as an empty strip.
+        SearchScope.Full -> return
+        SearchScope.NamesLoading -> stringResource(R.string.plan_picker_names_loading)
+        SearchScope.NamesUnavailable -> stringResource(R.string.plan_picker_names_unavailable)
+    }
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            // Tighter on the end than the start: a text button carries its own
+            // touch-target padding, and matching the two visually leaves the label
+            // sitting a long way in from the edge.
+            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 8.dp),
+            )
+            if (scope == SearchScope.NamesUnavailable) {
+                TextButton(onClick = onRetry) {
+                    Text(stringResource(R.string.plan_picker_names_retry))
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun SuggestionsHeader(labelRes: Int) {
     Text(
@@ -356,6 +440,26 @@ private fun NoResultsPreview() {
     FlightPlannerTheme(dynamicColor = false) {
         Surface(color = MaterialTheme.colorScheme.background) {
             NoResults(query = "EHZZ")
+        }
+    }
+}
+
+@LightDarkPreview
+@CompactWidthPreview
+@Composable
+private fun SearchScopeNoticePreview() {
+    FlightPlannerTheme(dynamicColor = false) {
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // Both states together: the loading one has to read as "wait a
+                // moment" and the failed one as "this is not coming back on its
+                // own", and the only thing separating them is wording and a button.
+                SearchScopeNotice(SearchScope.NamesLoading, onRetry = {})
+                SearchScopeNotice(SearchScope.NamesUnavailable, onRetry = {})
+            }
         }
     }
 }

@@ -21,5 +21,6 @@ class JvmLibraryConventionPlugin : Plugin<Project> {
 
         configureKotlinJvm()
         configureUnitTestPlatform()
+        configureInvariantChecks()
     }
 }

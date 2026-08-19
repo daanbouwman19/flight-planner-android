@@ -63,5 +63,6 @@ class AndroidBenchmarkConventionPlugin : Plugin<Project> {
         }
 
         configureKotlinAndroid()
+        configureInvariantChecks()
     }
 }

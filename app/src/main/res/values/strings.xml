@@ -108,6 +108,10 @@
     <string name="plan_picker_no_results_title">No matches</string>
     <!-- %1$s is what the user typed. -->
     <string name="plan_picker_no_results_message">Nothing matches “%1$s”.</string>
+    <!-- Shown above the departure results while the airport name index is still building. -->
+    <string name="plan_picker_names_loading">Matching codes only — airport names are still loading.</string>
+    <string name="plan_picker_names_unavailable">Airport names could not be loaded, so only ICAO codes are matched.</string>
+    <string name="plan_picker_names_retry">Retry</string>
 
     <!-- Placeholder screens. Replaced as each phase builds its screen. -->
     <string name="logbook_empty_title">No flights logged</string>

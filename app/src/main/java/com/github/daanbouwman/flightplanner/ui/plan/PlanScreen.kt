@@ -352,6 +352,7 @@ fun PlanScreen(
         // most launches never open.
         val airports by viewModel.airportResults.collectAsStateWithLifecycle()
         val aircraft by viewModel.aircraftResults.collectAsStateWithLifecycle()
+        val searchScope by viewModel.searchScope.collectAsStateWithLifecycle()
 
         PlanPickerSheet(
             target = target,
@@ -362,6 +363,7 @@ fun PlanScreen(
                 PickerTarget.Departure -> state.lockedDeparture != null
                 PickerTarget.Aircraft -> state.selectedAircraft != null
             },
+            searchScope = searchScope,
             sheetState = sheetState,
             onQueryChange = {
                 query = it
@@ -385,6 +387,7 @@ fun PlanScreen(
                 }
                 scope.launch { sheetState.hide() }.invokeOnCompletion { picker = null }
             },
+            onRetrySearch = viewModel::retryNameSearch,
             onDismiss = { picker = null },
         )
     }

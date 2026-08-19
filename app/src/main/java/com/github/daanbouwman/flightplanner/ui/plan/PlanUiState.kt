@@ -19,6 +19,30 @@ import com.github.daanbouwman.flightplanner.routing.GeoArc
  */
 enum class PlanMode { Any, NotFlown, SelectedAircraft }
 
+/**
+ * How much of the departure search is actually working.
+ *
+ * Ranking by name and city needs the airport name index, which is a full-table
+ * text read deliberately kept off the startup path — so there is a window after
+ * launch where a keystroke matches ICAO codes and nothing else, and a failure
+ * mode where it stays that way for the life of the process.
+ *
+ * The picker's placeholder promises "Code, name or city". This is the screen's
+ * way of being honest when only the first of those three is true, rather than
+ * letting a search for "Schiphol" come back empty and read as "no such airport".
+ */
+enum class SearchScope {
+
+    /** Codes, names and cities all rank. The picker says nothing. */
+    Full,
+
+    /** The index is still building. Codes only, and it resolves itself. */
+    NamesLoading,
+
+    /** The build failed. Codes only until a retry succeeds. */
+    NamesUnavailable,
+}
+
 /** Why a batch could not be produced at all. Rendered by the screen, so no prose here. */
 enum class PlanFailure {
     /** The airport index failed to load; nothing in the app can generate. */
