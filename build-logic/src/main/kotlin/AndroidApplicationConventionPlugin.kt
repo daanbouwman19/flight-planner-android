@@ -44,5 +44,6 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
         // resolve here and only here, so a test written the way the rest of the
         // repo writes them fails to compile for no apparent reason.
         configureUnitTestPlatform()
+        configureInvariantChecks()
     }
 }

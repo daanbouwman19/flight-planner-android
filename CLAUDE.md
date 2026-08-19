@@ -49,7 +49,7 @@ language (33), edge-to-edge enforcement (which follows `targetSdk` 35+) and all 
 `java.time` (26) are unconditionally present. A guard for an API level below
 `minSdk` is a branch no supported device can take, so it cannot be tested and rots
 silently. Lint does **not** reliably flag these — `ObsoleteSdkInt` missed one — so
-this is on you, not on tooling.
+`checkInvariants` does it instead. See [Verifying a change](#verifying-a-change).
 
 **It was 36, and the floor moved down rather than the rule loosening.** Nothing the
 app is built on needed 36, so the higher floor was spending install base on a
@@ -149,7 +149,20 @@ a wrong expectation, say so explicitly rather than quietly changing it.
 ./gradlew build                      # compiles everything, runs all tests + lint
 ./gradlew :core:routing:test         # fast: the pure-JVM algorithms
 ./gradlew :core:designsystem:testDebugUnitTest
+./gradlew checkInvariants            # the three invariants below that a compiler cannot see
 ```
+
+Three of the invariants above are enforced by `checkInvariants`, registered on every
+module by the convention plugins and wired into `check`, so `./gradlew build` runs it:
+Expressive imports outside `:core:designsystem`, `spring()`/`tween()` imported outside
+it, and `Build.VERSION.SDK_INT` anywhere. It is a line regex over `src/**/*.kt`, in
+[`build-logic/src/main/kotlin/InvariantChecks.kt`](build-logic/src/main/kotlin/InvariantChecks.kt)
+— blunt, but all three of these compile cleanly and one already slipped past Lint.
+Comment lines are skipped, so prose may name `SDK_INT`. Adding a rule means adding an
+entry to `INVARIANTS`; **verify a new one by planting a violation and watching it fail**,
+because a rule that matches nothing passes silently and looks identical to a clean tree.
+The remaining invariants — the empty system bars, cold start, the flight-rules colours —
+are not expressible this way and are still enforced by tests, `:macrobenchmark`, and you.
 
 `adb` is not on `PATH`:
 `C:\Users\daanb\AppData\Local\Android\Sdk\platform-tools\adb.exe`
