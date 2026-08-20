@@ -1,0 +1,102 @@
+# Builds the debug APK and hands it back as an artifact.
+#
+# It exists because a Compose change is not verified until it has been looked at
+# on a device, and the step before looking at it is knowing it compiles. This is
+# the compile.
+#
+# ## What makes it fast
+#
+# `gradle/actions/setup-gradle` caches the Gradle *user home*, which is three
+# separate things worth having and one that is easy to miss:
+#
+#   - `wrapper/dists` — the Gradle distribution itself, ~150 MB otherwise
+#     re-downloaded on every run.
+#   - `caches/modules-2` — resolved dependencies. This project pulls the Compose
+#     BOM, Filament, Hilt and Room, so a cold resolve is the single largest cost
+#     in the job.
+#   - `caches/build-cache-1` — **task outputs**, which is what `org.gradle.caching`
+#     in `gradle.properties` produces. This is the one that makes an incremental
+#     run cheap: a change confined to `:app` restores every other module's
+#     compilation instead of repeating it.
+#   - the configuration cache, but *only* when `cache-encryption-key` is set —
+#     see the note on that step.
+#
+# **The cache is written from `main` and read everywhere else.** That is the
+# action's default and it is the right one: a dozen topic branches all writing
+# would evict each other and nobody would get a hit. It does mean the first
+# useful run is the one on `main`, and that branch builds are only fast once
+# `main` has run at least once since the last dependency change.
+name: Debug APK
+
+on:
+  # `main` by push and everything else by pull request, rather than both. A
+  # branch that has a PR open would otherwise build twice per commit — once for
+  # the push and once for the PR — which is two runners and two cache reads for
+  # one answer.
+  push:
+    branches: [main]
+  pull_request:
+  # For a branch with no PR yet, which the rule above does not otherwise reach.
+  workflow_dispatch:
+
+# A second push supersedes the first: the APK from a commit nobody is looking at
+# any more is not worth a runner. Keyed on the PR number where there is one, so
+# that a push and its pull_request run share a group rather than racing.
+concurrency:
+  group: debug-apk-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # 21 rather than 17. The *bytecode* target is 17 and is set in the
+      # convention plugins (`JVM_TARGET`), so this only has to be a JDK new
+      # enough to run Gradle 9.7 and AGP 9.3.1 — and 21 is the LTS both are
+      # happy on. No toolchain is declared anywhere in the build, so whatever is
+      # selected here is what compiles.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The runner ships an Android SDK already; this is here to accept the
+      # licences, without which AGP will not fetch `platforms;android-37` or the
+      # build-tools the pinned AGP wants. Naming versions here instead would be
+      # one more place `compileSdk` has to be kept in step with
+      # `libs.versions.toml`.
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          # `gradle.properties` turns the configuration cache on, and the action
+          # will only cache configuration-cache entries when it can encrypt them
+          # — they can contain values read from the environment. Generate one
+          # with `openssl rand -base64 16` and add it as a repository secret
+          # named GRADLE_ENCRYPTION_KEY. Left unset the build still works; it
+          # just re-configures from scratch each run.
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      # Deliberately no `--no-daemon`: the action needs the daemon to stop
+      # cleanly at the end of the job to flush what it is about to cache, and a
+      # single-use CI daemon costs nothing anyway.
+      - name: Assemble
+        run: ./gradlew :app:assembleDebug
+
+      - uses: actions/upload-artifact@v7
+        with:
+          # The *head* commit, not `github.sha`. On a `pull_request` event the
+          # latter is the ephemeral merge commit GitHub built, which names a
+          # thing nobody can check out; the head SHA is the commit you pushed.
+          name: debug-apk-${{ github.event.pull_request.head.sha || github.sha }}
+          path: app/build/outputs/apk/debug/*.apk
+          # A green build that uploaded nothing is worse than a red one.
+          if-no-files-found: error
+          retention-days: 14

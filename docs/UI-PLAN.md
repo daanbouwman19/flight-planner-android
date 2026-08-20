@@ -1280,6 +1280,42 @@ it travels animates it twice, and the two do not agree), and **screens that shar
 element use `FlightMotion.sharedEnter` rather than `navEnter`** (an overlay does not
 inherit the container's scale).
 
+**The overlay was wrong in two further ways, and both showed on the way back.**
+Cropping `RouteMap` stopped the map painting across the screen; it did not make the
+overlay behave like the card. Coming back from the detail screen, for the length of
+the transition, the card's corners were square and its `DIST`/`ETE` chips were
+visibly darker — and both snapped right at one instant rather than resolving, which
+is what made it read as a fault rather than as motion. The snap is the tell: it is
+the frame the overlay is torn down in, so whatever is wrong is wrong *because the
+element is in the overlay* and is wrong right up to the end, when the element has
+already arrived at the card's bounds and everything else about it is correct.
+
+- **No ancestor clip reaches into that overlay — including the one that rounds the
+  corners.** The card's radius is the `Card`'s clip and the hero's is the
+  `Surface`'s, and neither is the element. `sharedBounds` takes
+  `clipInOverlayDuringTransition` for exactly this, and `sharedRouteElement` now
+  carries an optional `clipShape` that both ends name. Its default is **no clip**,
+  which replaces the API's `ParentClip` default: that one confines an element to
+  the nearest enclosing shared element, and the two ICAO codes are supposed to
+  leave the card entirely.
+- **The overlay is above *everything*, so sharing only the background inverted the
+  card's own stacking.** The map is what the card's figures are printed over; lifted
+  into the overlay it was painted on top of them instead. The chips are the one
+  translucent thing on the card, so they showed it first — at rest 30 % of the map
+  reaches through a chip and in the overlay 100 % of it lands on top, which is a
+  darker chip with the route arc drawn across it. The fix is that the shared element
+  is now the card's whole **face**, map and figures together in their resting order,
+  so what the overlay draws in the final frame is what the card draws in the first
+  frame after it. The airframe and the two codes stay shared individually inside it,
+  nested, which is supported and is what keeps them travelling to the spine.
+
+**Two panes means no shared elements at all.** Clearing both scopes under
+`ListDetailPaneScaffold` is not tidiness: a card and a detail pane showing that same
+route hold the same keys *at the same time*, which is the one arrangement a shared
+element cannot be in — the two halves of a pair are meant to be two screens apart in
+time, not side by side on one. Nothing travels in that layout anyway, so there was
+never anything for them to do there.
+
 **The shared ICAO pair lands in the app bar, not on the spine.** The spine's two
 codes are the obvious target and the destination's block can sit below the fold; a
 shared element flying to something off screen reads as a glitch. The title is on
