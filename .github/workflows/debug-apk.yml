@@ -55,14 +55,14 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 21 rather than 17. The *bytecode* target is 17 and is set in the
       # convention plugins (`JVM_TARGET`), so this only has to be a JDK new
       # enough to run Gradle 9.7 and AGP 9.3.1 — and 21 is the LTS both are
       # happy on. No toolchain is declared anywhere in the build, so whatever is
       # selected here is what compiles.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -72,9 +72,9 @@ jobs:
       # build-tools the pinned AGP wants. Naming versions here instead would be
       # one more place `compileSdk` has to be kept in step with
       # `libs.versions.toml`.
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           # `gradle.properties` turns the configuration cache on, and the action
           # will only cache configuration-cache entries when it can encrypt them
@@ -90,7 +90,7 @@ jobs:
       - name: Assemble
         run: ./gradlew :app:assembleDebug
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           # The *head* commit, not `github.sha`. On a `pull_request` event the
           # latter is the ephemeral merge commit GitHub built, which names a

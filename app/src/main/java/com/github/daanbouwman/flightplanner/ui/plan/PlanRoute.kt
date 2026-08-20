@@ -22,7 +22,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.layout.AnimatedPane
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
@@ -100,7 +100,13 @@ fun PlanRoute(
     viewModel: PlanViewModel,
     modifier: Modifier = Modifier,
 ) {
-    val twoPanes = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())
+    // `...V2`, which is what the rest of the app already calls — `FlightPlannerApp`
+    // asks it the same kind of question for the navigation suite. The one it
+    // replaces clamps every window at `EXPANDED`, so it cannot see the L and XL
+    // width classes at all, and it is deprecated for exactly that. Nothing below
+    // the L breakpoint classifies differently, and above it the directive can only
+    // report *more* partitions — which this predicate already treats the same.
+    val twoPanes = calculatePaneScaffoldDirective(currentWindowAdaptiveInfoV2())
         .maxHorizontalPartitions > 1
 
     if (!twoPanes) {
