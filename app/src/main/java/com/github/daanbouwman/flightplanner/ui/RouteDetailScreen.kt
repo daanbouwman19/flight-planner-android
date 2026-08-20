@@ -39,14 +39,18 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
+import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMap
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.navigation.Destination
-
 import com.github.daanbouwman.flightplanner.ui.chrome.SharedRouteKeys
 import com.github.daanbouwman.flightplanner.ui.chrome.sharedRouteElement
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailContent
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailViewModel
+import com.github.daanbouwman.flightplanner.ui.plan.PlanPreviewData
+import com.github.daanbouwman.flightplanner.ui.plan.RouteRow
 
 /**
  * One route, at the size a route deserves when it is the only thing on screen.
@@ -98,6 +102,7 @@ fun RouteDetailScreen(
     route: Destination.RouteDetail,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    alreadyFlown: Boolean = route.alreadyFlown,
     /**
      * Logs the flight through the list that generated it, returning false when
      * the route is no longer in that list — after process death, or after the
@@ -161,6 +166,7 @@ fun RouteDetailScreen(
                 snackbarHostState = snackbarHostState,
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp),
+                alreadyFlown = alreadyFlown,
             )
         }
     }
@@ -266,6 +272,25 @@ private const val TitleArrowRtl = "←"
  * axis. Tuned by eye against `CN19 → KLLJ`, which is what optical alignment is.
  */
 private const val ArrowOpticalLift = 0.08f
+
+@LightDarkPreview
+@DevicePreviews
+@Composable
+private fun RouteDetailPreview() {
+    FlightPlannerTheme(dynamicColor = false) {
+        RouteDetailScreen(
+            route = PlanPreviewData.longHaul.toDestination(),
+            onBack = {},
+        )
+    }
+}
+
+private fun RouteRow.toDestination(): Destination.RouteDetail = Destination.RouteDetail(
+    departureIcao = departure.icao,
+    destinationIcao = destination.icao,
+    aircraftId = aircraft.id,
+    distanceNm = distanceNm,
+)
 
 
 

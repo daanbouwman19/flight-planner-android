@@ -1,0 +1,175 @@
+package com.github.daanbouwman.flightplanner.ui.detail
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
+import com.github.daanbouwman.flightplanner.navigation.Destination
+import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
+import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
+import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
+
+/**
+ * The detail pane: a route, or an invitation to pick one.
+ *
+ * Shared between Plan and Logbook on wide screens. It carries a heading of its
+ * own rather than an app bar. An app bar implies a screen you can leave, and
+ * this pane is not somewhere you went — it is the other half of the screen you
+ * are already on.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RouteDetailPane(
+    state: RouteDetailPaneState?,
+    snackbarHostState: SnackbarHostState,
+    onMarkFlown: (Destination.RouteDetail) -> Boolean,
+    onFlownConfirmed: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Whether the route is already in the logbook (disables Mark as Flown). */
+    alreadyFlown: Boolean = false,
+) {
+    Scaffold(
+        modifier = modifier,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        // The pane sits inside a window the section scaffold has already inset, so
+        // it takes nothing further — see ContentInsets for why insets are consumed
+        // once and only once on the way down.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) { contentPadding ->
+        // Keyed on the **selection**, not on what has been loaded from it. One
+        // selection publishes three times — the codes alone, then the airports,
+        // then the runways — so a key read off the loaded state is absent on the
+        // first publish and the panel cross-fades twice per tap, through a blank
+        // skeleton, which is the smear this key exists to prevent. The route is
+        // known the instant the user taps and never changes; the rest is content.
+        //
+        // The transform is read outside the spec lambda, which is not composable —
+        // the same reason the navigation graph resolves its transitions up front.
+        val paneTransform = FlightMotion.paneContent()
+        AnimatedContent(
+            targetState = state,
+            transitionSpec = { paneTransform },
+            contentKey = { it?.route?.key() },
+            label = "route detail pane",
+        ) { current ->
+            RouteDetailPaneContent(
+                state = current,
+                contentPadding = contentPadding,
+                snackbarHostState = snackbarHostState,
+                onMarkFlown = onMarkFlown,
+                onFlownConfirmed = onFlownConfirmed,
+                alreadyFlown = alreadyFlown,
+            )
+        }
+    }
+}
+
+/**
+ * One route's worth of pane, or the empty invitation.
+ *
+ * Split out of [RouteDetailPane] so that `AnimatedContent` composes a whole copy
+ * of it per route: the outgoing copy keeps showing the route it was given while
+ * it fades, rather than re-rendering with the incoming route's data half way
+ * through its own exit.
+ */
+@Composable
+private fun RouteDetailPaneContent(
+    state: RouteDetailPaneState?,
+    contentPadding: PaddingValues,
+    snackbarHostState: SnackbarHostState,
+    onMarkFlown: (Destination.RouteDetail) -> Boolean,
+    onFlownConfirmed: () -> Unit,
+    alreadyFlown: Boolean,
+) {
+    if (state == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(contentPadding)
+                .padding(32.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = stringResource(R.string.route_detail_pane_empty),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
+
+    // Both come from the selection, so the heading states the real codes from
+    // the first frame rather than waiting for a database read to name them.
+    val route = state.route
+    val detail = state.detail
+    // Centred, because the content caps its own line length and a pane on a
+    // desktop-sized window is wider than that cap. Left-aligned, the spine
+    // would sit against the divider with a hand's width of nothing to its
+    // right.
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(contentPadding)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = stringResource(
+                R.string.route_detail_title_spoken,
+                route.departureIcao,
+                route.destinationIcao,
+            ),
+            style = MaterialTheme.typography.titleLarge.withTabularFigures(),
+            modifier = Modifier
+                .widthIn(max = if (isCompactHeight()) MaxContentWidth else WideMaxContentWidth)
+                .fillMaxWidth(),
+        )
+
+        RouteDetailContent(
+            route = route,
+            state = detail,
+            onMarkFlown = { onMarkFlown(route) },
+            onFlownConfirmed = onFlownConfirmed,
+            snackbarHostState = snackbarHostState,
+            // The pane cross-fades between routes; staging each block in on
+            // top of that would be two motions for one change.
+            animateEntrance = false,
+            alreadyFlown = alreadyFlown,
+        )
+    }
+}
+
+/**
+ * A stable identity for the scaffold navigator.
+ */
+private fun Destination.RouteDetail.key(): String =
+    "$departureIcao>$destinationIcao@$aircraftId"

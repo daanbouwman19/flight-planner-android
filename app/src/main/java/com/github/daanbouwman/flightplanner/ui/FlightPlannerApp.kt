@@ -88,13 +88,15 @@ fun FlightPlannerApp(
     // scrolled — is a screen the user cannot leave.
     LaunchedEffect(currentDestination?.route) { chrome.show() }
 
+    val destinations = if (isBar) TopLevelDestination.inBar else TopLevelDestination.inRail
+
     CompositionLocalProvider(
         LocalAppChromeState provides chrome,
         LocalNavigationReselect provides reselect,
     ) {
         NavigationSuiteScaffold(
             navigationItems = {
-                TopLevelDestination.inBar.forEach { destination ->
+                destinations.forEach { destination ->
                     val selected = currentDestination.isIn(destination)
                     val label = stringResource(destination.labelRes)
                     NavigationSuiteItem(

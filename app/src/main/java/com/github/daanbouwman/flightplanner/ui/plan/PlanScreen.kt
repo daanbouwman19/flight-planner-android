@@ -75,7 +75,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.ui.SettingsAction
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
+import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
 import com.github.daanbouwman.flightplanner.core.designsystem.components.ErrorState
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
@@ -89,7 +91,6 @@ import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotio
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
-import com.github.daanbouwman.flightplanner.ui.SettingsAction
 import com.github.daanbouwman.flightplanner.ui.chrome.ScrollToTopOnReselect
 import com.github.daanbouwman.flightplanner.ui.chrome.rememberChromeScrollConnection
 import com.github.daanbouwman.flightplanner.ui.chrome.rememberContentInsets
@@ -1165,6 +1166,7 @@ private fun PreviewPlan(state: PlanUiState) {
 
 @LightDarkPreview
 @CompactWidthPreview
+@DevicePreviews
 @Composable
 private fun PlanRoutesPreview() {
     PreviewPlan(

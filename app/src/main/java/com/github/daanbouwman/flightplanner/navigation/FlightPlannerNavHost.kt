@@ -22,6 +22,9 @@ import com.github.daanbouwman.flightplanner.startup.StartupCheckScreen
 import com.github.daanbouwman.flightplanner.ui.FleetScreen
 import com.github.daanbouwman.flightplanner.ui.RouteDetailScreen
 import com.github.daanbouwman.flightplanner.ui.profile.ProfileScreen
+import com.github.daanbouwman.flightplanner.ui.profile.ProfileSegment
+import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRoute
+import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRow
 import com.github.daanbouwman.flightplanner.ui.settings.SettingsScreen
 import com.github.daanbouwman.flightplanner.ui.plan.PlanRoute
 import com.github.daanbouwman.flightplanner.ui.plan.PlanViewModel
@@ -65,15 +68,10 @@ fun FlightPlannerNavHost(
             popEnterTransition = { enter },
             popExitTransition = { exit },
         ) {
-            // Settings left the navigation bar, so every section's app bar carries the
-            // way to it. One lambda, defined once, rather than a parameter threaded
-            // through each screen's own navigation logic.
-            //
-            // A plain `navigate`, *not* `navigateToTopLevel`. That helper pops back to
-            // the start destination, which is right for a bar item — switching tabs
-            // should not stack them up — and wrong here now that Settings is reached
-            // from within a section: it would throw that section away, so back from
-            // Settings landed on Plan instead of on the screen the user opened it from.
+
+            // Settings left the navigation bar on phones, so every section's app
+            // bar carries the way to it. One lambda, defined once, rather than a
+            // parameter threaded through each screen's own navigation logic.
             val openSettings = { navController.navigate(Destination.Settings) { launchSingleTop = true } }
 
             // Plan and its detail share one graph, and therefore one `PlanViewModel`.
@@ -132,7 +130,28 @@ fun FlightPlannerNavHost(
                 }
             }
             composable<Destination.Fleet> { FleetScreen(onOpenSettings = openSettings) }
-            composable<Destination.Profile> { ProfileScreen(onOpenSettings = openSettings) }
+            composable<Destination.Logbook> {
+                LogbookRoute(
+                    onOpenSettings = openSettings,
+                    onOpenRoute = { row ->
+                        navController.navigateToDetail(
+                            Destination.RouteDetail(
+                                departureIcao = row.departureIcao,
+                                destinationIcao = row.arrivalIcao,
+                                aircraftId = row.aircraftId,
+                                distanceNm = row.distanceNm ?: 0,
+                                alreadyFlown = true,
+                            ),
+                        )
+                    },
+                )
+            }
+            composable<Destination.Stats> {
+                ProfileScreen(
+                    segment = ProfileSegment.Stats,
+                    onOpenSettings = openSettings,
+                )
+            }
             composable<Destination.Settings> {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },

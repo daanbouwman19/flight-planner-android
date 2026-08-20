@@ -44,16 +44,16 @@ sealed interface Destination {
     data object Fleet : TopLevel
 
     /**
-     * The things that are about *you* rather than about the next flight: the
-     * logbook, the statistics drawn from it, and the way to Settings.
-     *
-     * One destination rather than three. Logbook and Stats are the same subject
-     * at two levels of zoom, so they are views switched by state inside
-     * [com.github.daanbouwman.flightplanner.ui.profile.ProfileScreen] rather
-     * than nav destinations of their own — see that screen's KDoc.
+     * Your flying history and records.
      */
     @Serializable
-    data object Profile : TopLevel
+    data object Logbook : TopLevel
+
+    /**
+     * Summaries and analytics drawn from your logbook.
+     */
+    @Serializable
+    data object Stats : TopLevel
 
     @Serializable
     data object Settings : TopLevel
@@ -71,6 +71,7 @@ sealed interface Destination {
         val destinationIcao: String,
         val aircraftId: Int,
         val distanceNm: Int,
+        val alreadyFlown: Boolean = false,
     ) : Destination
 
     /**

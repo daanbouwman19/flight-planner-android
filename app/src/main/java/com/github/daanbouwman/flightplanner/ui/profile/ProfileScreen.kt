@@ -35,56 +35,35 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
+import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.ui.SettingsAction
 import com.github.daanbouwman.flightplanner.ui.chrome.LocalAppChromeState
-import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
+import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.ScrollToTopOnReselect
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.ui.chrome.rememberChromeScrollConnection
 import com.github.daanbouwman.flightplanner.ui.chrome.rememberContentInsets
+import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRow
 import com.github.daanbouwman.flightplanner.ui.logbook.LogbookScreen
 
 /**
- * The Profile section: your flying, at two levels of zoom, with the way to
- * Settings one tap deeper than either.
+ * Shared container for the Logbook and Stats section screens.
  *
- * ### Why one screen with a switch, not two more destinations
- *
- * Logbook and Stats are the same subject at two levels of zoom — the records
- * and the summary drawn from them — so they are views inside one section
- * rather than two more stops on the navigation bar. [ProfileSegment] is plain
- * [rememberSaveable] state, not a nav destination and not a ViewModel's: both
- * segments' data sources exist regardless of which is showing, so switching
- * between them is exactly the kind of thing
- * [com.github.daanbouwman.flightplanner.ui.plan.PlanScreen] keeps local rather
- * than routing through a ViewModel — see its own picker state for the same
- * reasoning.
- *
- * A single [androidx.compose.foundation.lazy.LazyListState], content-inset
- * calculation and chrome connection are owned once here and handed to whichever
- * segment renders, so both read the same insets, the same centring and the
- * same scroll-hiding behaviour without either duplicating the plumbing
- * [com.github.daanbouwman.flightplanner.ui.plan.PlanScreen] owns for its own,
- * single list.
- *
- * ### The trap a segment switch falls into
- *
- * [rememberChromeScrollConnection]'s own auto-reveal fires only from an
- * attached list's layout events. Scroll the Logbook down — hiding the
- * navigation bar — then switch to Stats, which has no list of its own, and
- * nothing would ever bring the bar back: no layout event would arrive to
- * trigger it. The effect below force-shows the chrome on every segment change
- * away from Logbook, the same principle [rememberChromeScrollConnection]
- * already applies at the top of a list and on leaving the screen entirely.
+ * Provides consistent insets, responsive centering up to [WideMaxContentWidth],
+ * app header affordance, and chrome scroll handling across both top-level
+ * sections without duplicating the layout scaffolding.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
+    segment: ProfileSegment,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenRoute: (LogbookRow) -> Unit = {},
 ) {
-    var segment by rememberSaveable { mutableStateOf(ProfileSegment.Logbook) }
     val listState = rememberLazyListState()
     val chrome = LocalAppChromeState.current
 
@@ -115,7 +94,7 @@ fun ProfileScreen(
         val slack = if (compactHeight) {
             0.dp
         } else {
-            ((availableWidth - MaxContentWidth) / 2).coerceAtLeast(0.dp)
+            ((availableWidth - WideMaxContentWidth) / 2).coerceAtLeast(0.dp)
         }
         val contentPadding = PaddingValues(
             start = insets.calculateStartPadding(layoutDirection) + HorizontalGutter + slack,
@@ -126,14 +105,14 @@ fun ProfileScreen(
 
         val header: @Composable () -> Unit = {
             ProfileHeader(
-                segment = segment,
-                onSegmentChange = { segment = it },
+                titleRes = segment.labelRes,
                 onOpenSettings = onOpenSettings,
             )
         }
 
         when (segment) {
             ProfileSegment.Logbook -> LogbookScreen(
+                onOpenRoute = onOpenRoute,
                 listState = listState,
                 contentPadding = contentPadding,
                 header = header,
@@ -147,11 +126,9 @@ fun ProfileScreen(
 /** Which view Profile is currently showing. Local UI state, not a nav destination — see the class KDoc. */
 enum class ProfileSegment { Logbook, Stats }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProfileHeader(
-    segment: ProfileSegment,
-    onSegmentChange: (ProfileSegment) -> Unit,
+    titleRes: Int,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -162,7 +139,7 @@ private fun ProfileHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = stringResource(R.string.destination_profile),
+                text = stringResource(titleRes),
                 style = if (compactHeight) {
                     MaterialTheme.typography.titleLarge
                 } else {
@@ -174,26 +151,6 @@ private fun ProfileHeader(
             SettingsAction(onClick = onOpenSettings)
         }
         Spacer(Modifier.height(if (compactHeight) 6.dp else 12.dp))
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            ProfileSegment.entries.forEachIndexed { index, option ->
-                val selected = segment == option
-                SegmentedButton(
-                    selected = selected,
-                    onClick = { if (!selected) onSegmentChange(option) },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = ProfileSegment.entries.size),
-                    icon = {
-                        Icon(
-                            painter = painterResource(option.iconRes),
-                            // The label is drawn alongside, so describing the
-                            // icon too would read the segment twice.
-                            contentDescription = null,
-                        )
-                    },
-                ) {
-                    Text(stringResource(option.labelRes))
-                }
-            }
-        }
     }
 }
 
@@ -246,3 +203,12 @@ private val CompactTopGutter = 0.dp
 
 /** Space below the last card, so it does not end flush against the bottom inset. */
 private val BottomGutter = 24.dp
+
+@LightDarkPreview
+@DevicePreviews
+@Composable
+private fun ProfileScreenPreview() {
+    FlightPlannerTheme(dynamicColor = false) {
+        ProfileScreen(segment = ProfileSegment.Logbook, onOpenSettings = {})
+    }
+}

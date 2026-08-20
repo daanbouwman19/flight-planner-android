@@ -65,6 +65,7 @@ import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.ui.asBearing
 import com.github.daanbouwman.flightplanner.ui.asFigure
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
+import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.SharedRouteKeys
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.ui.chrome.sharedRouteElement
@@ -105,6 +106,13 @@ fun RouteDetailContent(
      * better here than a staggered hero agreed with a shared element.
      */
     animateEntrance: Boolean = true,
+    /**
+     * Whether the route is already recorded in the logbook.
+     *
+     * When true, the "Mark as flown" button is shown in its marked state from the
+     * start and cannot be tapped.
+     */
+    alreadyFlown: Boolean = false,
 ) {
     // From the arguments rather than from the loaded state: the shared element
     // has to be matchable on the first frame, and the airports arrive a query
@@ -121,7 +129,9 @@ fun RouteDetailContent(
         // and the second host would otherwise have had to remember the lesson the
         // first one learned. Hosts decide margins and alignment; the content
         // decides how wide a line of it may get.
-        modifier = modifier.widthIn(max = MaxContentWidth),
+        modifier = modifier.widthIn(
+            max = if (isCompactHeight()) MaxContentWidth else WideMaxContentWidth
+        ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // ### The hero holds its bounds before it has anything to draw
@@ -234,6 +244,7 @@ fun RouteDetailContent(
             onFlownConfirmed = onFlownConfirmed,
             snackbarHostState = snackbarHostState,
             modifier = Modifier.enterStaggered(4, animateEntrance),
+            alreadyFlown = alreadyFlown,
         )
     }
 }
@@ -671,6 +682,7 @@ private fun ActionsBlock(
     onFlownConfirmed: () -> Unit,
     snackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier,
+    alreadyFlown: Boolean = false,
 ) {
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -692,7 +704,7 @@ private fun ActionsBlock(
     // reset it. Without that, the screen came back reading "Mark as flown" for a
     // route it had already logged, the effect below never fired again, and the
     // user was left on a detail screen that had quietly finished its business.
-    var marked by rememberSaveable { mutableStateOf(false) }
+    var marked by rememberSaveable(alreadyFlown) { mutableStateOf(alreadyFlown) }
     val unavailable = stringResource(R.string.route_detail_mark_flown_unavailable)
     val needsIcao = stringResource(R.string.route_detail_simbrief_needs_icao)
     val copyLabel = stringResource(R.string.route_detail_action_copy)

@@ -35,3 +35,14 @@ annotation class LightDarkPreview
     fontScale = 2.0f,
 )
 annotation class CompactWidthPreview
+
+/**
+ * Previews for different window sizes, from phone to tablet and desktop.
+ *
+ * It covers the breakpoints at which the navigation suite and the screen
+ * layouts change: a bottom bar becomes a rail, and a single pane becomes two.
+ */
+@Preview(name = "Phone", device = "spec:width=360dp,height=800dp,dpi=480", showBackground = true)
+@Preview(name = "Tablet", device = "spec:width=1280dp,height=800dp,dpi=240", showBackground = true)
+@Preview(name = "Desktop", device = "spec:width=1920dp,height=1080dp,dpi=160", showBackground = true)
+annotation class DevicePreviews

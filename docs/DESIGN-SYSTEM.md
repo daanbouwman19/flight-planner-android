@@ -315,11 +315,17 @@ annotation class LightDarkPreview
 @Preview(name = "Compact 360dp", showBackground = true, widthDp = 360)
 @Preview(name = "Compact 360dp · font 2.0", showBackground = true, widthDp = 360, fontScale = 2.0f)
 annotation class CompactWidthPreview
+
+@Preview(name = "Phone", device = "spec:width=360dp,height=800dp,dpi=480", showBackground = true)
+@Preview(name = "Tablet", device = "spec:width=1280dp,height=800dp,dpi=240", showBackground = true)
+@Preview(name = "Desktop", device = "spec:width=1920dp,height=1080dp,dpi=160", showBackground = true)
+annotation class DevicePreviews
 ```
 
 Public rather than internal, because screens in `:app` need the same pairing and
 one shared annotation is what keeps every preview in the project framed the same
-way.
+way. `@DevicePreviews` covers phone, tablet and desktop breakpoints where navigation
+suites and multi-pane scaffolds shift.
 
 **Anything with a horizontal layout gets `@CompactWidthPreview` as well.** 360 dp
 is what a 1080 × 2340 phone at 480 dpi reports — the most common phone width there

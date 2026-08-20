@@ -8,8 +8,6 @@
     <string name="destination_fleet">Fleet</string>
     <string name="destination_stats">Stats</string>
     <string name="destination_settings">Settings</string>
-    <!-- The Profile section: the logbook, its statistics, and the way to Settings. -->
-    <string name="destination_profile">Profile</string>
     <string name="action_back">Back</string>
 
     <!-- Plan screen -->
@@ -117,6 +115,9 @@
     <!-- Placeholder screens. Replaced as each phase builds its screen. -->
     <string name="logbook_empty_title">No flights logged</string>
     <string name="logbook_empty_message">Flights you mark as flown will appear here, grouped by month.</string>
+    <string name="logbook_flight_deleted">Flight removed from logbook</string>
+    <string name="logbook_swipe_delete">Delete</string>
+    <string name="logbook_action_delete">Delete from logbook</string>
 
     <string name="fleet_empty_title">Fleet is not built yet</string>
     <string name="fleet_empty_message">Your aircraft are already loaded — the aircraft picker on Plan lists them. This screen, which will show their ranges and what you have flown, is still to come.</string>

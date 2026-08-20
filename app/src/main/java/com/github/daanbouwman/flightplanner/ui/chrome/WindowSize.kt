@@ -50,4 +50,10 @@ fun isCompactHeight(): Boolean = windowHeightDp() < CompactHeightMax
  */
 val MaxContentWidth: Dp = 640.dp
 
+/**
+ * A wider bound for screens that can use it — the detail screen and the logbook,
+ * where the density is lower and the extra width doesn't break the layout.
+ */
+val WideMaxContentWidth: Dp = 840.dp
+
 private val CompactHeightMax: Dp = 480.dp

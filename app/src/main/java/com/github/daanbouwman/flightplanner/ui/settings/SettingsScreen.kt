@@ -39,6 +39,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.ThemeChoice
+import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 
 /**
@@ -225,6 +226,7 @@ private val ThemeChoice.ignoresDynamicColour: Boolean
     get() = this == ThemeChoice.COCKPIT || this == ThemeChoice.CHART
 
 @LightDarkPreview
+@DevicePreviews
 @Composable
 private fun SettingsPreview() {
     FlightPlannerTheme(dynamicColor = false) {

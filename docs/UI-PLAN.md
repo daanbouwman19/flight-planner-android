@@ -891,24 +891,18 @@ Three things to weigh before this is settled:
   and Fleet. Under this shape it is one section containing two views, and the
   shared list-screen work it needs is the same either way.
 
-**Built, as Profile.** The bar is now Plan · Fleet · Profile. `Destination.Profile`
-replaces `Logbook`, `Airports` and `Stats` as `TopLevel` routes — Profile is one
-screen with a `SingleChoiceSegmentedButtonRow` switching between a Logbook view and
-a Stats view (state local to `ProfileScreen`, not a nav destination each: see its
-KDoc), plus its own Settings icon.
+**Built, as separate Logbook and Stats sections.** On phones, the bar is Plan · Fleet · Logbook · Stats, keeping each section one tap away. On tablets, the navigation rail expands to include Settings, filling the tall vertical space and providing direct access to all main sections without grouping.
 
-**Airports lost its slot outright rather than moving to a fourth one.** The doc had
-left "Plan · Fleet · Airports · Profile" open as an alternative; browsing airports
-had no built replacement to move into Profile or anywhere else, so it is simply
-gone until Phase E1 gives it one. The departure picker on Plan still searches the
-same index.
+**Logbook and Stats are now top-level destinations.** This removes the "Profile"
+nesting that was found to be unnecessary on larger screens. Logbook remains the
+record-keeping heart, and Stats remains the analytical view, but they no longer
+share a segment-switch container.
 
-**Settings kept its icon on every top-level screen, not only on Profile.** The
-original F10 framing read as Settings living inside Profile exclusively, but
-nothing about the restructuring required narrowing where `SettingsAction` appears
-— it already sat in every screen's corner before this change, F9 is why, and moving
-it would trade real discoverability for taxonomy tidiness. Profile's icon is
-additive: the one new call site, not a migration.
+**Adaptive width caps.** The 640 dp `MaxContentWidth` was found to be too
+restrictive on tablets, leaving large margins that made the app feel sparse.
+A new `WideMaxContentWidth` of 840 dp is used for the Logbook and Route Detail
+screens when on a wide window, using the available space more effectively without
+stretching lines to an unreadable length.
 
 D1 (Logbook list) landed as Profile's Logbook segment in the same change — see
 Phase D below.

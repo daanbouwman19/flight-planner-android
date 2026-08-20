@@ -1,11 +1,5 @@
-package com.github.daanbouwman.flightplanner.ui.plan
+package com.github.daanbouwman.flightplanner.ui.logbook
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
@@ -27,27 +21,28 @@ import com.github.daanbouwman.flightplanner.ui.chrome.LocalNavAnimatedVisibility
 import com.github.daanbouwman.flightplanner.ui.chrome.LocalSharedTransitionScope
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailPane
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailPaneViewModel
+import com.github.daanbouwman.flightplanner.ui.profile.ProfileScreen
+import com.github.daanbouwman.flightplanner.ui.profile.ProfileSegment
 import kotlinx.coroutines.launch
 
 /**
- * The Plan section, in however many panes the window has room for.
+ * The Logbook section, in however many panes the window has room for.
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
-fun PlanRoute(
+fun LogbookRoute(
     onOpenSettings: () -> Unit,
-    onOpenRoute: (RouteRow) -> Unit,
-    viewModel: PlanViewModel,
+    onOpenRoute: (LogbookRow) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val twoPanes = calculatePaneScaffoldDirective(currentWindowAdaptiveInfoV2())
         .maxHorizontalPartitions > 1
 
     if (!twoPanes) {
-        PlanScreen(
-            onOpenRoute = onOpenRoute,
+        ProfileScreen(
+            segment = ProfileSegment.Logbook,
             onOpenSettings = onOpenSettings,
-            viewModel = viewModel,
+            onOpenRoute = onOpenRoute,
             modifier = modifier,
         )
         return
@@ -69,7 +64,9 @@ fun PlanRoute(
             modifier = modifier,
             listPane = {
                 AnimatedPane {
-                    PlanScreen(
+                    ProfileScreen(
+                        segment = ProfileSegment.Logbook,
+                        onOpenSettings = onOpenSettings,
                         onOpenRoute = { row ->
                             val route = row.toDestination()
                             paneViewModel.select(route)
@@ -77,8 +74,6 @@ fun PlanRoute(
                                 navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, route.key())
                             }
                         },
-                        onOpenSettings = onOpenSettings,
-                        viewModel = viewModel,
                     )
                 }
             },
@@ -87,14 +82,9 @@ fun PlanRoute(
                     RouteDetailPane(
                         state = detail,
                         snackbarHostState = paneSnackbarHostState,
-                        onMarkFlown = { route ->
-                            viewModel.markFlown(
-                                departureIcao = route.departureIcao,
-                                destinationIcao = route.destinationIcao,
-                                aircraftId = route.aircraftId,
-                            )
-                        },
-                        onFlownConfirmed = paneViewModel::clear,
+                        onMarkFlown = { false }, // Already flown
+                        onFlownConfirmed = {},
+                        alreadyFlown = true,
                     )
                 }
             },
@@ -102,11 +92,11 @@ fun PlanRoute(
     }
 }
 
-private fun RouteRow.toDestination(): Destination.RouteDetail = Destination.RouteDetail(
-    departureIcao = departure.icao,
-    destinationIcao = destination.icao,
-    aircraftId = aircraft.id,
-    distanceNm = distanceNm,
+private fun LogbookRow.toDestination(): Destination.RouteDetail = Destination.RouteDetail(
+    departureIcao = departureIcao,
+    destinationIcao = arrivalIcao,
+    aircraftId = aircraftId,
+    distanceNm = distanceNm ?: 0,
 )
 
 private fun Destination.RouteDetail.key(): String =
