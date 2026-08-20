@@ -25,14 +25,11 @@ enum class TopLevelDestination(
     /**
      * Whether this destination gets a slot in the navigation bar.
      *
-     * Only [SETTINGS] does not. Six items on a 360 dp window — which is what a
-     * 1080 × 2340 phone at 480 dpi actually is — leaves 60 dp each, below the
-     * 3–5 Material specifies and narrow enough that the labels crowd into each
-     * other. Settings is also the odd one out in kind: the other five are places
-     * the content lives and the user moves between constantly, while settings is
-     * somewhere you go once and come back from. It lives in the app bar instead,
-     * which is where it is reachable from every screen rather than from a sixth
-     * of the bar.
+     * Only [SETTINGS] does not. It is the odd one out in kind: the other three
+     * are places the content lives and the user moves between constantly, while
+     * Settings is somewhere you go once and come back from. It lives in the app
+     * bar instead, which is where it is reachable from every screen rather than
+     * from a fourth of the bar.
      *
      * It stays a `TopLevel` destination so the navigation bar remains visible
      * while it is open, with nothing selected — the alternative strands the user
@@ -41,10 +38,8 @@ enum class TopLevelDestination(
     val inNavigationBar: Boolean = true,
 ) {
     PLAN(Destination.Plan, R.string.destination_plan, R.drawable.ic_nav_plan),
-    LOGBOOK(Destination.Logbook, R.string.destination_logbook, R.drawable.ic_nav_logbook),
     FLEET(Destination.Fleet, R.string.destination_fleet, R.drawable.ic_nav_fleet),
-    AIRPORTS(Destination.Airports, R.string.destination_airports, R.drawable.ic_nav_airports),
-    STATS(Destination.Stats, R.string.destination_stats, R.drawable.ic_nav_stats),
+    PROFILE(Destination.Profile, R.string.destination_profile, R.drawable.ic_nav_profile),
     SETTINGS(
         Destination.Settings,
         R.string.destination_settings,
@@ -54,7 +49,7 @@ enum class TopLevelDestination(
     ;
 
     companion object {
-        /** The five that appear in the bar, in bar order. */
+        /** The three that appear in the bar, in bar order. */
         val inBar: List<TopLevelDestination> = entries.filter { it.inNavigationBar }
     }
 }

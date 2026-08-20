@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.geometry.Rect
@@ -208,6 +209,17 @@ object FlightMotion {
      * change animates from the figure already on screen, which is what makes the
      * motion say *this value changed* rather than *this value appeared*.
      *
+     * **It also survives leaving composition — deliberately.** A caller inside a
+     * lazy list's `item {}` is destroyed and rebuilt every time it scrolls off
+     * screen and back, the same trap [com.github.daanbouwman.flightplanner.ui.plan.RouteRow]'s
+     * entrance animation documents avoiding for a *different* reason. A plain
+     * `remember` here would restart the count-up from zero on every return trip,
+     * which is exactly the "value appeared" motion the contract above says this
+     * must not send when nothing changed. The last shown figure is saved
+     * ([rememberSaveable], not `remember`, is what survives that teardown) and
+     * used to seed the animatable on the next composition, so returning to an
+     * unchanged target settles instantly rather than replaying.
+     *
      * Under reduce motion it returns [target] immediately — switched off, not
      * shortened, per this file's contract.
      */
@@ -215,7 +227,8 @@ object FlightMotion {
     fun rememberCountUp(target: Int): Int {
         if (LocalReduceMotion.current) return target
 
-        val figure = remember { Animatable(0f) }
+        var savedValue by rememberSaveable { mutableStateOf(0f) }
+        val figure = remember { Animatable(savedValue) }
         LaunchedEffect(target) {
             figure.animateTo(
                 targetValue = target.toFloat(),
@@ -226,6 +239,9 @@ object FlightMotion {
                 // than stopping at it.
                 animationSpec = tween(durationMillis = EmphasisMillis, easing = LinearOutSlowInEasing),
             )
+        }
+        DisposableEffect(Unit) {
+            onDispose { savedValue = figure.value }
         }
         return figure.value.roundToInt()
     }

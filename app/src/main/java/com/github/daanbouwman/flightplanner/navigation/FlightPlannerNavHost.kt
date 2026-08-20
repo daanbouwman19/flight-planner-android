@@ -19,12 +19,10 @@ import androidx.compose.animation.SharedTransitionLayout
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.ui.chrome.ProvideSharedRouteScopes
 import com.github.daanbouwman.flightplanner.startup.StartupCheckScreen
-import com.github.daanbouwman.flightplanner.ui.AirportsScreen
 import com.github.daanbouwman.flightplanner.ui.FleetScreen
-import com.github.daanbouwman.flightplanner.ui.LogbookScreen
 import com.github.daanbouwman.flightplanner.ui.RouteDetailScreen
+import com.github.daanbouwman.flightplanner.ui.profile.ProfileScreen
 import com.github.daanbouwman.flightplanner.ui.settings.SettingsScreen
-import com.github.daanbouwman.flightplanner.ui.StatsScreen
 import com.github.daanbouwman.flightplanner.ui.plan.PlanRoute
 import com.github.daanbouwman.flightplanner.ui.plan.PlanViewModel
 
@@ -133,10 +131,8 @@ fun FlightPlannerNavHost(
                     }
                 }
             }
-            composable<Destination.Logbook> { LogbookScreen(onOpenSettings = openSettings) }
             composable<Destination.Fleet> { FleetScreen(onOpenSettings = openSettings) }
-            composable<Destination.Airports> { AirportsScreen(onOpenSettings = openSettings) }
-            composable<Destination.Stats> { StatsScreen(onOpenSettings = openSettings) }
+            composable<Destination.Profile> { ProfileScreen(onOpenSettings = openSettings) }
             composable<Destination.Settings> {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },

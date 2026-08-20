@@ -6,9 +6,10 @@
     <string name="destination_plan">Plan</string>
     <string name="destination_logbook">Logbook</string>
     <string name="destination_fleet">Fleet</string>
-    <string name="destination_airports">Airports</string>
     <string name="destination_stats">Stats</string>
     <string name="destination_settings">Settings</string>
+    <!-- The Profile section: the logbook, its statistics, and the way to Settings. -->
+    <string name="destination_profile">Profile</string>
     <string name="action_back">Back</string>
 
     <!-- Plan screen -->
@@ -120,11 +121,32 @@
     <string name="fleet_empty_title">Fleet is not built yet</string>
     <string name="fleet_empty_message">Your aircraft are already loaded — the aircraft picker on Plan lists them. This screen, which will show their ranges and what you have flown, is still to come.</string>
 
-    <string name="airports_empty_title">Airport search is not built yet</string>
-    <string name="airports_empty_message">The airport database is loaded, and the departure picker on Plan already searches it by code, name or city. This screen will search it too.</string>
-
     <string name="stats_empty_title">Nothing to summarise</string>
     <string name="stats_empty_message">Distance flown, favourite airports and your busiest aircraft will appear here.</string>
+
+    <!-- Logbook (D1): the summary strip's three captions. Short and aviation-terse,
+         matching plan_chip_distance/plan_chip_time. -->
+    <string name="logbook_summary_flights">FLIGHTS</string>
+    <string name="logbook_summary_distance">NM</string>
+    <string name="logbook_summary_hours">HOURS</string>
+
+    <!-- Logbook row. Shown when the flight has no recorded distance or duration. -->
+    <string name="logbook_row_distance_placeholder">—</string>
+    <string name="logbook_row_duration_placeholder">—</string>
+    <!-- Shown in place of an airframe that has since been deleted from the fleet;
+         %1$d is the aircraft id the flight was logged against. -->
+    <string name="logbook_aircraft_unknown_format">Aircraft #%1$d</string>
+
+    <!--
+        Spoken for one logbook row, so a screen reader reads one sentence instead
+        of stopping on separate nodes. In order: aircraft, departure code, arrival
+        code, date, distance, duration.
+    -->
+    <string name="logbook_row_content_description">%1$s, %2$s to %3$s, %4$s, %5$s, %6$s</string>
+    <string name="logbook_row_distance_spoken">%1$,d nautical miles</string>
+    <string name="logbook_row_duration_spoken">%1$d hours %2$d minutes</string>
+    <string name="logbook_row_distance_unknown">distance not recorded</string>
+    <string name="logbook_row_duration_unknown">duration not recorded</string>
 
     <string name="settings_appearance">APPEARANCE</string>
     <string name="settings_theme_system">Follow the system</string>

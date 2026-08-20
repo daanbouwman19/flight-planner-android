@@ -19,10 +19,10 @@ Verified against the source tree, not against the plan.
 | `:core:model` | **Complete.** `Airport`, `AircraftSpec`, `FlightRecord`, `FlightStatistics`, `FlightRules`, `Metar`, `Units`, `SurfaceKinds`, `FleetCsv` |
 | `:core:database` | **Complete for what exists.** Both Room DBs, all DAOs, asset installer, fleet seeder |
 | `:core:routing` | **Complete.** Index, codec, band index, great-circle, generator, `SearchScorer`, `FlightStatisticsCalculator`, `RouteArc` and `AirportSlotSearch` from Phase B, and `MapFrame`, `WorldOutline` and the two clippers from Phase B++ — all tested |
-| `:core:designsystem` | **Complete for what exists.** Theme, motion, shapes, and eleven components. See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
+| `:core:designsystem` | **Complete for what exists.** Theme, motion, shapes, and thirteen components (D1 added `MonthHeader` and `StatSummaryStrip`). See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
 | `:core:network` | **Empty.** No sources at all. Phase F |
 | `:feature:globe` | `FilamentProbe` only. Vulkan confirmed working, `FEATURE_LEVEL_3` |
-| `:app` | Shell, navigation, the self-check, the Plan screen, the route detail and Settings. Logbook, Fleet, Airports and Stats are still placeholders |
+| `:app` | Shell, navigation, the self-check, the Plan screen, the route detail, Settings and Profile's Logbook segment. Fleet and Profile's Stats segment are still placeholders; Airports is gone rather than a placeholder — see F10 |
 | `:macrobenchmark` | **The instrument, from P2.** `FrameTimingMetric` over a scripted fling and `StartupTimingMetric` over a cold start, both on the `benchmarkRelease` variant, plus `BaselineProfileGenerator` from P1. See [the module README](../macrobenchmark/README.md) |
 
 The three gaps the original plan did not cover — the index carrying no display
@@ -856,7 +856,7 @@ on the bar, so nothing is painted behind the clock and the invariant holds.
 | **F15** | `06h 18m` | `6:18`, which is how a flight plan writes it |
 | **F16** | RTL unverified | Verified under an Arabic app locale. It mirrors correctly — and exposed that distances and runways were being localised into Arabic-Indic digits while ETE stayed Latin. Aviation figures are chart figures: they now format in a fixed locale everywhere, and only the spoken description stays localised, because speech follows the language it is spoken in |
 
-### F10 — the navigation bar, still a decision and now a better one
+### F10 — the navigation bar, decided
 
 **Five bottom-bar destinations serve one action loop.** Plan generates, Logbook
 records it, Stats is a projection *of* Logbook, Airports duplicates a search the
@@ -891,10 +891,27 @@ Three things to weigh before this is settled:
   and Fleet. Under this shape it is one section containing two views, and the
   shared list-screen work it needs is the same either way.
 
-**Not implemented.** It was briefly built and reverted: the bar is still five
-destinations with Settings in the app bar, exactly as before. The trigger has not
-changed — decide before Phase D, because the cost of moving these screens rises
-the moment they exist.
+**Built, as Profile.** The bar is now Plan · Fleet · Profile. `Destination.Profile`
+replaces `Logbook`, `Airports` and `Stats` as `TopLevel` routes — Profile is one
+screen with a `SingleChoiceSegmentedButtonRow` switching between a Logbook view and
+a Stats view (state local to `ProfileScreen`, not a nav destination each: see its
+KDoc), plus its own Settings icon.
+
+**Airports lost its slot outright rather than moving to a fourth one.** The doc had
+left "Plan · Fleet · Airports · Profile" open as an alternative; browsing airports
+had no built replacement to move into Profile or anywhere else, so it is simply
+gone until Phase E1 gives it one. The departure picker on Plan still searches the
+same index.
+
+**Settings kept its icon on every top-level screen, not only on Profile.** The
+original F10 framing read as Settings living inside Profile exclusively, but
+nothing about the restructuring required narrowing where `SettingsAction` appears
+— it already sat in every screen's corner before this change, F9 is why, and moving
+it would trade real discoverability for taxonomy tidiness. Profile's icon is
+additive: the one new call site, not a migration.
+
+D1 (Logbook list) landed as Profile's Logbook segment in the same change — see
+Phase D below.
 
 ### The measurement that was owed — and a retraction
 
@@ -1446,16 +1463,14 @@ the `remember` it looked like it had.
 
 ## 6. Phase D — Logbook and Fleet
 
-**Blocked on one decision, not on code.** F10 above is still open, and it decides
-whether this phase builds two sections or one: a Profile section holding the
-logbook and its statistics, with settings an icon inside it, changes what D1 sits
-in and folds E3 forward. The tasks below are the same work either way — only
-where they live changes — but deciding after they exist costs more than deciding
-now.
+**F10 landed as Profile**, so D1 built inside it rather than as its own bar
+destination — see F10 above for the shape and why. The rest of the tasks below are
+unaffected: Fleet stays a placeholder until D4–D7 build it, and Profile's Stats
+segment stays a placeholder until E3 does.
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| **D1** | Logbook list | Grouped by month with sticky headers; summary strip showing flights, NM and hours this year |
+| **D1** ✅ | Logbook list | Grouped by month with sticky headers (`MonthHeader`, `:core:designsystem`, the codebase's first use of `LazyColumn.stickyHeader`); a `StatSummaryStrip` (also new, `:core:designsystem`) shows flights, NM and hours flown this year, each figure driven by the existing `FlightMotion.rememberCountUp`. Month-grouping and the year summary are pure functions in `ui/logbook/LogbookGrouping.kt`, unit-tested without Robolectric — no precedent existed for either in this codebase or in the Rust reference, so both are new rather than ported. `LogbookViewModel` follows `PlanViewModel`'s shape (`combine` + `stateIn`, grouping/summing kept off the main thread via `flowOn`) |
 | **D2** | Add-flight sheet | Three searchable pickers plus a date picker; distance computed live as the pickers fill |
 | **D3** | Swipe-to-delete | With undo, matching the Plan screen's swipe grammar exactly |
 | **D4** | Fleet list | Filter chips (All · Flown · Not flown · Category); row toggle stamps `date_flown` |
@@ -1470,6 +1485,13 @@ now.
 
 **E5 is partly built.** The appearance half of Settings landed with the design
 review; the rest of the screen is still Phase E work.
+
+**F10 changes where two of these land, not what they build.** E3 (Stats dashboard)
+and E5 (Settings) now build inside the Profile section D1 already opened, in the
+Stats segment and behind Profile's own Settings icon respectively, rather than as
+destinations of their own — the work described below is unchanged. E1 (Airports
+browse) has no bar slot to land in any more, since F10 dropped Airports rather than
+moving it; deciding where a browse screen surfaces from is now part of E1 itself.
 
 | ID | Task | Notes |
 | --- | --- | --- |
