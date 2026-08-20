@@ -29,16 +29,21 @@
 name: Debug APK
 
 on:
+  # `main` by push and everything else by pull request, rather than both. A
+  # branch that has a PR open would otherwise build twice per commit — once for
+  # the push and once for the PR — which is two runners and two cache reads for
+  # one answer.
   push:
-    branches: [main, 'claude/**']
+    branches: [main]
   pull_request:
-  # So a branch can be built on demand without pushing an empty commit to it.
+  # For a branch with no PR yet, which the rule above does not otherwise reach.
   workflow_dispatch:
 
 # A second push supersedes the first: the APK from a commit nobody is looking at
-# any more is not worth a runner.
+# any more is not worth a runner. Keyed on the PR number where there is one, so
+# that a push and its pull_request run share a group rather than racing.
 concurrency:
-  group: debug-apk-${{ github.ref }}
+  group: debug-apk-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
