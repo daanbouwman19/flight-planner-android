@@ -109,7 +109,7 @@ fun RouteDetailContent(
     // From the arguments rather than from the loaded state: the shared element
     // has to be matchable on the first frame, and the airports arrive a query
     // later. The codes were in the navigation arguments all along.
-    val mapKey = SharedRouteKeys.map(route.departureIcao, route.destinationIcao, route.aircraftId)
+    val faceKey = SharedRouteKeys.face(route.departureIcao, route.destinationIcao, route.aircraftId)
     val aircraftKey =
         SharedRouteKeys.aircraft(route.departureIcao, route.destinationIcao, route.aircraftId)
 
@@ -139,8 +139,9 @@ fun RouteDetailContent(
         // that arrive by *travelling*; fading them in as well animates one thing
         // twice, and the two animations do not agree. The stagger starts below
         // them, where nothing has a counterpart on the card.
+        val heroShape = MaterialTheme.shapes.largeIncreased
         Surface(
-            shape = MaterialTheme.shapes.largeIncreased,
+            shape = heroShape,
             color = MaterialTheme.colorScheme.surfaceContainer,
             modifier = Modifier
                 .fillMaxWidth()
@@ -152,7 +153,13 @@ fun RouteDetailContent(
                 // recognisable place at 132 dp, and nothing else here would
                 // survive being squeezed at all.
                 .height(if (isCompactHeight()) CompactMapHeight else MapHeight)
-                .sharedRouteElement(mapKey, remeasure = false),
+                // The shape again, for the overlay a shared element is drawn in:
+                // this `Surface` clips its own content, but the clip is an
+                // ancestor's and an ancestor's clip does not follow the element
+                // into that overlay. Without it the hero flies as a rectangle and
+                // squares off at whichever end of the navigation it is arriving
+                // at.
+                .sharedRouteElement(faceKey, remeasure = false, clipShape = heroShape),
         ) {
             state.arc?.let { arc ->
                 RouteMap(

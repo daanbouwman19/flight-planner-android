@@ -77,6 +77,33 @@ import com.github.daanbouwman.flightplanner.routing.WorldOutline
  * to a card and a half per screen, which is slow to scan. It is a floor rather
  * than a height because at font scale 2.0 the content is taller than that, and a
  * card that clips its own runway figures to protect a map is the wrong way round.
+ *
+ * ### The card's face travels as one thing, background and figures together
+ *
+ * **A shared element is drawn in an overlay above both screens.** That is what
+ * lets it leave the lazy list and cross the window — and it also means the
+ * element is drawn above *everything*, including the rest of the card it came
+ * from. So sharing only the map, which is what this did, inverted the card's own
+ * stacking for the length of every transition: the background was lifted over
+ * the figures printed on it. The chips are the one translucent thing here, so
+ * they showed it first — at rest 30 % of the map reaches through a chip, and in
+ * the overlay 100 % of it lands on top, which is a visibly darker chip with the
+ * route arc drawn across it. It held right up to the last frame, where the map
+ * has already arrived at the card's bounds and is still on top, and then snapped
+ * as the overlay was torn down. That snap is why it read as a fault rather than
+ * as motion.
+ *
+ * The element is therefore the card's whole face: the map, and the figures over
+ * it, in the order they are in at rest. In the overlay it draws the same pixels
+ * the card draws, so the final frame of the transition and the first frame after
+ * it are identical and there is nothing left to snap.
+ *
+ * The airframe and the two codes stay shared *individually* inside it. Nesting a
+ * shared element inside another is supported and is what keeps them travelling
+ * to the detail screen's spine rather than merely riding the card down — they
+ * are drawn by their own overlay layers, at their own bounds, so the face's
+ * scale never reaches them. They do inherit one thing worth knowing about: see
+ * `sharedRouteElement`'s note on why the enclosing clip has to be opted out of.
  */
 @Composable
 fun RouteCard(
@@ -112,6 +139,12 @@ fun RouteCard(
     val markFlownLabel = stringResource(R.string.plan_swipe_mark_flown)
     val replaceLabel = stringResource(R.string.plan_swipe_replace)
 
+    // Read once and used twice: the `Card` clips its content to it, and the shared
+    // element re-states it for the overlay, where the `Card`'s clip cannot reach.
+    // Two literals would drift, and the frame where they disagreed would be
+    // exactly the frame the transition is looked at in.
+    val cardShape = MaterialTheme.shapes.largeIncreased
+
     Card(
         onClick = onClick,
         modifier = modifier
@@ -123,7 +156,7 @@ fun RouteCard(
                     CustomAccessibilityAction(replaceLabel) { onReplace(); true },
                 )
             },
-        shape = MaterialTheme.shapes.largeIncreased,
+        shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
         // Shorter when the window is: 180 dp of card in a 360 dp-tall landscape
@@ -141,7 +174,23 @@ fun RouteCard(
         // `uiautomator dump` — raising the floor to 320 dp moved nothing until this
         // flag was set, and then put the whole 123 dp where the KDoc says it goes.
         Box(
-            modifier = Modifier.fillMaxWidth().heightIn(min = cardHeight),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = cardHeight)
+                // The card's face travels to the detail screen's hero: one element
+                // holding the map *and* the figures printed over it. See the class
+                // KDoc — a shared element is drawn in an overlay above both
+                // screens, so anything left behind ends up underneath a background
+                // that is normally behind it.
+                //
+                // The shape is the card's own, because in that overlay the `Card`'s
+                // clip does not reach the element and its corners would otherwise
+                // be square until the transition ended.
+                .sharedRouteElement(
+                    SharedRouteKeys.face(row.departure.icao, row.destination.icao, row.aircraft.id),
+                    remeasure = false,
+                    clipShape = cardShape,
+                ),
             propagateMinConstraints = true,
         ) {
             // `matchParentSize`, not `fillMaxSize`. The map has no content of its
@@ -150,36 +199,16 @@ fun RouteCard(
             // resolves to nothing at all. `matchParentSize` takes no part in
             // sizing the card and adopts whatever height the content settled on,
             // which is what a background is.
-            // The map is what the detail screen's hero *is*, so it travels rather
-            // than cross-fading — it is the element that makes the two screens
-            // read as one thing at two sizes.
-            //
-            // The key is on a wrapper rather than on `RouteMap` itself, and the
-            // wrapper is what carries `matchParentSize`. That modifier is parent
-            // data — it tells this Box to measure the child at the card's own size
-            // once the card has been sized — and a shared element wants to impose
-            // the bounds it has animated to. Separated, each does one job, and this
-            // side mirrors the detail's hero exactly: a container that holds the
-            // bounds, a map that fills it.
             //
             // The overspill this used to paint mid-flight was `RouteMap`'s, not
             // this modifier's: the component drew past its own bounds and let the
             // `Card` crop it, and a shared element is rendered in an overlay where
             // no ancestor clip applies. It crops itself now.
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .sharedRouteElement(
-                        SharedRouteKeys.map(row.departure.icao, row.destination.icao, row.aircraft.id),
-                        remeasure = false,
-                    ),
-            ) {
-                RouteMap(
-                    arc = row.arc,
-                    outline = outline,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            RouteMap(
+                arc = row.arc,
+                outline = outline,
+                modifier = Modifier.matchParentSize(),
+            )
             Column(
                 modifier = Modifier
                     .fillMaxSize()

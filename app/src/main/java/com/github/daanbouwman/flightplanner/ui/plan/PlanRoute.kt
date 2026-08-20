@@ -29,6 +29,7 @@ import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,6 +42,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
+import com.github.daanbouwman.flightplanner.ui.chrome.LocalNavAnimatedVisibilityScope
+import com.github.daanbouwman.flightplanner.ui.chrome.LocalSharedTransitionScope
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.navigation.Destination
@@ -71,6 +74,16 @@ import kotlinx.coroutines.launch
  * binary rather than progressive, and no shared element — the route would simply
  * appear instead of arriving from the card. The scaffold earns its place where it
  * has something to offer, which is the second pane.
+ *
+ * ### Two panes means no shared elements at all
+ *
+ * The scopes are cleared for everything under the scaffold, so `sharedRouteElement`
+ * is a no-op in both panes. Nothing here travels — a tap changes what the second
+ * pane shows and the pane cross-fades it — so there is nothing for a shared
+ * element to do, and leaving the scopes in place would be actively wrong: a card
+ * and the pane showing that same route hold **the same keys at the same time**,
+ * which is the one thing a shared element cannot have. Two halves of a pair are
+ * meant to be two screens' worth apart in time, not side by side on one.
  *
  * ### The list pane is the whole Plan screen
  *
@@ -109,44 +122,50 @@ fun PlanRoute(
     // an action taken in the detail pane should report where it was taken.
     val paneSnackbarHostState = remember { SnackbarHostState() }
 
-    ListDetailPaneScaffold(
-        directive = navigator.scaffoldDirective,
-        value = navigator.scaffoldValue,
-        modifier = modifier,
-        listPane = {
-            AnimatedPane {
-                PlanScreen(
-                    onOpenRoute = { row ->
-                        val route = row.toDestination()
-                        paneViewModel.select(route)
-                        scope.launch {
-                            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, route.key())
-                        }
-                    },
-                    onOpenSettings = onOpenSettings,
-                    viewModel = viewModel,
-                )
-            }
-        },
-        detailPane = {
-            AnimatedPane {
-                RouteDetailPane(
-                    state = detail,
-                    snackbarHostState = paneSnackbarHostState,
-                    onMarkFlown = { route ->
-                        viewModel.markFlown(
-                            departureIcao = route.departureIcao,
-                            destinationIcao = route.destinationIcao,
-                            aircraftId = route.aircraftId,
-                        )
-                    },
-                    // The route has just left the list, so a pane still showing it
-                    // would be describing something the user can no longer act on.
-                    onFlownConfirmed = paneViewModel::clear,
-                )
-            }
-        },
-    )
+    CompositionLocalProvider(
+        LocalSharedTransitionScope provides null,
+        LocalNavAnimatedVisibilityScope provides null,
+    ) {
+        ListDetailPaneScaffold(
+            directive = navigator.scaffoldDirective,
+            value = navigator.scaffoldValue,
+            modifier = modifier,
+            listPane = {
+                AnimatedPane {
+                    PlanScreen(
+                        onOpenRoute = { row ->
+                            val route = row.toDestination()
+                            paneViewModel.select(route)
+                            scope.launch {
+                                navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, route.key())
+                            }
+                        },
+                        onOpenSettings = onOpenSettings,
+                        viewModel = viewModel,
+                    )
+                }
+            },
+            detailPane = {
+                AnimatedPane {
+                    RouteDetailPane(
+                        state = detail,
+                        snackbarHostState = paneSnackbarHostState,
+                        onMarkFlown = { route ->
+                            viewModel.markFlown(
+                                departureIcao = route.departureIcao,
+                                destinationIcao = route.destinationIcao,
+                                aircraftId = route.aircraftId,
+                            )
+                        },
+                        // The route has just left the list, so a pane still showing
+                        // it would be describing something the user can no longer
+                        // act on.
+                        onFlownConfirmed = paneViewModel::clear,
+                    )
+                }
+            },
+        )
+    }
 }
 
 /**
