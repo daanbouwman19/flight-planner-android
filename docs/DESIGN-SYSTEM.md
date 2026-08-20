@@ -200,7 +200,8 @@ Box(Modifier.clip(rememberMorphShape(Morph(FlightShapes.Circle, FlightShapes.Coo
 @Composable fun SkeletonBox(modifier: Modifier = Modifier, shape: Shape = MaterialTheme.shapes.small)
 @Composable fun SkeletonCard(modifier: Modifier = Modifier)
 @Composable fun EmptyState(title: String, message: String, modifier: Modifier = Modifier,
-                           actionLabel: String? = null, onAction: (() -> Unit)? = null)
+                           actionLabel: String? = null, onAction: (() -> Unit)? = null,
+                           icon: Painter? = null)
 @Composable fun ErrorState(title: String, message: String, modifier: Modifier = Modifier,
                            onRetry: (() -> Unit)? = null)
 @Composable fun MorphingLoadingIndicator(modifier: Modifier = Modifier,

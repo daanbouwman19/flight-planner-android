@@ -21,14 +21,21 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
+import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
+import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
+import com.github.daanbouwman.flightplanner.model.Airport
+import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
@@ -111,15 +118,13 @@ private fun RouteDetailPaneContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(contentPadding)
-                .padding(32.dp),
+                .padding(contentPadding),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = stringResource(R.string.route_detail_pane_empty),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
+            EmptyState(
+                title = stringResource(R.string.route_detail_pane_empty_title),
+                message = stringResource(R.string.route_detail_pane_empty),
+                icon = painterResource(R.drawable.ic_route_placeholder),
             )
         }
         return
@@ -173,3 +178,75 @@ private fun RouteDetailPaneContent(
  */
 private fun Destination.RouteDetail.key(): String =
     "$departureIcao>$destinationIcao@$aircraftId"
+
+@LightDarkPreview
+@DevicePreviews
+@Composable
+private fun RouteDetailPaneEmptyPreview() {
+    FlightPlannerTheme(dynamicColor = false) {
+        RouteDetailPane(
+            state = null,
+            snackbarHostState = remember { SnackbarHostState() },
+            onMarkFlown = { false },
+            onFlownConfirmed = {},
+        )
+    }
+}
+
+@LightDarkPreview
+@DevicePreviews
+@Composable
+private fun RouteDetailPanePreview() {
+    FlightPlannerTheme(dynamicColor = false) {
+        val route = Destination.RouteDetail(
+            departureIcao = "EHAM",
+            destinationIcao = "KJFK",
+            aircraftId = 1,
+            distanceNm = 3163,
+        )
+        val departure = Airport(
+            id = 1,
+            icao = "EHAM",
+            name = "Amsterdam Airport Schiphol",
+            latitude = 52.3086,
+            longitude = 4.7639,
+            elevationFt = -11,
+            country = "NL",
+            municipality = "Amsterdam",
+            sizeClass = AirportSizeClass.LARGE,
+            longestRunwayFt = 12467,
+            runwayCount = 6,
+            hasHardSurface = true,
+            hasIcaoCode = true,
+        )
+        val destination = Airport(
+            id = 2,
+            icao = "KJFK",
+            name = "John F Kennedy International Airport",
+            latitude = 40.6398,
+            longitude = -73.7789,
+            elevationFt = 13,
+            country = "US",
+            municipality = "New York",
+            sizeClass = AirportSizeClass.LARGE,
+            longestRunwayFt = 14511,
+            runwayCount = 4,
+            hasHardSurface = true,
+            hasIcaoCode = true,
+        )
+        RouteDetailPane(
+            state = RouteDetailPaneState(
+                route = route,
+                detail = RouteDetailUiState(
+                    departure = departure,
+                    destination = destination,
+                    distanceNm = 3163,
+                    loading = false,
+                ),
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onMarkFlown = { false },
+            onFlownConfirmed = {},
+        )
+    }
+}

@@ -208,6 +208,7 @@
     <!-- Weather. A placeholder until the weather phase; it says so rather than looking broken. -->
     <string name="route_detail_weather">WEATHER</string>
     <!-- The detail pane before a route has been chosen from the list beside it. -->
+    <string name="route_detail_pane_empty_title">No route selected</string>
     <string name="route_detail_pane_empty">Choose a route to see its fields, runways and headings.</string>
     <string name="route_detail_weather_pending">Live weather is not in this version yet. The flight category and the raw METAR for both fields will appear here.</string>
 
