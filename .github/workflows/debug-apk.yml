@@ -92,7 +92,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: debug-apk-${{ github.sha }}
+          # The *head* commit, not `github.sha`. On a `pull_request` event the
+          # latter is the ephemeral merge commit GitHub built, which names a
+          # thing nobody can check out; the head SHA is the commit you pushed.
+          name: debug-apk-${{ github.event.pull_request.head.sha || github.sha }}
           path: app/build/outputs/apk/debug/*.apk
           # A green build that uploaded nothing is worse than a red one.
           if-no-files-found: error

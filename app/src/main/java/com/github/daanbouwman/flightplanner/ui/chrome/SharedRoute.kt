@@ -135,7 +135,7 @@ fun Modifier.sharedRouteElement(
 private val NoOverlayClip: SharedTransitionScope.OverlayClip =
     object : SharedTransitionScope.OverlayClip {
         override fun getClipPath(
-            state: SharedTransitionScope.SharedContentState,
+            sharedContentState: SharedTransitionScope.SharedContentState,
             bounds: Rect,
             layoutDirection: LayoutDirection,
             density: Density,
