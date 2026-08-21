@@ -700,11 +700,23 @@ private fun ActionsBlock(
         null
     }
 
+    // One state rather than two independent booleans — `marked` plus a second
+    // `justConfirmed` flag once fixed a real bug here (an already-flown route
+    // handing itself back ~500 ms after opening, because `marked` is also
+    // seeded `true` when a Logbook entry arrives already flown) but left the
+    // fix enforced only by a comment: nothing stopped a future caller from
+    // setting `marked = true` from some other path and forgetting the second
+    // flag, reintroducing the exact bug. A three-way state makes that omission
+    // a compile-time-visible choice instead.
+    //
     // `rememberSaveable`, so a rotation inside the confirmation window does not
     // reset it. Without that, the screen came back reading "Mark as flown" for a
-    // route it had already logged, the effect below never fired again, and the
-    // user was left on a detail screen that had quietly finished its business.
-    var marked by rememberSaveable(alreadyFlown) { mutableStateOf(alreadyFlown) }
+    // route it had already logged, the hand-back effect below never fired
+    // again, and the user was left on a detail screen that had quietly
+    // finished its business.
+    var flownState by rememberSaveable(alreadyFlown) {
+        mutableStateOf(if (alreadyFlown) FlownState.AlreadyFlown else FlownState.NotMarked)
+    }
     val unavailable = stringResource(R.string.route_detail_mark_flown_unavailable)
     val needsIcao = stringResource(R.string.route_detail_simbrief_needs_icao)
     val copyLabel = stringResource(R.string.route_detail_action_copy)
@@ -723,8 +735,8 @@ private fun ActionsBlock(
     // navigation bar to escape by. Once the screen is no longer resumed, the
     // journey it was going to make has already been made by someone else.
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(marked) {
-        if (!marked) return@LaunchedEffect
+    LaunchedEffect(flownState) {
+        if (flownState != FlownState.JustConfirmed) return@LaunchedEffect
         delay(FlightMotion.EmphasisMillis.toLong())
         if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) onFlownConfirmed()
     }
@@ -735,7 +747,7 @@ private fun ActionsBlock(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         MarkFlownButton(
-            marked = marked,
+            marked = flownState != FlownState.NotMarked,
             onClick = {
                 if (onMarkFlown()) {
                     // The one haptic on this screen. A commitment landed —
@@ -743,7 +755,7 @@ private fun ActionsBlock(
                     // another app, and a phone that buzzes at those is a phone
                     // whose buzz stops meaning anything.
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                    marked = true
+                    flownState = FlownState.JustConfirmed
                 } else {
                     scope.launch { snackbarHostState.showSnackbar(unavailable) }
                 }
@@ -789,6 +801,17 @@ private fun ActionsBlock(
         }
     }
 }
+
+/**
+ * Where [ActionsBlock]'s mark-flown button stands, and — for [JustConfirmed]
+ * only — whether the hand-back effect should run.
+ *
+ * [AlreadyFlown] and [JustConfirmed] render identically (the button disabled,
+ * reading "Marked as flown"); the distinction exists solely to answer "did the
+ * user just do this, or did it arrive this way" for that one effect, without
+ * a second field that could say something different from the first.
+ */
+private enum class FlownState { NotMarked, AlreadyFlown, JustConfirmed }
 
 /**
  * Mark as flown, and the state after it.
