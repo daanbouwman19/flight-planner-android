@@ -6,8 +6,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -24,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -38,8 +43,13 @@ import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenBottomGutter
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenCompactTopGutter
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenHorizontalGutter
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenTopGutter
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
+import com.github.daanbouwman.flightplanner.ui.chrome.rememberContentInsets
 
 /**
  * The detail pane: a route, or an invitation to pick one.
@@ -60,15 +70,33 @@ fun RouteDetailPane(
     /** Whether the route is already in the logbook (disables Mark as Flown). */
     alreadyFlown: Boolean = false,
 ) {
+    val contentInsets = rememberContentInsets()
+
     Scaffold(
-        modifier = modifier,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        // The pane sits inside a window the section scaffold has already inset, so
-        // it takes nothing further — see ContentInsets for why insets are consumed
-        // once and only once on the way down.
+        modifier = modifier.then(contentInsets.modifier),
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom),
+                ),
+            )
+        },
+        // The pane computes remaining insets directly via ContentInsets so that
+        // content padding handles top status bar and bottom gesture bar insets.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.surface,
-    ) { contentPadding ->
+    ) { _ ->
+        val insets = contentInsets.asPaddingValues()
+        val layoutDirection = LocalLayoutDirection.current
+        val compactHeight = isCompactHeight()
+        val contentPadding = PaddingValues(
+            start = insets.calculateStartPadding(layoutDirection) + ScreenHorizontalGutter,
+            end = insets.calculateEndPadding(layoutDirection) + ScreenHorizontalGutter,
+            top = insets.calculateTopPadding() + if (compactHeight) ScreenCompactTopGutter else ScreenTopGutter,
+            bottom = insets.calculateBottomPadding() + ScreenBottomGutter,
+        )
+
         // Keyed on the **selection**, not on what has been loaded from it. One
         // selection publishes three times — the codes alone, then the airports,
         // then the runways — so a key read off the loaded state is absent on the
@@ -141,9 +169,8 @@ private fun RouteDetailPaneContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(contentPadding)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(contentPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

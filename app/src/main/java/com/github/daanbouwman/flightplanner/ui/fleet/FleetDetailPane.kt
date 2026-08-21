@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -16,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -23,6 +26,12 @@ import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenBottomGutter
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenCompactTopGutter
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenHorizontalGutter
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenTopGutter
+import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
+import com.github.daanbouwman.flightplanner.ui.chrome.rememberContentInsets
 
 /**
  * The detail pane: one airframe, or an invitation to pick one.
@@ -41,11 +50,23 @@ fun FleetDetailPane(
     onGenerateRoutes: (AircraftSpec) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val contentInsets = rememberContentInsets()
+
     Scaffold(
-        modifier = modifier,
+        modifier = modifier.then(contentInsets.modifier),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.surface,
-    ) { contentPadding ->
+    ) { _ ->
+        val insets = contentInsets.asPaddingValues()
+        val layoutDirection = LocalLayoutDirection.current
+        val compactHeight = isCompactHeight()
+        val contentPadding = PaddingValues(
+            start = insets.calculateStartPadding(layoutDirection) + ScreenHorizontalGutter,
+            end = insets.calculateEndPadding(layoutDirection) + ScreenHorizontalGutter,
+            top = insets.calculateTopPadding() + if (compactHeight) ScreenCompactTopGutter else ScreenTopGutter,
+            bottom = insets.calculateBottomPadding() + ScreenBottomGutter,
+        )
+
         val paneTransform = FlightMotion.paneContent()
         AnimatedContent(
             targetState = state,
@@ -92,9 +113,8 @@ private fun FleetDetailPaneContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(contentPadding)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(contentPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
