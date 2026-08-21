@@ -54,19 +54,22 @@ val FlightShapeScale: Shapes = Shapes(
  * component from quietly becoming a clover one day because a clover was
  * available.
  *
- * Two entries were removed rather than kept "for later": an `Arrow` polygon that
- * nothing ever drew (the route card draws its direction marker as a triangle,
- * because a rounded polygon at eight pixels a side rounds away the tip that
- * carries the whole signal) and the generate FAB's press morph, which outlived
- * the FAB itself by a phase. A design system is a set of promises about what the
- * app looks like, and an unused promise drifts.
+ * An `Arrow` polygon was removed rather than kept "for later": nothing ever drew
+ * it, because the route card draws its direction marker as a triangle instead — a
+ * rounded polygon at eight pixels a side rounds away the tip that carries the
+ * whole signal. A design system is a set of promises about what the app looks
+ * like, and an unused promise drifts. `Circle`/`Cookie` came close to the same
+ * fate: the named morph built for Plan's generate FAB was deleted when that FAB
+ * was cut, but the pair itself stayed — and Fleet's own add-aircraft FAB now
+ * morphs between them on press, which is the promise being kept rather than one
+ * that drifted.
  */
 object FlightShapes {
 
-    /** The generate FAB at rest, and the "nothing is happening" state generally. */
+    /** A FAB's shape at rest, and the "nothing is happening" state generally. */
     val Circle: RoundedPolygon get() = MaterialShapes.Circle
 
-    /** The generate FAB while pressed: a nine-lobed cookie, unmistakably *active*. */
+    /** A FAB's shape while pressed: a nine-lobed cookie, unmistakably *active*. */
     val Cookie: RoundedPolygon get() = MaterialShapes.Cookie9Sided
 
     /** Used for the loading indicator's rotation and for aircraft-category glyphs. */

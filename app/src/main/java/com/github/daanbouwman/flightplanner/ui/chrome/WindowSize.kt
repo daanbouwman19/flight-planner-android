@@ -57,3 +57,22 @@ val MaxContentWidth: Dp = 640.dp
 val WideMaxContentWidth: Dp = 840.dp
 
 private val CompactHeightMax: Dp = 480.dp
+
+/**
+ * The edge-to-edge content gutters every top-level, immersive-list screen
+ * shares — Plan, Fleet, and Logbook by way of `ProfileScreen`.
+ *
+ * These started as three private copies, one per screen, each commented "matches
+ * PlanScreen's own" with no explanation of why sharing them was wrong — because
+ * there wasn't one. A future retune belongs in one place.
+ */
+val ScreenHorizontalGutter: Dp = 16.dp
+
+/** Space between the status bar and the heading, in a window with height to spare. */
+val ScreenTopGutter: Dp = 8.dp
+
+/** Nothing to spare above the title in a short window. */
+val ScreenCompactTopGutter: Dp = 0.dp
+
+/** Space below the last card, so it does not end flush against the bottom inset. */
+val ScreenBottomGutter: Dp = 24.dp

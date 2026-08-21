@@ -75,6 +75,17 @@ sealed interface Destination {
     ) : Destination
 
     /**
+     * One airframe in the fleet.
+     *
+     * Flat, like [RouteDetail], rather than wrapped in a graph of its own: its
+     * writes go straight through [com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository]
+     * and the list's own `Flow` picks them up, so there is no cross-screen undo
+     * to coordinate the way [Plan] and [RouteDetail] share a `PlanViewModel` for.
+     */
+    @Serializable
+    data class FleetDetail(val airframeId: Int) : Destination
+
+    /**
      * The on-device self-check, kept from the pre-UI milestone.
      *
      * It is the only thing that proves the prepackaged database, the native

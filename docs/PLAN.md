@@ -79,7 +79,7 @@ it lives on Android.
 | Toggle flown status, stamping `date_flown` | Row toggle, same stamping |
 | **Mark all aircraft as not flown**, behind a confirmation | Overflow action + confirm dialog |
 | Add a new aircraft (`NewAircraft` / `add_aircraft`) | Add/edit airframe form |
-| Import fleet from `aircrafts.csv` (116 rows, 12 categories) | Bundled seed on first run **+** SAF import/export |
+| Import fleet from `aircrafts.csv` (116 rows, 12 categories) | Bundled seed on first run only. **A deliberate gap**: `FleetCsv.parse`/`write` in `:core:model` still back the seed and "restore defaults", but a SAF import/export UI was decided against — see `docs/UI-PLAN.md` §6, D7 |
 | Not-flown count (CLI header) | Badge on the Fleet tab and the Not-flown chip |
 
 ### History and statistics

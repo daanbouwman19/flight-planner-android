@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
  * navigation suite consumes the bottom edge when it is a bar and the start edge
  * when it is a rail, and it consumes nothing at all once it is hidden — so which
  * edges are the screen's changes with the window width *and* with the chrome state.
- * `PlaceholderScaffold` documents the same trap from the other side.
  *
  * The consumption-aware modifiers — `windowInsetsPadding`, `consumeWindowInsets` —
  * solve exactly this, but they produce a *modifier*, and a modifier cannot become a

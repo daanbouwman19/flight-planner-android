@@ -119,8 +119,70 @@
     <string name="logbook_swipe_delete">Delete</string>
     <string name="logbook_action_delete">Delete from logbook</string>
 
-    <string name="fleet_empty_title">Fleet is not built yet</string>
-    <string name="fleet_empty_message">Your aircraft are already loaded — the aircraft picker on Plan lists them. This screen, which will show their ranges and what you have flown, is still to come.</string>
+    <!-- Fleet -->
+    <string name="fleet_empty_title">No aircraft yet</string>
+    <string name="fleet_empty_message">Add an airframe, or restore the bundled fleet from the overflow menu.</string>
+    <string name="fleet_no_match_title">No matches</string>
+    <string name="fleet_no_match_message">No aircraft match this filter.</string>
+
+    <string name="fleet_mode_all">All</string>
+    <string name="fleet_mode_flown">Flown</string>
+    <string name="fleet_mode_not_flown">Not flown</string>
+
+    <string name="fleet_overflow_content_description">Fleet actions</string>
+    <string name="fleet_action_add_aircraft">Add aircraft</string>
+    <string name="fleet_action_mark_all_not_flown">Mark all not flown</string>
+    <string name="fleet_action_restore_defaults">Restore default fleet</string>
+    <string name="fleet_action_mark_flown">Mark flown</string>
+    <string name="fleet_action_mark_not_flown">Mark not flown</string>
+
+    <string name="fleet_confirm_mark_all_not_flown_title">Mark all aircraft not flown?</string>
+    <string name="fleet_confirm_mark_all_not_flown_message">This clears the flown flag and date for every airframe in your fleet. Logged flights in your Logbook are not affected.</string>
+    <string name="fleet_confirm_mark_all_not_flown_action">Mark all not flown</string>
+    <string name="fleet_confirm_restore_defaults_title">Restore the default fleet?</string>
+    <string name="fleet_confirm_restore_defaults_message">Bundled airframes are reset to their original ranges and flown status. Aircraft you added yourself are kept.</string>
+    <string name="fleet_confirm_restore_defaults_action">Restore defaults</string>
+
+    <string name="fleet_row_flown_spoken">flown</string>
+    <string name="fleet_row_not_flown_spoken">not flown</string>
+    <!--
+        Spoken for one fleet row, so a screen reader reads one sentence instead
+        of stopping on separate nodes. In order: aircraft, category, envelope,
+        flown status.
+    -->
+    <string name="fleet_row_content_description">%1$s, %2$s, %3$s, %4$s</string>
+
+    <string name="fleet_add_title">Add aircraft</string>
+    <string name="fleet_add_manufacturer">Manufacturer</string>
+    <string name="fleet_add_variant">Variant</string>
+    <string name="fleet_add_icao_code">ICAO type code</string>
+    <string name="fleet_add_category">Category</string>
+    <string name="fleet_add_range">Range (NM)</string>
+    <string name="fleet_add_cruise">Cruise (kt)</string>
+    <!-- Metres, matching the field FleetCsv and AircraftSpec store — see AircraftSpec's KDoc on the unit asymmetry. -->
+    <string name="fleet_add_takeoff">Takeoff distance (m)</string>
+    <string name="fleet_add_submit">Add to fleet</string>
+    <string name="fleet_add_error_required">Required</string>
+    <string name="fleet_add_error_positive_number">Enter a positive number</string>
+
+    <string name="fleet_detail_not_found_title">Aircraft not found</string>
+    <string name="fleet_detail_not_found_message">This airframe may have been removed from your fleet.</string>
+    <string name="fleet_detail_flown">Flown</string>
+    <string name="fleet_detail_not_flown">Not flown</string>
+    <!-- %1$s is a localized date, e.g. "August 21, 2026". -->
+    <string name="fleet_detail_flown_on">Flown %1$s</string>
+    <string name="fleet_detail_range">RANGE</string>
+    <string name="fleet_detail_cruise">CRUISE</string>
+    <string name="fleet_detail_takeoff">TAKEOFF</string>
+    <!-- %1$s is a cruise speed in knots, already grouped. Keep it %1$s. -->
+    <string name="fleet_detail_value_knots">%1$s kt</string>
+    <string name="fleet_detail_action_edit">Edit envelope</string>
+    <string name="fleet_detail_edit_title">Edit envelope</string>
+    <string name="fleet_detail_action_save">Save</string>
+    <string name="fleet_detail_action_cancel">Cancel</string>
+    <string name="fleet_detail_action_generate">Generate routes for this aircraft</string>
+    <string name="fleet_detail_pane_empty_title">No aircraft selected</string>
+    <string name="fleet_detail_pane_empty_message">Choose an aircraft to see its details.</string>
 
     <string name="stats_empty_title">Nothing to summarise</string>
     <string name="stats_empty_message">Distance flown, favourite airports and your busiest aircraft will appear here.</string>

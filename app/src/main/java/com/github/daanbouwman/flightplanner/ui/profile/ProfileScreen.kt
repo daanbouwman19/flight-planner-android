@@ -41,6 +41,10 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDa
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.ui.SettingsAction
 import com.github.daanbouwman.flightplanner.ui.chrome.LocalAppChromeState
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenBottomGutter
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenCompactTopGutter
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenHorizontalGutter
+import com.github.daanbouwman.flightplanner.ui.chrome.ScreenTopGutter
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.ScrollToTopOnReselect
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
@@ -97,10 +101,10 @@ fun ProfileScreen(
             ((availableWidth - WideMaxContentWidth) / 2).coerceAtLeast(0.dp)
         }
         val contentPadding = PaddingValues(
-            start = insets.calculateStartPadding(layoutDirection) + HorizontalGutter + slack,
-            end = insets.calculateEndPadding(layoutDirection) + HorizontalGutter + slack,
-            top = insets.calculateTopPadding() + if (compactHeight) CompactTopGutter else TopGutter,
-            bottom = insets.calculateBottomPadding() + BottomGutter,
+            start = insets.calculateStartPadding(layoutDirection) + ScreenHorizontalGutter + slack,
+            end = insets.calculateEndPadding(layoutDirection) + ScreenHorizontalGutter + slack,
+            top = insets.calculateTopPadding() + if (compactHeight) ScreenCompactTopGutter else ScreenTopGutter,
+            bottom = insets.calculateBottomPadding() + ScreenBottomGutter,
         )
 
         val header: @Composable () -> Unit = {
@@ -191,18 +195,6 @@ private fun StatsPlaceholder(
         }
     }
 }
-
-/** The card column's margin. Matches PlanScreen's own — see that file for why this is duplicated rather than shared. */
-private val HorizontalGutter = 16.dp
-
-/** Space between the status bar and the heading. */
-private val TopGutter = 8.dp
-
-/** Nothing to spare above the title in a short window. */
-private val CompactTopGutter = 0.dp
-
-/** Space below the last card, so it does not end flush against the bottom inset. */
-private val BottomGutter = 24.dp
 
 @LightDarkPreview
 @DevicePreviews

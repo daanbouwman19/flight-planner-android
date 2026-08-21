@@ -18,4 +18,7 @@
     -->
     <string name="ds_loading_indicator_description">Loading</string>
 
+    <!-- The dismissal action on the shared confirmation dialog. -->
+    <string name="ds_confirmation_dialog_cancel">Cancel</string>
+
 </resources>

@@ -22,7 +22,7 @@ Verified against the source tree, not against the plan.
 | `:core:designsystem` | **Complete for what exists.** Theme, motion, shapes, and thirteen components (D1 added `MonthHeader` and `StatSummaryStrip`). See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
 | `:core:network` | **Empty.** No sources at all. Phase F |
 | `:feature:globe` | `FilamentProbe` only. Vulkan confirmed working, `FEATURE_LEVEL_3` |
-| `:app` | Shell, navigation, the self-check, the Plan screen, the route detail, Settings and Profile's Logbook segment. Fleet and Profile's Stats segment are still placeholders; Airports is gone rather than a placeholder — see F10 |
+| `:app` | Shell, navigation, the self-check, the Plan screen, the route detail, Settings, Logbook (with swipe-to-delete and a two-pane flight-detail layout) and Fleet (list, detail, management). Only Stats is still a placeholder; Airports is gone rather than a placeholder — see F10 |
 | `:macrobenchmark` | **The instrument, from P2.** `FrameTimingMetric` over a scripted fling and `StartupTimingMetric` over a cold start, both on the `benchmarkRelease` variant, plus `BaselineProfileGenerator` from P1. See [the module README](../macrobenchmark/README.md) |
 
 The three gaps the original plan did not cover — the index carrying no display
@@ -1458,20 +1458,48 @@ the `remember` it looked like it had.
 ## 6. Phase D — Logbook and Fleet
 
 **F10 landed as Profile**, so D1 built inside it rather than as its own bar
-destination — see F10 above for the shape and why. The rest of the tasks below are
-unaffected: Fleet stays a placeholder until D4–D7 build it, and Profile's Stats
-segment stays a placeholder until E3 does.
+destination — see F10 above for the shape and why. D3 (swipe-to-delete) and a
+two-pane Logbook/flight-detail layout — reusing `RouteDetailPane`, not in the
+original D-phase scope — landed in the same change (`77073b2`) but the table
+below was never checked off for it until now.
+
+**D4–D6 are built.** Fleet is a real screen: filter chips, category grouping, a
+per-row flown toggle, a detail screen with an inline-edit sheet for the envelope,
+"generate routes for this aircraft", and fleet management (add aircraft, mark all
+not flown, restore defaults) behind an overflow menu. **D7 is deliberately not
+built** — the user decided the shipped app should not expose CSV import/export in
+the UI at all, so it is dropped rather than deferred. `FleetCsv.parse`/`write` in
+`:core:model` stay: they back the bundled first-run seed and `restoreDefaults()`,
+and are already tested independently of any UI.
+
+Two things worth carrying forward from building Fleet:
+
+- **A stock `Switch` for the flown toggle was wrong**, even though nothing about
+  it was incorrect — the mode row above it already establishes the screen's own
+  selection grammar (`FilterChip`, filled means "on"), and a system switch next to
+  it reads as settings chrome dropped into an otherwise chart-styled screen. The
+  row toggle, the detail screen's flown state, and the mode filter now all use the
+  same chip.
+- **The add-aircraft FAB went through two wrong iterations before landing.** First
+  a `LargeFloatingActionButton` — which is not what "Expressive" prescribes here;
+  the M3 spec's *default* FAB size is what Compose's plain `FloatingActionButton`
+  already is, so sizing up had nothing behind it. What Expressive actually asks
+  for is motion: a FAB's shape morphing on press. `FlightShapes.Circle` →
+  `FlightShapes.Cookie` was already named in `:core:designsystem` for exactly this
+  — built for Plan's now-deleted generate FAB and orphaned when that FAB was cut.
+  Fleet's FAB revives it: `MorphShape` driven by `FlightMotion.spatialFast()` on
+  the button's own pressed state, no new design-system surface needed.
 
 | ID | Task | Notes |
 | --- | --- | --- |
 | **D1** ✅ | Logbook list | Grouped by month with sticky headers (`MonthHeader`, `:core:designsystem`, the codebase's first use of `LazyColumn.stickyHeader`); a `StatSummaryStrip` (also new, `:core:designsystem`) shows flights, NM and hours flown this year, each figure driven by the existing `FlightMotion.rememberCountUp`. Month-grouping and the year summary are pure functions in `ui/logbook/LogbookGrouping.kt`, unit-tested without Robolectric — no precedent existed for either in this codebase or in the Rust reference, so both are new rather than ported. `LogbookViewModel` follows `PlanViewModel`'s shape (`combine` + `stateIn`, grouping/summing kept off the main thread via `flowOn`) |
 | **D2** | Add-flight sheet | Three searchable pickers plus a date picker; distance computed live as the pickers fill |
-| **D3** | Swipe-to-delete | With undo, matching the Plan screen's swipe grammar exactly |
-| **D4** | Fleet list | Filter chips (All · Flown · Not flown · Category); row toggle stamps `date_flown` |
-| **D5** | Fleet detail | Per-airframe stats, "generate routes for this aircraft", inline editing of range, cruise and takeoff distance |
-| **D6** | Fleet management | Mark all not flown behind a confirmation; add aircraft; restore defaults |
-| **D7** | CSV import/export | SAF, reusing `FleetCsv` so existing desktop files work unchanged |
-| **D8** | Motion | Month headers collapse on scroll; the summary strip re-counts when the log changes; the flown toggle animates state rather than snapping |
+| **D3** ✅ | Swipe-to-delete | With undo, matching the Plan screen's swipe grammar exactly. Shipped in `77073b2`, alongside a two-pane Logbook/flight-detail layout (reusing `RouteDetailPane`) that was not in the original D-phase scope |
+| **D4** ✅ | Fleet list | Filter chips (All · Flown · Not flown), category grouping via `MonthHeader` reused generically. Row toggle is a `FilterChip` (not a switch — see above), stamps `date_flown` through `FleetRepository.setFlown` |
+| **D5** ✅ | Fleet detail | A hero surface (identity + range/cruise/takeoff, matching the weight `RouteDetailContent`'s hero map carries), "generate routes for this aircraft" (reuses `PlanViewModel.setAircraft` through the graph-scoped instance, same mechanism `RouteDetail`'s mark-flown uses), inline editing of range, cruise and takeoff distance via a dedicated `EditEnvelopeSheet` rather than an inline form swap |
+| **D6** ✅ | Fleet management | Mark all not flown and restore defaults, both behind `ConfirmationDialog` (new, `:core:designsystem` — the first confirmation dialog anywhere in the app); add aircraft via a full-form sheet with an `ExposedDropdownMenuBox` category picker (type to filter existing categories, or type a new one) |
+| **D7** | ~~CSV import/export~~ | **Dropped by user decision**, not deferred. The desktop's CSV format stays supported for the bundled seed and `restoreDefaults()`, but no SAF import/export UI will be built |
+| **D8** | Motion | Month/category headers collapse on scroll; the summary strip re-counts when the log changes; the flown toggle animates via the chip's own state colour, not a custom transition |
 
 ---
 

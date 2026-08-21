@@ -19,8 +19,11 @@ import androidx.compose.animation.SharedTransitionLayout
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.ui.chrome.ProvideSharedRouteScopes
 import com.github.daanbouwman.flightplanner.startup.StartupCheckScreen
-import com.github.daanbouwman.flightplanner.ui.FleetScreen
 import com.github.daanbouwman.flightplanner.ui.RouteDetailScreen
+import com.github.daanbouwman.flightplanner.ui.fleet.FleetDetailScreen
+import com.github.daanbouwman.flightplanner.ui.fleet.FleetRoute
+import com.github.daanbouwman.flightplanner.ui.fleet.toFleetDetailDestination
+import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.ui.profile.ProfileScreen
 import com.github.daanbouwman.flightplanner.ui.profile.ProfileSegment
 import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRoute
@@ -129,7 +132,23 @@ fun FlightPlannerNavHost(
                     }
                 }
             }
-            composable<Destination.Fleet> { FleetScreen(onOpenSettings = openSettings) }
+            composable<Destination.Fleet> { entry ->
+                val planViewModel: PlanViewModel = hiltViewModel(navController.planGraphEntry(entry))
+                FleetRoute(
+                    onOpenSettings = openSettings,
+                    onOpenAircraft = { aircraft ->
+                        navController.navigate(aircraft.toFleetDetailDestination()) { launchSingleTop = true }
+                    },
+                    onGenerateRoutes = { aircraft -> navController.generateRoutesFor(aircraft, planViewModel) },
+                )
+            }
+            composable<Destination.FleetDetail> { entry ->
+                val planViewModel: PlanViewModel = hiltViewModel(navController.planGraphEntry(entry))
+                FleetDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onGenerateRoutes = { aircraft -> navController.generateRoutesFor(aircraft, planViewModel) },
+                )
+            }
             composable<Destination.Logbook> {
                 LogbookRoute(
                     onOpenSettings = openSettings,
@@ -182,6 +201,24 @@ fun NavHostController.navigateToTopLevel(destination: TopLevelDestination) {
 
 private fun NavHostController.navigateToDetail(detail: Destination.RouteDetail) {
     navigate(detail) { launchSingleTop = true }
+}
+
+/**
+ * "Generate routes for this aircraft", from Fleet.
+ *
+ * Reuses Plan's own selection rather than a fresh navigation argument:
+ * [PlanViewModel.setAircraft] both sets the aircraft and switches the mode to
+ * [com.github.daanbouwman.flightplanner.ui.plan.PlanMode.SelectedAircraft] in
+ * one call — the same thing the aircraft picker's own selection does — so
+ * Plan is left exactly as if the user had picked this airframe there
+ * themselves. Landing back on [Destination.Plan] rather than pushing a new
+ * copy of it is what makes the bottom bar highlight Plan again for free — its
+ * selection is derived from the current back stack entry, not tracked
+ * separately.
+ */
+private fun NavHostController.generateRoutesFor(aircraft: AircraftSpec, planViewModel: PlanViewModel) {
+    planViewModel.setAircraft(aircraft)
+    popBackStack(Destination.Plan, inclusive = false)
 }
 
 /**

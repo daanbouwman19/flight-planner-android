@@ -207,6 +207,9 @@ Box(Modifier.clip(rememberMorphShape(Morph(FlightShapes.Circle, FlightShapes.Coo
 @Composable fun MorphingLoadingIndicator(modifier: Modifier = Modifier,
                                          contained: Boolean = false,
                                          contentDescription: String = "Loading")
+@Composable fun ConfirmationDialog(title: String, message: String, confirmLabel: String,
+                                   onConfirm: () -> Unit, onDismiss: () -> Unit,
+                                   modifier: Modifier = Modifier)
 
 @Immutable data class ModeOption(val label: String,
                                 val count: Int? = null,
