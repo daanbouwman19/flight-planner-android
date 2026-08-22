@@ -21,4 +21,7 @@
     <!-- The dismissal action on the shared confirmation dialog. -->
     <string name="ds_confirmation_dialog_cancel">Cancel</string>
 
+    <!-- The confirm action on the shared date picker. -->
+    <string name="ds_date_picker_confirm">OK</string>
+
 </resources>

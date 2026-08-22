@@ -18,11 +18,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -58,8 +57,19 @@ import com.github.daanbouwman.flightplanner.ui.chrome.rememberContentInsets
  * own rather than an app bar. An app bar implies a screen you can leave, and
  * this pane is not somewhere you went — it is the other half of the screen you
  * are already on.
+ *
+ * A `Surface`, not a `Scaffold`: content padding here comes entirely from
+ * [rememberContentInsets], so a scaffold's own padding parameter would have
+ * to be taken and ignored — precisely the shape `PlanScreen` and
+ * `LogbookScreen` already reject their own scaffolds for. `Surface` rather
+ * than a plain `Box` because it still needs to do what `Scaffold`'s
+ * `containerColor` did: set `LocalContentColor` from the surface colour, so
+ * unset-colour text and icons inside stay correctly toned if this colour
+ * scheme's `surface`/`background` roles ever diverge (they are identical
+ * today, which is why a bare `Box` would have compiled and looked right). The
+ * snackbar host moves in as a plain aligned child of the inner `Box`, the same
+ * way `PlanScreen`/`LogbookScreen` place it.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RouteDetailPane(
     state: RouteDetailPaneState?,
@@ -72,54 +82,54 @@ fun RouteDetailPane(
 ) {
     val contentInsets = rememberContentInsets()
 
-    Scaffold(
-        modifier = modifier.then(contentInsets.modifier),
-        snackbarHost = {
+    Surface(
+        modifier = modifier
+            .then(contentInsets.modifier)
+            .fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            val insets = contentInsets.asPaddingValues()
+            val layoutDirection = LocalLayoutDirection.current
+            val compactHeight = isCompactHeight()
+            val contentPadding = PaddingValues(
+                start = insets.calculateStartPadding(layoutDirection) + ScreenHorizontalGutter,
+                end = insets.calculateEndPadding(layoutDirection) + ScreenHorizontalGutter,
+                top = insets.calculateTopPadding() + if (compactHeight) ScreenCompactTopGutter else ScreenTopGutter,
+                bottom = insets.calculateBottomPadding() + ScreenBottomGutter,
+            )
+
+            // Keyed on the **selection**, not on what has been loaded from it. One
+            // selection publishes three times — the codes alone, then the airports,
+            // then the runways — so a key read off the loaded state is absent on the
+            // first publish and the panel cross-fades twice per tap, through a blank
+            // skeleton, which is the smear this key exists to prevent. The route is
+            // known the instant the user taps and never changes; the rest is content.
+            //
+            // The transform is read outside the spec lambda, which is not composable —
+            // the same reason the navigation graph resolves its transitions up front.
+            val paneTransform = FlightMotion.paneContent()
+            AnimatedContent(
+                targetState = state,
+                transitionSpec = { paneTransform },
+                contentKey = { it?.route?.key() },
+                label = "route detail pane",
+            ) { current ->
+                RouteDetailPaneContent(
+                    state = current,
+                    contentPadding = contentPadding,
+                    snackbarHostState = snackbarHostState,
+                    onMarkFlown = onMarkFlown,
+                    onFlownConfirmed = onFlownConfirmed,
+                    alreadyFlown = alreadyFlown,
+                )
+            }
+
             SnackbarHost(
                 hostState = snackbarHostState,
-                modifier = Modifier.windowInsetsPadding(
-                    WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom),
-                ),
-            )
-        },
-        // The pane computes remaining insets directly via ContentInsets so that
-        // content padding handles top status bar and bottom gesture bar insets.
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) { _ ->
-        val insets = contentInsets.asPaddingValues()
-        val layoutDirection = LocalLayoutDirection.current
-        val compactHeight = isCompactHeight()
-        val contentPadding = PaddingValues(
-            start = insets.calculateStartPadding(layoutDirection) + ScreenHorizontalGutter,
-            end = insets.calculateEndPadding(layoutDirection) + ScreenHorizontalGutter,
-            top = insets.calculateTopPadding() + if (compactHeight) ScreenCompactTopGutter else ScreenTopGutter,
-            bottom = insets.calculateBottomPadding() + ScreenBottomGutter,
-        )
-
-        // Keyed on the **selection**, not on what has been loaded from it. One
-        // selection publishes three times — the codes alone, then the airports,
-        // then the runways — so a key read off the loaded state is absent on the
-        // first publish and the panel cross-fades twice per tap, through a blank
-        // skeleton, which is the smear this key exists to prevent. The route is
-        // known the instant the user taps and never changes; the rest is content.
-        //
-        // The transform is read outside the spec lambda, which is not composable —
-        // the same reason the navigation graph resolves its transitions up front.
-        val paneTransform = FlightMotion.paneContent()
-        AnimatedContent(
-            targetState = state,
-            transitionSpec = { paneTransform },
-            contentKey = { it?.route?.key() },
-            label = "route detail pane",
-        ) { current ->
-            RouteDetailPaneContent(
-                state = current,
-                contentPadding = contentPadding,
-                snackbarHostState = snackbarHostState,
-                onMarkFlown = onMarkFlown,
-                onFlownConfirmed = onFlownConfirmed,
-                alreadyFlown = alreadyFlown,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
             )
         }
     }

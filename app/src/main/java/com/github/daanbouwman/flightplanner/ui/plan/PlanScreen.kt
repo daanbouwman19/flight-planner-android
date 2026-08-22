@@ -92,6 +92,8 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.Skeleto
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SwipeActionBackground
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SwipeActionSide
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
+import com.github.daanbouwman.flightplanner.ui.picker.PickerTarget
+import com.github.daanbouwman.flightplanner.ui.picker.PlanPickerSheet
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
@@ -366,6 +368,10 @@ fun PlanScreen(
             aircraft = aircraft,
             hasSelection = when (target) {
                 PickerTarget.Departure -> state.lockedDeparture != null
+                // Plan never opens this target — only its own Departure and
+                // Aircraft fields — but PickerTarget is shared with the
+                // Add-flight sheet, so the `when` must stay exhaustive.
+                PickerTarget.Destination -> false
                 PickerTarget.Aircraft -> state.selectedAircraft != null
             },
             searchScope = searchScope,
@@ -374,6 +380,7 @@ fun PlanScreen(
                 query = it
                 when (target) {
                     PickerTarget.Departure -> viewModel.setAirportQuery(it)
+                    PickerTarget.Destination -> Unit
                     PickerTarget.Aircraft -> viewModel.setAircraftQuery(it)
                 }
             },
@@ -388,6 +395,7 @@ fun PlanScreen(
             onClearSelection = {
                 when (target) {
                     PickerTarget.Departure -> viewModel.setDeparture(null)
+                    PickerTarget.Destination -> Unit
                     PickerTarget.Aircraft -> viewModel.setAircraft(null)
                 }
                 scope.launch { sheetState.hide() }.invokeOnCompletion { picker = null }

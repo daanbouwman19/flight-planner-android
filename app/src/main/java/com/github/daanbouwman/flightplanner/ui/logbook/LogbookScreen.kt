@@ -1,16 +1,26 @@
 package com.github.daanbouwman.flightplanner.ui.logbook
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -18,6 +28,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
@@ -34,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -42,6 +54,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -51,6 +64,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.graphics.shapes.Morph
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
@@ -66,7 +80,9 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.SwipeAc
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SwipeActionSide
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightShapes
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.rememberMorphShape
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.routing.FlightTime
 import com.github.daanbouwman.flightplanner.ui.asFigure
@@ -93,9 +109,12 @@ fun LogbookScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showAddFlightSheet by rememberSaveable { mutableStateOf(false) }
 
     val deletedMessage = stringResource(R.string.logbook_flight_deleted)
     val undoLabel = stringResource(R.string.plan_action_undo)
+    val addedMessage = stringResource(R.string.logbook_flight_added)
+    val addFailedMessage = stringResource(R.string.logbook_flight_add_failed)
 
     LaunchedEffect(viewModel.events) {
         viewModel.events.collectLatest { event ->
@@ -109,17 +128,37 @@ fun LogbookScreen(
                         viewModel.undoDelete()
                     }
                 }
+
+                is LogbookEvent.FlightAdded -> {
+                    snackbarHostState.showSnackbar(
+                        message = addedMessage.format(event.departureIcao, event.destinationIcao),
+                    )
+                }
+
+                LogbookEvent.FlightAddFailed -> {
+                    snackbarHostState.showSnackbar(message = addFailedMessage)
+                }
             }
         }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+        val layoutDirection = LocalLayoutDirection.current
+
         LogbookContent(
             state = state,
             onOpenRoute = onOpenRoute,
             onDeleteRoute = viewModel::delete,
             listState = listState,
-            contentPadding = contentPadding,
+            // Room for the FAB, exactly as FleetScreen reserves it — the last
+            // card would otherwise sit half-covered by it, which no scroll
+            // position brings back.
+            contentPadding = PaddingValues(
+                start = contentPadding.calculateStartPadding(layoutDirection),
+                end = contentPadding.calculateEndPadding(layoutDirection),
+                top = contentPadding.calculateTopPadding(),
+                bottom = contentPadding.calculateBottomPadding() + FabClearance,
+            ),
             header = header,
         )
 
@@ -128,6 +167,54 @@ fun LogbookScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 8.dp),
+        )
+
+        // The default (M3 "medium") FAB size, shape-morphing on press —
+        // copied verbatim from FleetScreen's own add-aircraft FAB. See its
+        // KDoc for why this is the shape Expressive actually prescribes here.
+        val fabInteractionSource = remember { MutableInteractionSource() }
+        val fabPressed by fabInteractionSource.collectIsPressedAsState()
+        val fabMorphProgress by animateFloatAsState(
+            targetValue = if (fabPressed) 1f else 0f,
+            animationSpec = FlightMotion.spatialFast(),
+            label = "fab-morph",
+        )
+        val fabMorph = remember { Morph(FlightShapes.Circle, FlightShapes.Cookie) }
+
+        FloatingActionButton(
+            onClick = { showAddFlightSheet = true },
+            interactionSource = fabInteractionSource,
+            shape = rememberMorphShape(fabMorph, fabMorphProgress),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                .padding(16.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_logbook_add),
+                contentDescription = stringResource(R.string.logbook_action_add_flight),
+            )
+        }
+    }
+
+    if (showAddFlightSheet) {
+        // The flows themselves are handed to AddFlightSheet rather than
+        // collected here: it collects each one only while the picker that
+        // needs it is actually open, not merely while the sheet is.
+        AddFlightSheet(
+            aircraftResults = viewModel.addFlightAircraftResults,
+            departureResults = viewModel.addFlightDepartureResults,
+            destinationResults = viewModel.addFlightDestinationResults,
+            searchScope = viewModel.addFlightSearchScope,
+            onAircraftQueryChange = viewModel::setAddFlightAircraftQuery,
+            onDepartureQueryChange = viewModel::setAddFlightDepartureQuery,
+            onDestinationQueryChange = viewModel::setAddFlightDestinationQuery,
+            onRetrySearch = viewModel::retryAddFlightNameSearch,
+            onSubmit = { aircraft, departure, destination, date, distanceNm ->
+                viewModel.addFlight(aircraft, departure, destination, date, distanceNm)
+                showAddFlightSheet = false
+            },
+            onDismiss = { showAddFlightSheet = false },
         )
     }
 }
@@ -450,6 +537,9 @@ private const val SkeletonDelayMillis = 150L
 
 private const val HeaderKey = "header"
 private const val SummaryKey = "summary"
+
+/** Extra bottom room so the FAB (56 dp, plus its own margin) never sits over the last card. Matches FleetScreen's own constant. */
+private val FabClearance = 112.dp
 
 /*
  * Previews.

@@ -1,4 +1,4 @@
-package com.github.daanbouwman.flightplanner.ui.plan
+package com.github.daanbouwman.flightplanner.ui.picker
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,21 +51,37 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlanne
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
-
-/** Which picker the sheet is showing. */
-enum class PickerTarget { Departure, Aircraft }
+import com.github.daanbouwman.flightplanner.ui.plan.PlanPreviewData
+import com.github.daanbouwman.flightplanner.ui.plan.SearchScope
 
 /**
- * The full-height picker behind the two filter chips.
+ * Which picker the sheet is showing.
  *
- * One sheet serves both filters rather than two nearly identical ones: the
- * frame — title, search field, a way to clear the filter, a ranked list — is
- * the same, and only the row is different. Splitting them would duplicate the
- * keyboard handling, the inset handling and the clear affordance three times
- * over by the time the Airports screen wants the same thing.
+ * Lives beside [PlanPickerSheet] rather than with either of its callers —
+ * Plan's departure/aircraft filters and the Logbook add-flight sheet's
+ * departure/destination/aircraft fields both pick from it, and neither owns
+ * it. A caller that cannot produce every value still has to handle it
+ * exhaustively (Plan can never reach [Destination]); that cost is inherent to
+ * one enum serving two screens with different capabilities, not a consequence
+ * of where the type lives — but the type living with the component it
+ * describes, rather than inside one caller's package, is what keeps the
+ * import direction honest.
+ */
+enum class PickerTarget { Departure, Destination, Aircraft }
+
+/**
+ * The full-height picker behind Plan's two filter chips and the Add-flight
+ * sheet's aircraft/departure/destination fields.
  *
- * The query lives in the ViewModel, not here, so that the ranked scan survives
- * the sheet being recomposed and so the search can be tested without Compose.
+ * One sheet serves every one of them rather than several nearly identical
+ * ones: the frame — title, search field, a way to clear the filter, a ranked
+ * list — is the same, and only the row is different. Splitting them would
+ * duplicate the keyboard handling, the inset handling and the clear
+ * affordance across every caller.
+ *
+ * The query lives in the caller's ViewModel, not here, so that the ranked
+ * scan survives the sheet being recomposed and so the search can be tested
+ * without Compose.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -127,6 +143,7 @@ fun PlanPickerSheet(
                 text = stringResource(
                     when (target) {
                         PickerTarget.Departure -> R.string.plan_picker_departure_title
+                        PickerTarget.Destination -> R.string.plan_picker_destination_title
                         PickerTarget.Aircraft -> R.string.plan_picker_aircraft_title
                     },
                 ),
@@ -146,6 +163,7 @@ fun PlanPickerSheet(
                         stringResource(
                             when (target) {
                                 PickerTarget.Departure -> R.string.plan_picker_departure_hint
+                                PickerTarget.Destination -> R.string.plan_picker_destination_hint
                                 PickerTarget.Aircraft -> R.string.plan_picker_aircraft_hint
                             },
                         ),
@@ -170,10 +188,9 @@ fun PlanPickerSheet(
                 keyboardOptions = KeyboardOptions(
                     // ICAO codes are upper case and this box is mostly used to
                     // type one; the search itself is case-insensitive either way.
-                    capitalization = if (target == PickerTarget.Departure) {
-                        KeyboardCapitalization.Characters
-                    } else {
-                        KeyboardCapitalization.Words
+                    capitalization = when (target) {
+                        PickerTarget.Departure, PickerTarget.Destination -> KeyboardCapitalization.Characters
+                        PickerTarget.Aircraft -> KeyboardCapitalization.Words
                     },
                     imeAction = ImeAction.Search,
                 ),
@@ -194,6 +211,7 @@ fun PlanPickerSheet(
                         text = stringResource(
                             when (target) {
                                 PickerTarget.Departure -> R.string.plan_picker_clear_departure
+                                PickerTarget.Destination -> R.string.plan_picker_clear_destination
                                 PickerTarget.Aircraft -> R.string.plan_picker_clear_aircraft
                             },
                         ),
@@ -204,7 +222,9 @@ fun PlanPickerSheet(
             }
 
             when (target) {
-                PickerTarget.Departure -> {
+                // An airport search doesn't know which end it fills, so
+                // Departure and Destination share one body.
+                PickerTarget.Departure, PickerTarget.Destination -> {
                     // Only while there is a query to narrow. With the field empty
                     // the list below is "Largest airports", which is ranked by
                     // runway length out of the in-memory index and does not touch

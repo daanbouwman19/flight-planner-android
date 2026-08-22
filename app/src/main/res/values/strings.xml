@@ -94,11 +94,14 @@
         miles, %7$d hours %8$d minutes</string>
 
     <string name="plan_picker_departure_title">Departure airport</string>
+    <string name="plan_picker_destination_title">Destination airport</string>
     <string name="plan_picker_aircraft_title">Aircraft</string>
     <string name="plan_picker_departure_hint">Code, name or city</string>
+    <string name="plan_picker_destination_hint">Code, name or city</string>
     <string name="plan_picker_aircraft_hint">Type code, manufacturer or category</string>
     <string name="plan_picker_clear_query">Clear search</string>
     <string name="plan_picker_clear_departure">Any departure</string>
+    <string name="plan_picker_clear_destination">Any destination</string>
     <string name="plan_picker_clear_aircraft">Any aircraft</string>
     <string name="plan_picker_largest_airports">Largest airports</string>
     <string name="plan_picker_already_flown">Already flown</string>
@@ -118,6 +121,21 @@
     <string name="logbook_flight_deleted">Flight removed from logbook</string>
     <string name="logbook_swipe_delete">Delete</string>
     <string name="logbook_action_delete">Delete from logbook</string>
+
+    <string name="logbook_action_add_flight">Log a flight</string>
+    <string name="logbook_add_title">Log a flight</string>
+    <string name="logbook_add_field_aircraft">AIRCRAFT</string>
+    <string name="logbook_add_field_date">DATE</string>
+    <string name="logbook_add_field_departure">DEPARTURE</string>
+    <string name="logbook_add_field_destination">DESTINATION</string>
+    <string name="logbook_add_submit">Add to logbook</string>
+    <string name="logbook_add_error_same_airport">Departure and destination must be different.</string>
+    <string name="logbook_add_error_missing_fields">Set the aircraft, departure and destination to add this flight.</string>
+    <!-- %1$s is the route's distance in nautical miles, %2$s the aircraft's range, both already grouped. -->
+    <string name="logbook_add_error_over_range">%1$s NM exceeds this aircraft’s %2$s NM range.</string>
+    <!-- Snackbar after a flight is logged manually. %1$s and %2$s are ICAO codes. -->
+    <string name="logbook_flight_added">Flight logged: %1$s → %2$s</string>
+    <string name="logbook_flight_add_failed">Couldn’t log the flight</string>
 
     <!-- Fleet -->
     <string name="fleet_empty_title">No aircraft yet</string>

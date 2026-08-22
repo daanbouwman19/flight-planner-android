@@ -96,6 +96,12 @@ Compiled with zero errors and zero warnings under
 - `SharedTransitionLayout` with `Modifier.sharedBounds` / `Modifier.sharedElement`
   and `rememberSharedContentState`; `LazyItemScope.animateItem()`
 - `preferencesDataStore` delegate; a Hilt `@Qualifier` application `CoroutineScope`
+- `DatePicker`, `DatePickerDialog`, `rememberDatePickerState`, `SelectableDates` —
+  plain stable M3, need only `ExperimentalMaterial3Api`. Not part of the Expressive
+  surface in this alpha (no `ExperimentalMaterial3ExpressiveApi` required), so
+  `FlightDatePickerDialog` in `:core:designsystem` wraps them for the "dialogs live
+  in the design system" convention `ConfirmationDialog` already set, not because the
+  containment rule is load-bearing here
 
 ## Known defects in 1.5.0-alpha26
 

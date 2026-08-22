@@ -5,16 +5,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,8 +38,17 @@ import com.github.daanbouwman.flightplanner.ui.chrome.rememberContentInsets
  * shape exactly — a heading of its own rather than an app bar, since this is
  * the other half of the screen the user is already on, not somewhere they
  * went.
+ *
+ * A `Surface`, not a `Scaffold`: content padding here comes entirely from
+ * [rememberContentInsets], so a scaffold's own padding parameter would have
+ * to be taken and ignored — precisely the shape `PlanScreen` and
+ * `LogbookScreen` already reject their own scaffolds for. `Surface` rather
+ * than a plain `Box` because it still needs to do what `Scaffold`'s
+ * `containerColor` did: set `LocalContentColor` from the surface colour, so
+ * unset-colour text and icons inside stay correctly toned if this colour
+ * scheme's `surface`/`background` roles ever diverge (they are identical
+ * today, which is why a bare `Box` would have compiled and looked right).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FleetDetailPane(
     state: FleetDetailPaneState?,
@@ -52,11 +59,12 @@ fun FleetDetailPane(
 ) {
     val contentInsets = rememberContentInsets()
 
-    Scaffold(
-        modifier = modifier.then(contentInsets.modifier),
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) { _ ->
+    Surface(
+        modifier = modifier
+            .then(contentInsets.modifier)
+            .fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
         val insets = contentInsets.asPaddingValues()
         val layoutDirection = LocalLayoutDirection.current
         val compactHeight = isCompactHeight()

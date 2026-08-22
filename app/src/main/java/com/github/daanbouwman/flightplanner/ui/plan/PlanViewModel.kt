@@ -3,7 +3,6 @@ package com.github.daanbouwman.flightplanner.ui.plan
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.github.daanbouwman.flightplanner.core.database.airport.NameIndexState
 import com.github.daanbouwman.flightplanner.core.database.repository.AirportRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.LogbookRepository
@@ -12,9 +11,7 @@ import com.github.daanbouwman.flightplanner.index.AirportIndexProvider
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.FlightRecord
-import com.github.daanbouwman.flightplanner.routing.AircraftSearchItem
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
-import com.github.daanbouwman.flightplanner.routing.AirportSlotSearch
 import com.github.daanbouwman.flightplanner.routing.DEFAULT_ROUTE_BATCH
 import com.github.daanbouwman.flightplanner.routing.GeneratedRoute
 import com.github.daanbouwman.flightplanner.routing.GreatCircle
@@ -22,10 +19,10 @@ import com.github.daanbouwman.flightplanner.routing.RouteArc
 import com.github.daanbouwman.flightplanner.routing.RouteGenerator
 import com.github.daanbouwman.flightplanner.routing.RouteMode
 import com.github.daanbouwman.flightplanner.routing.RouteRequest
-import com.github.daanbouwman.flightplanner.routing.SearchCandidate
-import com.github.daanbouwman.flightplanner.routing.SearchQuery
-import com.github.daanbouwman.flightplanner.routing.SearchScorer
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
+import com.github.daanbouwman.flightplanner.search.airportSearchScope
+import com.github.daanbouwman.flightplanner.search.rankedAircraftResults
+import com.github.daanbouwman.flightplanner.search.rankedAirportResults
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -41,11 +38,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -702,46 +695,25 @@ class PlanViewModel @Inject constructor(
     private val aircraftQuery = MutableStateFlow("")
 
     /**
-     * The departure query, re-emitted when the name index becomes available.
-     *
-     * [searchAirports] reads `nameIndexOrNull()` at the instant it runs, so a
-     * query typed during the build is answered by codes alone and would *stay*
-     * that way. That inverts the whole point of [searchScope]: the strip
-     * explaining the narrow result disappears the moment the index lands, and
-     * the narrow result it was explaining does not. It is also what would make
-     * [retryNameSearch] look inert — the notice goes away, the list does not
-     * change. Folding readiness in here re-ranks the query already on screen.
-     *
-     * Only the not-ready → ready edge is news, and only for a query that
-     * consults names at all — a blank query lists the largest airports off the
-     * runway index alone — so the other transitions are dropped rather than
-     * costing a second scan and a second display read on every cold start.
-     */
-    private val airportSearches: Flow<String> = combine(
-        airportQuery,
-        airportRepository.nameIndexState.map { it is NameIndexState.Ready }.distinctUntilChanged(),
-    ) { query, namesReady -> query to namesReady }
-        .distinctUntilChanged { (lastQuery, _), (query, namesReady) ->
-            lastQuery == query && (!namesReady || query.isBlank())
-        }
-        .map { (query, _) -> query }
-
-    /**
      * Ranked airports for the departure picker.
      *
-     * Debounced because the scan runs over the whole index and a fast typist
-     * outruns it otherwise; [mapLatest] because a superseded query's results are
-     * worthless, so the scan for it is cancelled rather than awaited.
+     * The ranking, debouncing and re-rank-on-index-ready logic lives in
+     * [com.github.daanbouwman.flightplanner.search.rankedAirportResults] — moved
+     * there once [com.github.daanbouwman.flightplanner.ui.logbook.LogbookViewModel]
+     * needed the same thing twice over for its own add-flight sheet.
      */
-    val airportResults: StateFlow<List<Airport>> = airportSearches
-        .debounce { if (it.isBlank()) 0L else SEARCH_DEBOUNCE_MILLIS }
-        .mapLatest { searchAirports(it) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
+    val airportResults: StateFlow<List<Airport>> =
+        rankedAirportResults(
+            viewModelScope,
+            airportQuery,
+            indexProvider,
+            airportRepository,
+            defaultDispatcher,
+            stopTimeoutMillis = STOP_TIMEOUT_MILLIS,
+        )
 
     val aircraftResults: StateFlow<List<AircraftSpec>> =
-        combine(aircraftQuery, fleet) { query, airframes -> query to airframes }
-            .mapLatest { (query, airframes) -> searchAircraft(query, airframes) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
+        rankedAircraftResults(viewModelScope, aircraftQuery, fleet, defaultDispatcher, stopTimeoutMillis = STOP_TIMEOUT_MILLIS)
 
     /**
      * Whether the departure picker can rank by name, and if not, why.
@@ -750,28 +722,9 @@ class PlanViewModel @Inject constructor(
      * same reason [worldOutline] is: it changes a handful of times early in the
      * process's life and only the picker reads it, so putting it in the state a
      * fifty-row list recomposes from would spend every batch on it.
-     *
-     * `WhileSubscribed` like the results themselves — the sheet is what
-     * subscribes, and the repository's flow is a plain `StateFlow` that costs
-     * nothing to leave running when it does not.
      */
-    val searchScope: StateFlow<SearchScope> = airportRepository.nameIndexState
-        .map { state ->
-            when (state) {
-                is NameIndexState.Ready -> SearchScope.Full
-                is NameIndexState.Failed -> SearchScope.NamesUnavailable
-                // Idle is "nobody has asked yet", which from the picker's side is
-                // indistinguishable from a build in flight: both mean names do not
-                // rank *yet* and something is about to fix that. `init` starts the
-                // build, so Idle is only ever the first few milliseconds.
-                NameIndexState.Idle, NameIndexState.Building -> SearchScope.NamesLoading
-            }
-        }
-        .stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            SearchScope.NamesLoading,
-        )
+    val searchScope: StateFlow<SearchScope> =
+        airportSearchScope(viewModelScope, airportRepository, stopTimeoutMillis = STOP_TIMEOUT_MILLIS)
 
     fun setAirportQuery(query: String) {
         airportQuery.value = query
@@ -803,59 +756,6 @@ class PlanViewModel @Inject constructor(
         }
     }
 
-    private suspend fun searchAirports(query: String): List<Airport> {
-        val index = runCatchingCancellable { indexProvider.get() }.getOrNull() ?: return emptyList()
-        val slots = if (query.isBlank()) {
-            suggestionSlots(index)
-        } else {
-            // Null when the name index has not finished building, which degrades
-            // search to codes only rather than blocking a keystroke on a
-            // full-table read — see AirportRepository.prepareNameIndex.
-            val names = airportRepository.nameIndexOrNull()
-            withContext(defaultDispatcher) {
-                AirportSlotSearch.rank(
-                    query = query,
-                    codes = index.codes,
-                    size = index.size,
-                    names = names?.names,
-                    municipalities = names?.municipalities,
-                )
-            }
-        }
-        return runCatchingCancellable { airportRepository.airportsForSlots(index, slots) }
-            .getOrDefault(emptyList())
-    }
-
-    /**
-     * What to show before anything has been typed: the largest airports.
-     *
-     * The index is sorted ascending by runway length, so the longest runways are
-     * the last slots — which is why this walks backwards rather than taking the
-     * head. Runway length is a good proxy for "an airport you have heard of",
-     * and it costs nothing because the ordering already exists.
-     */
-    private fun suggestionSlots(index: AirportIndex): IntArray {
-        val count = minOf(AirportSlotSearch.DEFAULT_LIMIT, index.size)
-        return IntArray(count) { index.size - 1 - it }
-    }
-
-    private suspend fun searchAircraft(query: String, airframes: List<AircraftSpec>): List<AircraftSpec> =
-        withContext(defaultDispatcher) {
-            if (query.isBlank()) return@withContext airframes
-            // The row carries its own spec, so a ranked result is the airframe
-            // itself. Matching back by type code would be wrong as well as slow:
-            // an ICAO *type* code is shared by every variant of a model, so two
-            // A320s in the fleet are indistinguishable by it.
-            SearchScorer.rank(airframes.map(::FleetRow), query).map { it.spec }
-        }
-
-    /** Adapts an airframe to the shared scorer without copying it. */
-    private class FleetRow(val spec: AircraftSpec) : SearchCandidate {
-        private val item = AircraftSearchItem.from(spec)
-
-        override fun searchScore(query: SearchQuery): Int = item.searchScore(query)
-    }
-
     private companion object {
         /**
          * How long a flow keeps running after the last collector goes away.
@@ -863,13 +763,6 @@ class PlanViewModel @Inject constructor(
          * backgrounded app stops observing the database.
          */
         const val STOP_TIMEOUT_MILLIS = 5_000L
-
-        /**
-         * Typing pause before a search runs. Below roughly this the scan is
-         * being restarted more often than it can finish on a mid-range device;
-         * above it, the list visibly lags the keyboard.
-         */
-        const val SEARCH_DEBOUNCE_MILLIS = 120L
 
         /**
          * How many destinations [replace] generates to choose one from. Small,
