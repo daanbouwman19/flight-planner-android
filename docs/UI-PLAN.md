@@ -1499,7 +1499,32 @@ Two things worth carrying forward from building Fleet:
 | **D5** ✅ | Fleet detail | A hero surface (identity + range/cruise/takeoff, matching the weight `RouteDetailContent`'s hero map carries), "generate routes for this aircraft" (reuses `PlanViewModel.setAircraft` through the graph-scoped instance, same mechanism `RouteDetail`'s mark-flown uses), inline editing of range, cruise and takeoff distance via a dedicated `EditEnvelopeSheet` rather than an inline form swap |
 | **D6** ✅ | Fleet management | Mark all not flown and restore defaults, both behind `ConfirmationDialog` (new, `:core:designsystem` — the first confirmation dialog anywhere in the app); add aircraft via a full-form sheet with an `ExposedDropdownMenuBox` category picker (type to filter existing categories, or type a new one) |
 | **D7** | ~~CSV import/export~~ | **Dropped by user decision**, not deferred. The desktop's CSV format stays supported for the bundled seed and `restoreDefaults()`, but no SAF import/export UI will be built |
-| **D8** | Motion | Month/category headers collapse on scroll; the summary strip re-counts when the log changes; the flown toggle animates via the chip's own state colour, not a custom transition |
+| **D8** ✅ | Motion | Two of three parts turned out to already exist; see below for what closed this and why nothing new was built for the header |
+
+**D8, and why it needed no new code.** Two of its three clauses were already
+true by construction: `StatSummaryStrip` drives every tile through
+`FlightMotion.rememberCountUp`, which re-animates from wherever it is
+whenever the underlying value changes — not only on first appearance — so an
+add or delete already makes the strip re-count with nothing extra wired up.
+And the flown toggle's `FilterChip` never overrides `colors`, so Material3's
+own `animateColorAsState` inside the stock component already animates the
+fill on selection — there was no custom transition to replace.
+
+The third clause — headers collapsing on scroll — is met by `stickyHeader`
+itself and was deliberately left there rather than built further. A header
+is already pinned and swapped for the next one at the exact instant its real
+position reaches the top, which is scroll-attached with no spring and no
+threshold: precisely the property Phase B+ had to fight to get for the Plan
+screen's own chrome. A hand-built shrink or fade on `MonthHeader`, reading
+`LazyListState.layoutInfo` every frame to ease the hand-off, would be a
+second animation layered on top of a mechanic that already tracks the scroll
+position one-to-one — the same shape of chrome-on-its-own-clock that B+'s
+"Retracting controls" built, rejected on a device, and removed. It would also
+add a per-frame read to two lists a full performance phase (Phase P) was
+spent keeping cheap, to smooth a hand-off on a two-line section label. Against
+§2's bar — motion explains, it does not perform — the hard cut already
+explains the one fact there is to explain ("a new section starts here");
+softening it would be decoration with nothing left to say.
 
 ---
 

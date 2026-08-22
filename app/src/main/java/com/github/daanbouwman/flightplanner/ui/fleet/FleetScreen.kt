@@ -135,10 +135,20 @@ fun FleetScreen(
             } else {
                 ((availableWidth - MaxContentWidth) / 2).coerceAtLeast(0.dp)
             }
+            // A sticky category header pins to the LazyColumn's own top edge, not
+            // to its contentPadding — Compose's stickyHeader ignores contentPadding
+            // entirely when it clamps a header's pinned offset, so padding meant to
+            // clear the status bar would apply to ordinary rows and be skipped by
+            // the one element that actually needs it. Reserved as real layout space
+            // on the list itself instead, below, which a pinned header cannot cross.
+            // Cards never reach that edge anyway: whichever group is active always
+            // has its own header pinned there first, so nothing is lost by not
+            // letting content pass under the clock here the way Plan's cards do.
+            val topClearance = insets.calculateTopPadding() +
+                if (compactHeight) ScreenCompactTopGutter else ScreenTopGutter
             val contentPadding = PaddingValues(
                 start = insets.calculateStartPadding(layoutDirection) + ScreenHorizontalGutter + slack,
                 end = insets.calculateEndPadding(layoutDirection) + ScreenHorizontalGutter + slack,
-                top = insets.calculateTopPadding() + if (compactHeight) ScreenCompactTopGutter else ScreenTopGutter,
                 // Room for the FAB, on top of the list's own bottom gutter — the last
                 // card would otherwise sit half-covered by it, which no scroll
                 // position brings back.
@@ -149,6 +159,7 @@ fun FleetScreen(
                 state = state,
                 listState = listState,
                 contentPadding = contentPadding,
+                modifier = Modifier.padding(top = topClearance),
                 header = {
                     FleetHeader(
                         state = state,

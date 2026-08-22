@@ -16,8 +16,8 @@ captures/
 **/src/test/screenshots/*_compare.png
 
 # The installed skills live in .agents/skills and are tracked there. `.claude/skills`
-# holds *absolute* symlinks into them ("/j/projects/..."), which are true only on the
-# machine that ran the installer -- committing them would either break on any other
-# clone or, on a platform without symlink support, commit a second copy of every
-# skill file. The lock file plus .agents/ is what a fresh clone needs.
-.claude/
+# holds machine-specific symlinks/junctions into them, which are ignored, along with
+# local settings and locks, while shared rules in `.claude/rules` remain tracked.
+.claude/*
+!.claude/rules/
+

@@ -100,11 +100,16 @@ fun ProfileScreen(
         } else {
             ((availableWidth - WideMaxContentWidth) / 2).coerceAtLeast(0.dp)
         }
+        val horizontalStart = insets.calculateStartPadding(layoutDirection) + ScreenHorizontalGutter + slack
+        val horizontalEnd = insets.calculateEndPadding(layoutDirection) + ScreenHorizontalGutter + slack
+        val topClearance = insets.calculateTopPadding() +
+            if (compactHeight) ScreenCompactTopGutter else ScreenTopGutter
+        val bottomPadding = insets.calculateBottomPadding() + ScreenBottomGutter
         val contentPadding = PaddingValues(
-            start = insets.calculateStartPadding(layoutDirection) + ScreenHorizontalGutter + slack,
-            end = insets.calculateEndPadding(layoutDirection) + ScreenHorizontalGutter + slack,
-            top = insets.calculateTopPadding() + if (compactHeight) ScreenCompactTopGutter else ScreenTopGutter,
-            bottom = insets.calculateBottomPadding() + ScreenBottomGutter,
+            start = horizontalStart,
+            end = horizontalEnd,
+            top = topClearance,
+            bottom = bottomPadding,
         )
 
         val header: @Composable () -> Unit = {
@@ -118,8 +123,19 @@ fun ProfileScreen(
             ProfileSegment.Logbook -> LogbookScreen(
                 onOpenRoute = onOpenRoute,
                 listState = listState,
-                contentPadding = contentPadding,
+                // A sticky month header pins to the LazyColumn's own top edge, not
+                // to its contentPadding — Compose's stickyHeader ignores content
+                // padding when it clamps a header's pinned offset, so the top
+                // clearance moves to real modifier padding below, which a pinned
+                // header cannot cross. contentPadding's own top is zeroed out here
+                // so the clearance isn't reserved twice.
+                contentPadding = PaddingValues(
+                    start = horizontalStart,
+                    end = horizontalEnd,
+                    bottom = bottomPadding,
+                ),
                 header = header,
+                modifier = Modifier.padding(top = topClearance),
             )
 
             ProfileSegment.Stats -> StatsPlaceholder(contentPadding = contentPadding, header = header)
