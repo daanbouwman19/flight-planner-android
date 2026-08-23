@@ -230,6 +230,11 @@ Box(Modifier.clip(rememberMorphShape(Morph(FlightShapes.Circle, FlightShapes.Coo
                          routeColor: Color = MaterialTheme.colorScheme.primary,
                          casingColor: Color = MaterialTheme.colorScheme.surfaceContainer)
 
+@Composable fun RunwayDiagram(runways: List<Runway>, modifier: Modifier = Modifier,
+                              hardColor: Color = MaterialTheme.colorScheme.onSurface,
+                              softColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+                              litColor: Color = MaterialTheme.colorScheme.primary)
+
 enum class SwipeActionSide { Start, End }
 
 @Composable fun SwipeActionBackground(side: SwipeActionSide, icon: Painter, label: String,
@@ -297,6 +302,17 @@ Notes that are easy to get wrong:
   off-window coastline had the whole screen to draw on. The crop is a `clipRect`
   inside the draw scope rather than `Modifier.clipToBounds()`, which is a
   `graphicsLayer` and would put an offscreen layer on every card in the list.
+- **`RunwayDiagram` is a compass, not a plan.** One ray per runway end from a
+  shared centre, at its true heading, with no ident-suffix pairing: the model
+  already splits a physical strip into two ends roughly 180° apart, so two
+  rays reconstruct the strip through the centre for free. Ray length is the
+  end's length as a *fraction of the field's longest*, floored so a short
+  strip stays visible — a relative-orientation chart, the same "texture, not
+  imagery" honesty `RouteMap` states for its own land fill, not a scaled plan.
+  There is no desktop precedent to port; the reference's airport detail is a
+  plain text table. Ends with no published heading (real on grass strips)
+  are skipped and reported as a count underneath rather than silently
+  dropped — they still belong in the caller's own textual runway list.
 - **`SwipeActionBackground` takes colours rather than choosing them.** "Confirm"
   and "destroy" are the caller's semantics. Pass the *solid* roles, not the
   containers: a pale container behind a `surfaceContainer` card is two

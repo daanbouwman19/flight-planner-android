@@ -22,7 +22,7 @@ Verified against the source tree, not against the plan.
 | `:core:designsystem` | **Complete for what exists.** Theme, motion, shapes, and thirteen components (D1 added `MonthHeader` and `StatSummaryStrip`). See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
 | `:core:network` | **Empty.** No sources at all. Phase F |
 | `:feature:globe` | `FilamentProbe` only. Vulkan confirmed working, `FEATURE_LEVEL_3` |
-| `:app` | Shell, navigation, the self-check, the Plan screen, the route detail, Settings, Logbook (with swipe-to-delete and a two-pane flight-detail layout), Fleet (list, detail, management), and Stats (dashboard with 9 metrics, monthly chart, 2D visited network map, and timeframe filters). Airports is gone rather than a placeholder — see F10 |
+| `:app` | Shell, navigation, the self-check, the Plan screen, the route detail, Settings, Logbook (with swipe-to-delete and a two-pane flight-detail layout), Fleet (list, detail, management), Stats (dashboard with 9 metrics, monthly chart, 2D visited network map, and timeframe filters), and Airports (browse plus detail, E1/E2) — reached from Plan's header, not the bar, see F10 |
 | `:macrobenchmark` | **The instrument, from P2.** `FrameTimingMetric` over a scripted fling and `StartupTimingMetric` over a cold start, both on the `benchmarkRelease` variant, plus `BaselineProfileGenerator` from P1. See [the module README](../macrobenchmark/README.md) |
 
 The three gaps the original plan did not cover — the index carrying no display
@@ -1538,12 +1538,12 @@ and E5 (Settings) now build inside the Profile section D1 already opened, in the
 Stats segment and behind Profile's own Settings icon respectively, rather than as
 destinations of their own — the work described below is unchanged. E1 (Airports
 browse) has no bar slot to land in any more, since F10 dropped Airports rather than
-moving it; deciding where a browse screen surfaces from is now part of E1 itself.
+moving it; it now hangs off an overflow item on Plan's own header instead — see E1.
 
 | ID | Task | Notes |
 | --- | --- | --- |
-| **E1** | Airports browse | Ranked type-ahead over the name index from **A5**, plus the desktop's random-50 action |
-| **E2** | Airport detail | Runway diagram drawn in `Canvas` — idents, true headings, surface, length — plus "fly from here", which sets the locked departure and jumps to Plan |
+| **E1** | ~~Airports browse~~ | **Complete.** Ranked type-ahead over the name index from **A5** — a blank query already returns the largest airports — plus a random-50 action, ported from the desktop's `generate_random_airports` (Floyd's algorithm plus a shuffle, `RandomAirportSample` in `:core:routing`). Reached from an overflow item on Plan's own header, not a bar slot — Plan's own pickers already run the same search, and an overflow item is a near-zero-cost commitment against the one F10 removed |
+| **E2** | ~~Airport detail~~ | **Complete.** `RunwayDiagram` (new, `:core:designsystem`) — a compass-style chart, one ray per runway end at its true heading, no desktop precedent — idents, true headings, surface, length, plus "fly from here", which locks the departure via `PlanViewModel.setDeparture` and pops back to Plan, mirroring `generateRoutesFor`'s own pattern. A reserved-height METAR placeholder awaits Phase F |
 | **E3** | ~~Stats dashboard~~ | **Complete.** All nine statistics metrics, hero distance card with count-up animation and Earth equator multiplier badge, top-aircraft rankings, and longest/shortest flight cards |
 | **E4** | ~~Visited mini-globe~~ | **Complete.** 2D visited network map projection rendering land polygons, coastlines, visited airport nodes, and great-circle connecting flight arcs |
 | **E5** | Settings | Partly done: theme (four choices) and dynamic colour ship now, in Preferences DataStore, because F6 of the design review found the brand palette and the Cockpit theme were unreachable without them. Still to do — units, ICAO-only toggle, weather provider, tile provider, dataset info, licences |

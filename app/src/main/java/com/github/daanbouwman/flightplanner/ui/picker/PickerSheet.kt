@@ -42,13 +42,14 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.github.daanbouwman.flightplanner.ui.AirportRow
+import com.github.daanbouwman.flightplanner.ui.SuggestionsHeader
 import com.github.daanbouwman.flightplanner.ui.asFigure
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
-import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.ui.plan.PlanPreviewData
@@ -253,32 +254,10 @@ private fun AirportResults(
     }
     LazyColumn(modifier = Modifier.fillMaxWidth()) {
         if (query.isBlank()) {
-            item { SuggestionsHeader(R.string.plan_picker_largest_airports) }
+            item { SuggestionsHeader(stringResource(R.string.plan_picker_largest_airports)) }
         }
         items(airports, key = { it.id }) { airport ->
-            ListItem(
-                modifier = Modifier.clickable { onPick(airport) },
-                supportingContent = {
-                    Text(
-                        text = listOfNotNull(airport.name, airport.municipality, airport.country)
-                            .joinToString(" · "),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                trailingContent = {
-                    Text(
-                        text = stringResource(R.string.plan_value_feet, airport.longestRunwayFt.asFigure()),
-                        style = MaterialTheme.typography.labelMedium.withTabularFigures(),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-            ) {
-                Text(
-                    text = airport.icao,
-                    style = MaterialTheme.typography.titleMedium.withTabularFigures(),
-                )
-            }
+            AirportRow(airport = airport, onClick = { onPick(airport) })
         }
     }
 }
@@ -347,7 +326,7 @@ private fun AircraftResults(
  * a child that merges its own descendants is not absorbed by a merging parent.
  */
 @Composable
-private fun SearchScopeNotice(
+internal fun SearchScopeNotice(
     scope: SearchScope,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -389,16 +368,6 @@ private fun SearchScopeNotice(
             }
         }
     }
-}
-
-@Composable
-private fun SuggestionsHeader(labelRes: Int) {
-    Text(
-        text = stringResource(labelRes),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-    )
 }
 
 @Composable

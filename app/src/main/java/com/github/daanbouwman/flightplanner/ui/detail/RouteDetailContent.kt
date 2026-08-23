@@ -473,9 +473,14 @@ private fun Runways(runways: List<Runway>, airport: Airport, requiredRunwayFt: I
  * **A deliberate divergence:** `format_runway` also prints each runway's own
  * elevation. That is the field elevation on almost every runway of almost every
  * airport, so it is stated once on the block above instead of six times here.
+ *
+ * `internal` rather than `private`: Airport detail (E2) reuses this verbatim
+ * for its own runway list, with `requiredRunwayFt = 0` — no aircraft context
+ * there, so nothing is ever flagged too short (the guard below already treats
+ * a non-positive requirement as "no requirement").
  */
 @Composable
-private fun RunwayLine(runway: Runway, requiredRunwayFt: Int) {
+internal fun RunwayLine(runway: Runway, requiredRunwayFt: Int) {
     val tooShort = requiredRunwayFt > 0 && runway.lengthFt < requiredRunwayFt
     val tooShortLabel = stringResource(R.string.route_detail_runway_short_note)
 
@@ -529,7 +534,7 @@ private fun RunwayLine(runway: Runway, requiredRunwayFt: Int) {
  * fact goes and says nothing that the absence would not.
  */
 @Composable
-private fun surfaceLabel(kind: SurfaceKind): String? = when (kind) {
+internal fun surfaceLabel(kind: SurfaceKind): String? = when (kind) {
     SurfaceKind.HARD -> stringResource(R.string.surface_hard)
     SurfaceKind.GRASS -> stringResource(R.string.surface_grass)
     SurfaceKind.GRAVEL -> stringResource(R.string.surface_gravel)
@@ -903,6 +908,12 @@ private val SpineRowSpacing = 20.dp
 /** How far a section rises into place. Enough to read as arriving, not as sliding. */
 private val EnterRise = 12.dp
 
-/** A floor, not a height: roughly what one decoded report will occupy. */
-private val WeatherReservedHeight = 72.dp
+/**
+ * A floor, not a height: roughly what one decoded report will occupy.
+ *
+ * `internal`: Airport detail's own weather placeholder reserves the same
+ * figure, so both screens hold the same amount of space for the same kind
+ * of content once Phase F fills it in.
+ */
+internal val WeatherReservedHeight = 72.dp
 

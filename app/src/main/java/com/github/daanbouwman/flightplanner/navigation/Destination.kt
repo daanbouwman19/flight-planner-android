@@ -86,6 +86,28 @@ sealed interface Destination {
     data class FleetDetail(val airframeId: Int) : Destination
 
     /**
+     * Ranked type-ahead browse over the whole airport index, plus a
+     * random-50 action.
+     *
+     * Not [TopLevel]: F10 removed Airports from the navigation bar
+     * entirely, on the reasoning that the departure/aircraft pickers
+     * already run this same search. It is reached from an overflow item
+     * on [Plan]'s own header instead.
+     */
+    @Serializable
+    data object Airports : Destination
+
+    /**
+     * One airport, full screen.
+     *
+     * Flat, like [FleetDetail]: read-only display data with no cross-screen
+     * undo to coordinate, so it needs no shared graph or shared ViewModel
+     * with [Airports] the way [Plan] and [RouteDetail] share one.
+     */
+    @Serializable
+    data class AirportDetail(val airportId: Int) : Destination
+
+    /**
      * The on-device self-check, kept from the pre-UI milestone.
      *
      * It is the only thing that proves the prepackaged database, the native

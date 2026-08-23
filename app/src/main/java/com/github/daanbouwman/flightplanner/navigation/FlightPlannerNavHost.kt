@@ -20,10 +20,13 @@ import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotio
 import com.github.daanbouwman.flightplanner.ui.chrome.ProvideSharedRouteScopes
 import com.github.daanbouwman.flightplanner.startup.StartupCheckScreen
 import com.github.daanbouwman.flightplanner.ui.RouteDetailScreen
+import com.github.daanbouwman.flightplanner.ui.airport.AirportDetailScreen
+import com.github.daanbouwman.flightplanner.ui.airports.AirportsScreen
 import com.github.daanbouwman.flightplanner.ui.fleet.FleetDetailScreen
 import com.github.daanbouwman.flightplanner.ui.fleet.FleetRoute
 import com.github.daanbouwman.flightplanner.ui.fleet.toFleetDetailDestination
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
+import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.ui.profile.ProfileScreen
 import com.github.daanbouwman.flightplanner.ui.profile.ProfileSegment
 import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRoute
@@ -95,6 +98,9 @@ fun FlightPlannerNavHost(
                         // list, and only navigates when it does not.
                         PlanRoute(
                             onOpenSettings = openSettings,
+                            onOpenAirports = {
+                                navController.navigate(Destination.Airports) { launchSingleTop = true }
+                            },
                             onOpenRoute = { row ->
                                 navController.navigateToDetail(
                                     Destination.RouteDetail(
@@ -148,6 +154,23 @@ fun FlightPlannerNavHost(
                 FleetDetailScreen(
                     onBack = { navController.popBackStack() },
                     onGenerateRoutes = { aircraft -> navController.generateRoutesFor(aircraft, planViewModel) },
+                )
+            }
+            composable<Destination.Airports> {
+                AirportsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenAirport = { airport ->
+                        navController.navigate(Destination.AirportDetail(airportId = airport.id)) {
+                            launchSingleTop = true
+                        }
+                    },
+                )
+            }
+            composable<Destination.AirportDetail> { entry ->
+                val planViewModel: PlanViewModel = hiltViewModel(navController.planGraphEntry(entry))
+                AirportDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onFlyFromHere = { airport -> navController.flyFromHere(airport, planViewModel) },
                 )
             }
             composable<Destination.Logbook> {
@@ -235,6 +258,22 @@ private fun NavHostController.navigateToDetail(detail: Destination.RouteDetail) 
  */
 private fun NavHostController.generateRoutesFor(aircraft: AircraftSpec, planViewModel: PlanViewModel) {
     planViewModel.setAircraft(aircraft)
+    popBackStack(Destination.Plan, inclusive = false)
+}
+
+/**
+ * "Fly from here", from Airport detail.
+ *
+ * Mirrors [generateRoutesFor]: reuses Plan's own [PlanViewModel.setDeparture]
+ * rather than a fresh navigation argument, and lands back on
+ * [Destination.Plan] by popping — which [generateRoutesFor] already shows
+ * works regardless of which screen pushed the destination being popped from
+ * (it is called from both [Destination.Fleet] and [Destination.FleetDetail]
+ * today), since [Destination.Plan] is the launch destination and stays on
+ * the back stack once visited.
+ */
+private fun NavHostController.flyFromHere(airport: Airport, planViewModel: PlanViewModel) {
+    planViewModel.setDeparture(airport)
     popBackStack(Destination.Plan, inclusive = false)
 }
 

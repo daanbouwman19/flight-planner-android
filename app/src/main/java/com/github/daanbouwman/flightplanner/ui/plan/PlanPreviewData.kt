@@ -6,6 +6,8 @@ import androidx.compose.ui.platform.LocalContext
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
+import com.github.daanbouwman.flightplanner.model.Runway
+import com.github.daanbouwman.flightplanner.model.SurfaceKind
 import com.github.daanbouwman.flightplanner.routing.GreatCircle
 import com.github.daanbouwman.flightplanner.routing.RouteArc
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
@@ -51,6 +53,63 @@ internal object PlanPreviewData {
     val runwayTooShort = row(id = 3, aircraft = boeing, from = schiphol, to = innsbruck)
 
     val batch: List<RouteRow> = listOf(longHaul, transatlantic, runwayTooShort)
+
+    /**
+     * Schiphol's real runway layout — six physical runways, twelve ends, and
+     * one with no published heading — for the Airport detail (E2) previews.
+     * Real geometry, like everything else here, and chosen deliberately:
+     * Schiphol is exactly the shape [RunwayDiagram]'s lane layout exists
+     * for — three runways (18L/36R, 18C/36C, 18R/36L) run near-parallel a
+     * few degrees apart, which used to draw as a starburst through one
+     * point that isn't real before [layoutRunways] laned them — alongside
+     * three more (09/27, 04/22, 06/24) spread widely enough to plausibly
+     * cross.
+     */
+    val schipholRunways: List<Runway> = listOf(
+        // Buitenveldertbaan
+        runway(1, "09", 87.0, 11318, 147, lit = true),
+        runway(2, "27", 267.0, 11318, 147, lit = true),
+        // Oostbaan
+        runway(3, "04", 41.0, 10827, 147, lit = true),
+        runway(4, "22", 221.0, 10827, 147, lit = true),
+        // Kaagbaan
+        runway(5, "06", 57.0, 11483, 147, lit = true),
+        runway(6, "24", 237.0, 11483, 147, lit = true),
+        // Aalsmeerbaan
+        runway(7, "18L", 183.0, 11155, 147, lit = true),
+        runway(8, "36R", 3.0, 11155, 147, lit = true),
+        // Zwanenburgbaan
+        runway(9, "18C", 183.0, 10827, 147, lit = true),
+        runway(10, "36C", 3.0, 10827, 147, lit = true),
+        // Polderbaan, the longest — and "36L" is left without a heading on
+        // purpose, so this fixture also covers the "excluded from the
+        // diagram" note.
+        runway(11, "18R", 183.0, 12467, 197, lit = true),
+        runway(12, "36L", null, 12467, 197, lit = false),
+    )
+
+    private fun runway(
+        id: Int,
+        ident: String,
+        heading: Double?,
+        lengthFt: Int,
+        widthFt: Int,
+        lit: Boolean,
+        surfaceKind: SurfaceKind = SurfaceKind.HARD,
+    ) = Runway(
+        id = id,
+        airportId = schiphol.id,
+        ident = ident,
+        trueHeadingDeg = heading,
+        lengthFt = lengthFt,
+        widthFt = widthFt,
+        surface = if (surfaceKind == SurfaceKind.HARD) "ASPH" else "GRASS",
+        surfaceKind = surfaceKind,
+        latitude = null,
+        longitude = null,
+        elevationFt = schiphol.elevationFt,
+        lighted = lit,
+    )
 
     private fun row(id: Long, aircraft: AircraftSpec, from: Airport, to: Airport): RouteRow {
         val distance = GreatCircle.distanceNm(from.latitude, from.longitude, to.latitude, to.longitude)

@@ -36,6 +36,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun PlanRoute(
     onOpenSettings: () -> Unit,
+    onOpenAirports: () -> Unit,
     onOpenRoute: (RouteRow) -> Unit,
     viewModel: PlanViewModel,
     modifier: Modifier = Modifier,
@@ -47,6 +48,7 @@ fun PlanRoute(
         PlanScreen(
             onOpenRoute = onOpenRoute,
             onOpenSettings = onOpenSettings,
+            onOpenAirports = onOpenAirports,
             viewModel = viewModel,
             modifier = modifier,
         )
@@ -78,6 +80,7 @@ fun PlanRoute(
                             }
                         },
                         onOpenSettings = onOpenSettings,
+                        onOpenAirports = onOpenAirports,
                         viewModel = viewModel,
                     )
                 }

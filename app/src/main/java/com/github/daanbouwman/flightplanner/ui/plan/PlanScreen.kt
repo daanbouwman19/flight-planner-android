@@ -23,7 +23,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -46,6 +50,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -142,6 +147,7 @@ import kotlin.math.abs
 fun PlanScreen(
     onOpenRoute: (RouteRow) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAirports: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: PlanViewModel = hiltViewModel(),
 ) {
@@ -307,6 +313,7 @@ fun PlanScreen(
                         modifier = Modifier.onSizeChanged { headerHeight = it.height },
                         state = state,
                         onOpenSettings = onOpenSettings,
+                        onOpenAirports = onOpenAirports,
                         onModeChange = viewModel::setMode,
                         onPickDeparture = {
                             query = ""
@@ -446,6 +453,7 @@ fun PlanScreen(
 private fun PlanHeader(
     state: PlanUiState,
     onOpenSettings: () -> Unit,
+    onOpenAirports: () -> Unit,
     onModeChange: (PlanMode) -> Unit,
     onPickDeparture: () -> Unit,
     onPickAircraft: () -> Unit,
@@ -455,6 +463,7 @@ private fun PlanHeader(
     // shows in the navigation bar: the title drops a step and the gap under it
     // halves. It is not removed — a screen with no name reads as a fragment.
     val compactHeight = isCompactHeight()
+    var menuExpanded by rememberSaveable { mutableStateOf(false) }
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -470,6 +479,20 @@ private fun PlanHeader(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_fleet_more),
+                        contentDescription = stringResource(R.string.plan_overflow_content_description),
+                    )
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.plan_action_browse_airports)) },
+                        onClick = { menuExpanded = false; onOpenAirports() },
+                    )
+                }
+            }
             SettingsAction(onClick = onOpenSettings)
         }
         Spacer(Modifier.height(if (compactHeight) 6.dp else 12.dp))
@@ -1144,6 +1167,7 @@ private fun PreviewPlan(state: PlanUiState) {
                     PlanHeader(
                         state = state,
                         onOpenSettings = {},
+                        onOpenAirports = {},
                         onModeChange = {},
                         onPickDeparture = {},
                         onPickAircraft = {},

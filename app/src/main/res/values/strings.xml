@@ -115,6 +115,9 @@
     <string name="plan_picker_names_unavailable">Airport names could not be loaded, so only ICAO codes are matched.</string>
     <string name="plan_picker_names_retry">Retry</string>
 
+    <string name="plan_overflow_content_description">Plan actions</string>
+    <string name="plan_action_browse_airports">Browse airports</string>
+
     <!-- Placeholder screens. Replaced as each phase builds its screen. -->
     <string name="logbook_empty_title">No flights logged</string>
     <string name="logbook_empty_message">Flights you mark as flown will appear here, grouped by month.</string>
@@ -341,4 +344,16 @@
     <string name="route_detail_no_app">No app on this phone can open that.</string>
     <!-- Shown when the route has left the list, so marking it flown has no undo. -->
     <string name="route_detail_mark_flown_unavailable">Generate this route again to mark it flown.</string>
+
+    <!-- Airports browse (E1) -->
+    <string name="airports_title">Airports</string>
+    <string name="airports_action_random">Random</string>
+    <string name="airports_random_header">Random 50</string>
+
+    <!-- Airport detail (E2) -->
+    <string name="airport_detail_not_found_title">Airport not found</string>
+    <string name="airport_detail_not_found_message">This airport may have been removed from the dataset.</string>
+    <string name="airport_detail_fly_from_here">Fly from here</string>
+    <string name="airport_detail_weather_pending">Live weather is not in this version yet. The flight category and the raw METAR for this airport will appear here.</string>
+
 </resources>

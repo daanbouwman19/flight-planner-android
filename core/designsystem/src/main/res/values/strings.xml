@@ -24,4 +24,15 @@
     <!-- The confirm action on the shared date picker. -->
     <string name="ds_date_picker_confirm">OK</string>
 
+    <!--
+        Below the runway diagram, when one or more runway ends have no
+        published heading and could not be drawn as a ray — real on grass
+        strips. Says so rather than silently omitting them; they still
+        appear in the textual runway list beside the diagram.
+    -->
+    <plurals name="ds_runway_diagram_excluded">
+        <item quantity="one">%1$d runway end has no published heading and is not shown</item>
+        <item quantity="other">%1$d runway ends have no published heading and are not shown</item>
+    </plurals>
+
 </resources>
