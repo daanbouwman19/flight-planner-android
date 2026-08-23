@@ -90,7 +90,7 @@ it lives on Android.
 | **Mark route as flown** → writes history, flips the flown flag, stamps the date | Route detail action + swipe on a card |
 | Manually add history: aircraft + departure + destination via searchable pickers | Add-flight sheet, three pickers + date |
 | History row opens the same detail view as a route | ✓ |
-| Statistics: all nine `FlightStatistics` fields | Stats screen — **tie-break rules ported exactly**: alphabetically-first ICAO wins ties, lowest aircraft id wins ties, shortest uses strict `<` (first wins), longest uses `>=` (last wins) |
+| Statistics: all nine `FlightStatistics` fields | ✓ Stats screen — **tie-break rules ported exactly**: alphabetically-first ICAO wins ties, lowest aircraft id wins ties, shortest uses strict `<` (first wins), longest uses `>=` (last wins) |
 
 ### Search
 

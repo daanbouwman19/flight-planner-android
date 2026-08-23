@@ -29,6 +29,7 @@ import com.github.daanbouwman.flightplanner.ui.profile.ProfileSegment
 import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRoute
 import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRow
 import com.github.daanbouwman.flightplanner.ui.settings.SettingsScreen
+import com.github.daanbouwman.flightplanner.ui.stats.StatsRoute
 import com.github.daanbouwman.flightplanner.ui.plan.PlanRoute
 import com.github.daanbouwman.flightplanner.ui.plan.PlanViewModel
 
@@ -166,9 +167,25 @@ fun FlightPlannerNavHost(
                 )
             }
             composable<Destination.Stats> {
-                ProfileScreen(
-                    segment = ProfileSegment.Stats,
+                StatsRoute(
                     onOpenSettings = openSettings,
+                    onOpenRoute = { leg ->
+                        navController.navigateToDetail(
+                            Destination.RouteDetail(
+                                departureIcao = leg.departureIcao,
+                                destinationIcao = leg.arrivalIcao,
+                                aircraftId = leg.aircraftId,
+                                distanceNm = leg.distanceNm,
+                                alreadyFlown = true,
+                            ),
+                        )
+                    },
+                    onOpenAircraft = { aircraft ->
+                        navController.navigate(aircraft.toFleetDetailDestination()) { launchSingleTop = true }
+                    },
+                    onPlanFlight = {
+                        navController.navigateToTopLevel(TopLevelDestination.PLAN)
+                    },
                 )
             }
             composable<Destination.Settings> {

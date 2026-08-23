@@ -204,6 +204,39 @@
 
     <string name="stats_empty_title">Nothing to summarise</string>
     <string name="stats_empty_message">Distance flown, favourite airports and your busiest aircraft will appear here.</string>
+    <string name="stats_empty_action">Plan a flight</string>
+    <string name="stats_empty_timeframe_title">No flights in this period</string>
+    <string name="stats_empty_timeframe_message">Try a different timeframe, or log a flight from this window.</string>
+
+    <string name="stats_timeframe_all_time">All time</string>
+    <string name="stats_timeframe_this_year">This year</string>
+    <string name="stats_timeframe_past_12_months">Past 12 months</string>
+
+    <string name="stats_metric_flights">Flights</string>
+    <string name="stats_metric_distance">Distance</string>
+
+    <string name="stats_hero_total_distance">TOTAL DISTANCE</string>
+    <string name="stats_earth_circumferences">%1$s× around the equator</string>
+
+    <string name="stats_section_activity">ACTIVITY</string>
+    <string name="stats_section_network">VISITED NETWORK</string>
+    <string name="stats_network_summary_format">%1$d airports · %2$d routes</string>
+
+    <string name="stats_metric_total_flights">TOTAL FLIGHTS</string>
+    <string name="stats_metric_avg_distance">AVG LEG DISTANCE</string>
+    <string name="stats_metric_longest_flight">LONGEST FLIGHT</string>
+    <string name="stats_metric_shortest_flight">SHORTEST FLIGHT</string>
+
+    <string name="stats_section_top_aircraft">TOP AIRCRAFT</string>
+    <string name="stats_section_airport_highlights">AIRPORT HIGHLIGHTS</string>
+
+    <string name="stats_favorite_departure">Favorite departure</string>
+    <string name="stats_favorite_arrival">Favorite arrival</string>
+    <string name="stats_most_visited_airport">Most visited</string>
+
+    <string name="stats_aircraft_rank_format">%1$d. %2$s</string>
+    <string name="stats_aircraft_flights_format">%1$d flights · %2$s NM</string>
+    <string name="stats_airport_count_format">%1$s · %2$d</string>
 
     <!-- Logbook (D1): the summary strip's three captions. Short and aviation-terse,
          matching plan_chip_distance/plan_chip_time. -->

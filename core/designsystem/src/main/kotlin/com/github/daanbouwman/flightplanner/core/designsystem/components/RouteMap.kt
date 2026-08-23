@@ -68,8 +68,8 @@ fun RouteMap(
     arc: GeoArc,
     outline: WorldOutline,
     modifier: Modifier = Modifier,
-    landColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = LandAlpha),
-    coastColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = CoastAlpha),
+    landColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = WorldMapLandAlpha),
+    coastColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = WorldMapCoastAlpha),
     routeColor: Color = MaterialTheme.colorScheme.primary,
     casingColor: Color = MaterialTheme.colorScheme.surfaceContainer,
 ) {
@@ -242,12 +242,14 @@ fun RouteMap(
  *
  * Chosen against a mid-contrast map that reads unmistakably as a map — and needs
  * a scrim under every figure on the card to stay legible. Text keeps essentially
- * its full contrast against this.
+ * its full contrast against this. Shared with any other composable drawing a
+ * world outline (see [ProjectedRings.toPath]) so every map in the app reads as
+ * one system rather than several independently-tuned ones.
  */
-private const val LandAlpha = 0.08f
+const val WorldMapLandAlpha = 0.08f
 
 /** The coast, at twice the fill, which is what makes a silhouette recognisable. */
-private const val CoastAlpha = 0.16f
+const val WorldMapCoastAlpha = 0.16f
 
 private const val CoastStrokeDp = 1f
 private const val RouteStrokeDp = 2.5f
@@ -298,11 +300,14 @@ private val PreviewOutline = WorldOutline(
 /**
  * Walks projected rings into a `Path`, scaling the fractions to pixels.
  *
+ * Public so any composable drawing a [WorldOutline] — [RouteMap] included —
+ * shares this conversion rather than reimplementing it.
+ *
  * @param close true for the filled polygons, false for the coastline: an open
  *   polyline that gets closed grows a straight segment from its last point back
  *   to its first, straight across the card.
  */
-private fun ProjectedRings.toPath(width: Float, height: Float, close: Boolean): Path {
+fun ProjectedRings.toPath(width: Float, height: Float, close: Boolean): Path {
     val path = Path()
     for (ring in 0 until ringCount) {
         val from = ringStart[ring]

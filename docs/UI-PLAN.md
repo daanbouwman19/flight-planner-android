@@ -22,7 +22,7 @@ Verified against the source tree, not against the plan.
 | `:core:designsystem` | **Complete for what exists.** Theme, motion, shapes, and thirteen components (D1 added `MonthHeader` and `StatSummaryStrip`). See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
 | `:core:network` | **Empty.** No sources at all. Phase F |
 | `:feature:globe` | `FilamentProbe` only. Vulkan confirmed working, `FEATURE_LEVEL_3` |
-| `:app` | Shell, navigation, the self-check, the Plan screen, the route detail, Settings, Logbook (with swipe-to-delete and a two-pane flight-detail layout) and Fleet (list, detail, management). Only Stats is still a placeholder; Airports is gone rather than a placeholder — see F10 |
+| `:app` | Shell, navigation, the self-check, the Plan screen, the route detail, Settings, Logbook (with swipe-to-delete and a two-pane flight-detail layout), Fleet (list, detail, management), and Stats (dashboard with 9 metrics, monthly chart, 2D visited network map, and timeframe filters). Airports is gone rather than a placeholder — see F10 |
 | `:macrobenchmark` | **The instrument, from P2.** `FrameTimingMetric` over a scripted fling and `StartupTimingMetric` over a cold start, both on the `benchmarkRelease` variant, plus `BaselineProfileGenerator` from P1. See [the module README](../macrobenchmark/README.md) |
 
 The three gaps the original plan did not cover — the index carrying no display
@@ -1544,10 +1544,10 @@ moving it; deciding where a browse screen surfaces from is now part of E1 itself
 | --- | --- | --- |
 | **E1** | Airports browse | Ranked type-ahead over the name index from **A5**, plus the desktop's random-50 action |
 | **E2** | Airport detail | Runway diagram drawn in `Canvas` — idents, true headings, surface, length — plus "fly from here", which sets the locked departure and jumps to Plan |
-| **E3** | Stats dashboard | All nine `FlightStatistics` fields. Hero total distance with count-up and an equivalence ("2.3× around the Earth"), monthly bar chart, top-aircraft list, longest/shortest cards |
-| **E4** | Visited mini-globe | Dots on a small projection. Cheap 2D version now; upgraded in Phase G |
+| **E3** | ~~Stats dashboard~~ | **Complete.** All nine statistics metrics, hero distance card with count-up animation and Earth equator multiplier badge, top-aircraft rankings, and longest/shortest flight cards |
+| **E4** | ~~Visited mini-globe~~ | **Complete.** 2D visited network map projection rendering land polygons, coastlines, visited airport nodes, and great-circle connecting flight arcs |
 | **E5** | Settings | Partly done: theme (four choices) and dynamic colour ship now, in Preferences DataStore, because F6 of the design review found the brand palette and the Cockpit theme were unreachable without them. Still to do — units, ICAO-only toggle, weather provider, tile provider, dataset info, licences |
-| **E6** | Motion | Chart bars grow on first composition only; stat values count up; filter changes animate the list rather than replacing it |
+| **E6** | ~~Motion~~ | **Complete.** Distance count-up with `FlightMotion.rememberCountUp()`, monthly activity bar height animation with `FlightMotion.effects()`, and interactive metric switcher |
 
 ---
 

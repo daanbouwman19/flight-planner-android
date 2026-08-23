@@ -1,7 +1,6 @@
 package com.github.daanbouwman.flightplanner.ui.profile
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -36,7 +35,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
-import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.ui.SettingsAction
@@ -137,14 +135,12 @@ fun ProfileScreen(
                 header = header,
                 modifier = Modifier.padding(top = topClearance),
             )
-
-            ProfileSegment.Stats -> StatsPlaceholder(contentPadding = contentPadding, header = header)
         }
     }
 }
 
-/** Which view Profile is currently showing. Local UI state, not a nav destination — see the class KDoc. */
-enum class ProfileSegment { Logbook, Stats }
+/** Which view Profile is currently showing. */
+enum class ProfileSegment { Logbook }
 
 @Composable
 private fun ProfileHeader(
@@ -177,40 +173,12 @@ private fun ProfileHeader(
 private val ProfileSegment.iconRes: Int
     get() = when (this) {
         ProfileSegment.Logbook -> R.drawable.ic_nav_logbook
-        ProfileSegment.Stats -> R.drawable.ic_nav_stats
     }
 
 private val ProfileSegment.labelRes: Int
     get() = when (this) {
         ProfileSegment.Logbook -> R.string.destination_logbook
-        ProfileSegment.Stats -> R.string.destination_stats
     }
-
-@Composable
-private fun StatsPlaceholder(
-    contentPadding: PaddingValues,
-    header: @Composable () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(contentPadding),
-    ) {
-        header()
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            contentAlignment = Alignment.Center,
-        ) {
-            EmptyState(
-                title = stringResource(R.string.stats_empty_title),
-                message = stringResource(R.string.stats_empty_message),
-            )
-        }
-    }
-}
 
 @LightDarkPreview
 @DevicePreviews
