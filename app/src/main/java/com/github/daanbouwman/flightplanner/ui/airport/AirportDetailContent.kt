@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -26,6 +28,7 @@ import com.github.daanbouwman.flightplanner.ui.asFigure
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
+import com.github.daanbouwman.flightplanner.ui.detail.AirportLinks
 import com.github.daanbouwman.flightplanner.ui.detail.RunwayLine
 import com.github.daanbouwman.flightplanner.ui.detail.WeatherReservedHeight
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
@@ -43,6 +46,7 @@ import com.github.daanbouwman.flightplanner.ui.plan.PlanPreviewData
 fun AirportDetailContent(
     state: AirportDetailUiState,
     onFlyFromHere: (Airport) -> Unit,
+    snackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -59,6 +63,7 @@ fun AirportDetailContent(
                 airport = state.airport,
                 runways = state.runways,
                 onFlyFromHere = { onFlyFromHere(state.airport) },
+                snackbarHostState = snackbarHostState,
             )
         }
     }
@@ -69,6 +74,7 @@ private fun AirportDetailBody(
     airport: Airport,
     runways: List<Runway>,
     onFlyFromHere: () -> Unit,
+    snackbarHostState: SnackbarHostState,
 ) {
     Column {
         Text(text = airport.icao, style = MaterialTheme.typography.headlineSmall.asChartFigure())
@@ -100,6 +106,8 @@ private fun AirportDetailBody(
             runways.forEach { runway -> RunwayLine(runway = runway, requiredRunwayFt = 0) }
         }
     }
+
+    AirportLinks(airport = airport, snackbarHostState = snackbarHostState)
 
     AirportWeatherBlock()
 
@@ -149,6 +157,7 @@ private fun AirportDetailContentPreview() {
                 loading = false,
             ),
             onFlyFromHere = {},
+            snackbarHostState = remember { SnackbarHostState() },
             modifier = Modifier.padding(16.dp),
         )
     }
@@ -161,6 +170,7 @@ private fun AirportDetailContentLoadingPreview() {
         AirportDetailContent(
             state = AirportDetailUiState(loading = true),
             onFlyFromHere = {},
+            snackbarHostState = remember { SnackbarHostState() },
             modifier = Modifier.padding(16.dp),
         )
     }
@@ -173,6 +183,7 @@ private fun AirportDetailContentNotFoundPreview() {
         AirportDetailContent(
             state = AirportDetailUiState(loading = false),
             onFlyFromHere = {},
+            snackbarHostState = remember { SnackbarHostState() },
             modifier = Modifier.padding(16.dp),
         )
     }

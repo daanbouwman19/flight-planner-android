@@ -26,6 +26,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlanne
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.model.SurfaceKind
+import com.github.daanbouwman.flightplanner.routing.GreatCircle
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -88,6 +89,11 @@ fun RunwayDiagram(
     val laneOffsets = remember(diagrammed, positioned) {
         if (positioned) null else layoutRunways(diagrammed)
     }
+    // Only the positioned path needs the groups themselves — layoutRunways
+    // already computes (and discards) its own copy for the lane-schematic case.
+    val positionedGroups = remember(diagrammed, positioned) {
+        if (positioned) pairPhysicalRunways(diagrammed) else null
+    }
 
     val textMeasurer = rememberTextMeasurer()
     val identStyle = MaterialTheme.typography.labelSmall.asChartFigure()
@@ -107,7 +113,7 @@ fun RunwayDiagram(
                     val radius = (size.minDimension / 2f) - labelMargin
 
                     val rays = if (positioned) {
-                        positionedRays(diagrammed, center, radius, maxLengthFt)
+                        positionedRays(diagrammed, requireNotNull(positionedGroups), center, radius, maxLengthFt)
                     } else {
                         val laneSpacingPx = LaneSpacingFraction * radius
                         diagrammed.mapIndexed { index, runway ->
@@ -169,9 +175,17 @@ private data class RunwayRay(val origin: Offset, val tip: Offset)
  *
  * Every entry in [runways] must have both [Runway.latitude] and
  * [Runway.longitude]; the caller only takes this path once it has checked
- * that.
+ * that. [groups] is [pairPhysicalRunways] run over the same [runways] —
+ * passed in rather than recomputed here so the caller can `remember` it
+ * across recompositions, the same way the lane-schematic path already does.
  */
-private fun positionedRays(runways: List<Runway>, center: Offset, radius: Float, maxLengthFt: Int): List<RunwayRay> {
+private fun positionedRays(
+    runways: List<Runway>,
+    groups: List<PhysicalRunway>,
+    center: Offset,
+    radius: Float,
+    maxLengthFt: Int,
+): List<RunwayRay> {
     val refLat = runways.map { requireNotNull(it.latitude) }.average()
     val refLon = runways.map { requireNotNull(it.longitude) }.average()
     val local = runways.map { projectLocal(requireNotNull(it.latitude), requireNotNull(it.longitude), refLat, refLon) }
@@ -181,7 +195,7 @@ private fun positionedRays(runways: List<Runway>, center: Offset, radius: Float,
     fun toScreen(p: Offset) = Offset(center.x + p.x * scale, center.y + p.y * scale)
 
     val rays = arrayOfNulls<RunwayRay>(runways.size)
-    for (group in pairPhysicalRunways(runways)) {
+    for (group in groups) {
         if (group.runwayIndices.size == 2) {
             val (i, j) = group.runwayIndices
             val a = toScreen(local[i])
@@ -278,8 +292,10 @@ private fun angularDifference(a: Double, b: Double): Double {
  * One physical runway: the index (or two indices, one per end) of
  * [runways] it corresponds to, and the heading — folded to a half-circle —
  * its lane is laid out against.
+ *
+ * `internal` for [RunwayDiagramLayoutTest].
  */
-private data class PhysicalRunway(val runwayIndices: List<Int>, val orientationDeg: Double)
+internal data class PhysicalRunway(val runwayIndices: List<Int>, val orientationDeg: Double)
 
 /**
  * Reunites [runways]' ends into physical strips, by opposite heading and
@@ -289,25 +305,43 @@ private data class PhysicalRunway(val runwayIndices: List<Int>, val orientationD
  * [lengthToleranceFt] of [Runway.lengthFt]'s own value; an end with no
  * matching partner (its own opposite end lacks a published heading, say)
  * becomes a physical runway of one.
+ *
+ * **More than one candidate can pass that test** — two side-by-side physical
+ * runways sharing both a heading pair and a length, such as Zahedan
+ * International's 17R/35L and 17L/35R, both 14,042 ft. Heading and length
+ * alone cannot tell them apart, so [bearingDeviation] breaks the tie using
+ * real position where it exists: the true reciprocal end is the one whose
+ * actual bearing from this end matches [headingI] most closely, which is
+ * exactly what a physical runway's own heading means. Found live against
+ * Zahedan (OIZH) — the database query backing [RunwayDiagram]'s caller orders
+ * same-length ends alphabetically by ident (17L, 17R, 35L, 35R rather than
+ * true-pair order), and the old first-match rule paired 17L with 35L instead
+ * of 35R, drawing the two strips crossing like an X instead of running
+ * parallel.
+ *
+ * `internal` for [RunwayDiagramLayoutTest].
  */
-private fun pairPhysicalRunways(runways: List<Runway>): List<PhysicalRunway> {
+internal fun pairPhysicalRunways(runways: List<Runway>): List<PhysicalRunway> {
     val used = BooleanArray(runways.size)
     val groups = mutableListOf<PhysicalRunway>()
     for (i in runways.indices) {
         if (used[i]) continue
         used[i] = true
         val headingI = requireNotNull(runways[i].trueHeadingDeg)
-        var partner = -1
-        for (j in i + 1 until runways.size) {
-            if (used[j]) continue
+        val candidates = (i + 1 until runways.size).filter { j ->
+            if (used[j]) return@filter false
             val headingJ = requireNotNull(runways[j].trueHeadingDeg)
             val opposite = angularDifference(headingI + 180.0, headingJ) < OppositeToleranceDeg
             val tolerance = lengthToleranceFt(minOf(runways[i].lengthFt, runways[j].lengthFt))
             val sameLength = abs(runways[i].lengthFt - runways[j].lengthFt) <= tolerance
-            if (opposite && sameLength) {
-                partner = j
-                break
-            }
+            opposite && sameLength
+        }
+        val partner = when (candidates.size) {
+            0 -> -1
+            1 -> candidates.single()
+            else -> requireNotNull(
+                candidates.minByOrNull { j -> bearingDeviation(runways[i], runways[j], headingI) },
+            )
         }
         val indices = if (partner >= 0) {
             used[partner] = true
@@ -318,6 +352,25 @@ private fun pairPhysicalRunways(runways: List<Runway>): List<PhysicalRunway> {
         groups += PhysicalRunway(indices, foldToHalfCircle(headingI))
     }
     return groups
+}
+
+/**
+ * How far [to]'s real bearing from [from] departs from [headingDeg] — the
+ * disambiguator [pairPhysicalRunways] uses once heading and length alone
+ * leave more than one candidate. [Double.MAX_VALUE] when either end lacks
+ * real coordinates, so an undecidable candidate sorts last rather than
+ * winning a tie it cannot actually settle; when *no* candidate has position
+ * data every one ties at [Double.MAX_VALUE] and `minByOrNull`'s stability
+ * picks the first, exactly the prior first-match behaviour.
+ */
+private fun bearingDeviation(from: Runway, to: Runway, headingDeg: Double): Double {
+    val lat = from.latitude
+    val lon = from.longitude
+    val toLat = to.latitude
+    val toLon = to.longitude
+    if (lat == null || lon == null || toLat == null || toLon == null) return Double.MAX_VALUE
+    val bearing = GreatCircle.initialBearingDeg(lat1 = lat, lon1 = lon, lat2 = toLat, lon2 = toLon)
+    return angularDifference(headingDeg, bearing)
 }
 
 private fun lengthToleranceFt(lengthFt: Int): Int = maxOf(MinLengthToleranceFt, (lengthFt * LengthToleranceFraction).toInt())

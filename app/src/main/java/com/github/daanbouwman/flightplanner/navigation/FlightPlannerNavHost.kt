@@ -111,6 +111,7 @@ fun FlightPlannerNavHost(
                                     ),
                                 )
                             },
+                            onOpenAirport = { airport -> navController.navigateToAirportDetail(airport.id) },
                             viewModel = hiltViewModel(navController.planGraphEntry(entry)),
                         )
                     }
@@ -135,6 +136,7 @@ fun FlightPlannerNavHost(
                                     aircraftId = detail.aircraftId,
                                 )
                             },
+                            onOpenAirport = { airport -> navController.navigateToAirportDetail(airport.id) },
                         )
                     }
                 }
@@ -159,11 +161,7 @@ fun FlightPlannerNavHost(
             composable<Destination.Airports> {
                 AirportsScreen(
                     onBack = { navController.popBackStack() },
-                    onOpenAirport = { airport ->
-                        navController.navigate(Destination.AirportDetail(airportId = airport.id)) {
-                            launchSingleTop = true
-                        }
-                    },
+                    onOpenAirport = { airport -> navController.navigateToAirportDetail(airport.id) },
                 )
             }
             composable<Destination.AirportDetail> { entry ->
@@ -187,6 +185,7 @@ fun FlightPlannerNavHost(
                             ),
                         )
                     },
+                    onOpenAirport = { airport -> navController.navigateToAirportDetail(airport.id) },
                 )
             }
             composable<Destination.Stats> {
@@ -241,6 +240,14 @@ fun NavHostController.navigateToTopLevel(destination: TopLevelDestination) {
 
 private fun NavHostController.navigateToDetail(detail: Destination.RouteDetail) {
     navigate(detail) { launchSingleTop = true }
+}
+
+/**
+ * "Open this airport", from Airports browse and from an airport code on Route
+ * detail (which the Logbook's detail pane reuses).
+ */
+private fun NavHostController.navigateToAirportDetail(airportId: Int) {
+    navigate(Destination.AirportDetail(airportId = airportId)) { launchSingleTop = true }
 }
 
 /**

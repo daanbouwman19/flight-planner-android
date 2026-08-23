@@ -44,6 +44,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDa
 import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMap
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
+import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.ui.chrome.SharedRouteKeys
 import com.github.daanbouwman.flightplanner.ui.chrome.sharedRouteElement
@@ -116,6 +117,7 @@ fun RouteDetailScreen(
      * action says so instead of logging a flight the user cannot retract.
      */
     onMarkFlown: () -> Boolean = { false },
+    onOpenAirport: (Airport) -> Unit = {},
     viewModel: RouteDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -164,6 +166,7 @@ fun RouteDetailScreen(
                 onMarkFlown = onMarkFlown,
                 onFlownConfirmed = onBack,
                 snackbarHostState = snackbarHostState,
+                onOpenAirport = onOpenAirport,
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 alreadyFlown = alreadyFlown,

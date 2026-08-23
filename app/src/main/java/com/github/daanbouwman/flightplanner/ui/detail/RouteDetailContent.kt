@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -95,6 +96,7 @@ fun RouteDetailContent(
     onMarkFlown: () -> Boolean,
     onFlownConfirmed: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    onOpenAirport: (Airport) -> Unit,
     modifier: Modifier = Modifier,
     /**
      * Whether the blocks stage themselves in on first composition.
@@ -215,6 +217,7 @@ fun RouteDetailContent(
                 },
                 loading = state.loading,
                 snackbarHostState = snackbarHostState,
+                onOpenAirport = onOpenAirport,
                 modifier = Modifier.enterStaggered(0, animateEntrance),
             )
 
@@ -232,6 +235,7 @@ fun RouteDetailContent(
                 },
                 loading = state.loading,
                 snackbarHostState = snackbarHostState,
+                onOpenAirport = onOpenAirport,
                 modifier = Modifier.enterStaggered(2, animateEntrance),
             )
         }
@@ -349,26 +353,41 @@ private fun AirportBlock(
     headingLabel: String?,
     loading: Boolean,
     snackbarHostState: SnackbarHostState,
+    onOpenAirport: (Airport) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     SpineRow(marker = marker, rail = rail, modifier = modifier) {
-        Text(
-            text = airport?.icao ?: EmptyFigure,
-            style = MaterialTheme.typography.headlineSmall,
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = when {
-                airport != null -> airport.name
-                loading -> stringResource(R.string.route_detail_loading_airport)
-                else -> stringResource(R.string.route_detail_missing_airport)
+        // The code, role label and name travel together as one tap target to
+        // the airport's own page — the identity of the field, not the leg's
+        // own figures below (runways, links), which keep their own controls.
+        Column(
+            modifier = if (airport != null) {
+                Modifier.clickable(
+                    onClickLabel = stringResource(R.string.route_detail_open_airport_action),
+                    role = Role.Button,
+                ) { onOpenAirport(airport) }
+            } else {
+                Modifier
             },
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        ) {
+            Text(
+                text = airport?.icao ?: EmptyFigure,
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = when {
+                    airport != null -> airport.name
+                    loading -> stringResource(R.string.route_detail_loading_airport)
+                    else -> stringResource(R.string.route_detail_missing_airport)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         airport?.let {
             // The elevation is dropped at exactly zero, on 823 of 24,321
             // airports. OurAirports leaves the field blank where nobody
@@ -551,9 +570,12 @@ internal fun surfaceLabel(kind: SurfaceKind): String? = when (kind) {
  * Both are the desktop's: a copyable coordinate label and a Google Maps link, on
  * the airport rather than on the route, because a position is a property of a
  * field.
+ *
+ * `internal` rather than `private`: Airport detail (E2) reuses this verbatim,
+ * the same treatment [RunwayLine] already has.
  */
 @Composable
-private fun AirportLinks(airport: Airport, snackbarHostState: SnackbarHostState) {
+internal fun AirportLinks(airport: Airport, snackbarHostState: SnackbarHostState) {
     val scope = rememberCoroutineScope()
     val noHandler = stringResource(R.string.route_detail_no_app)
     val launcher = rememberRouteActionLauncher(scope) {

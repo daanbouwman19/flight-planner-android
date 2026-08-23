@@ -76,6 +76,7 @@ fun RouteDetailPane(
     snackbarHostState: SnackbarHostState,
     onMarkFlown: (Destination.RouteDetail) -> Boolean,
     onFlownConfirmed: () -> Unit,
+    onOpenAirport: (Airport) -> Unit,
     modifier: Modifier = Modifier,
     /** Whether the route is already in the logbook (disables Mark as Flown). */
     alreadyFlown: Boolean = false,
@@ -121,6 +122,7 @@ fun RouteDetailPane(
                     snackbarHostState = snackbarHostState,
                     onMarkFlown = onMarkFlown,
                     onFlownConfirmed = onFlownConfirmed,
+                    onOpenAirport = onOpenAirport,
                     alreadyFlown = alreadyFlown,
                 )
             }
@@ -150,6 +152,7 @@ private fun RouteDetailPaneContent(
     snackbarHostState: SnackbarHostState,
     onMarkFlown: (Destination.RouteDetail) -> Boolean,
     onFlownConfirmed: () -> Unit,
+    onOpenAirport: (Airport) -> Unit,
     alreadyFlown: Boolean,
 ) {
     if (state == null) {
@@ -202,6 +205,7 @@ private fun RouteDetailPaneContent(
             onMarkFlown = { onMarkFlown(route) },
             onFlownConfirmed = onFlownConfirmed,
             snackbarHostState = snackbarHostState,
+            onOpenAirport = onOpenAirport,
             // The pane cross-fades between routes; staging each block in on
             // top of that would be two motions for one change.
             animateEntrance = false,
@@ -226,6 +230,7 @@ private fun RouteDetailPaneEmptyPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onMarkFlown = { false },
             onFlownConfirmed = {},
+            onOpenAirport = {},
         )
     }
 }
@@ -284,6 +289,7 @@ private fun RouteDetailPanePreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onMarkFlown = { false },
             onFlownConfirmed = {},
+            onOpenAirport = {},
         )
     }
 }

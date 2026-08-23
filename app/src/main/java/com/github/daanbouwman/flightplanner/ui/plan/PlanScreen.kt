@@ -23,8 +23,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,7 +48,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -463,7 +460,6 @@ private fun PlanHeader(
     // shows in the navigation bar: the title drops a step and the gap under it
     // halves. It is not removed — a screen with no name reads as a fragment.
     val compactHeight = isCompactHeight()
-    var menuExpanded by rememberSaveable { mutableStateOf(false) }
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -479,19 +475,11 @@ private fun PlanHeader(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
-            Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_fleet_more),
-                        contentDescription = stringResource(R.string.plan_overflow_content_description),
-                    )
-                }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.plan_action_browse_airports)) },
-                        onClick = { menuExpanded = false; onOpenAirports() },
-                    )
-                }
+            IconButton(onClick = onOpenAirports) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_plan_search),
+                    contentDescription = stringResource(R.string.plan_action_browse_airports),
+                )
             }
             SettingsAction(onClick = onOpenSettings)
         }

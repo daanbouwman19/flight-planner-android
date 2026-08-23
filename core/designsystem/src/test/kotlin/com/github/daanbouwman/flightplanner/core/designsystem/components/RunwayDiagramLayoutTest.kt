@@ -21,7 +21,14 @@ import kotlin.test.Test
  */
 class RunwayDiagramLayoutTest {
 
-    private fun runway(id: Int, heading: Double, lengthFt: Int = 10_000, ident: String = "$id") = Runway(
+    private fun runway(
+        id: Int,
+        heading: Double,
+        lengthFt: Int = 10_000,
+        ident: String = "$id",
+        lat: Double? = null,
+        lon: Double? = null,
+    ) = Runway(
         id = id,
         airportId = 0,
         ident = ident,
@@ -30,8 +37,8 @@ class RunwayDiagramLayoutTest {
         widthFt = 150,
         surface = "ASPH",
         surfaceKind = SurfaceKind.HARD,
-        latitude = null,
-        longitude = null,
+        latitude = lat,
+        longitude = lon,
         elevationFt = 0,
         lighted = false,
     )
@@ -95,6 +102,31 @@ class RunwayDiagramLayoutTest {
         physicalRunwayLanes.size shouldBe 4
         offsets[0] shouldBe offsets[1]
         offsets[2] shouldBe offsets[3]
+    }
+
+    @Test
+    fun `identical-heading parallel runways pair by real position, not arrival order`() {
+        // Zahedan International (OIZH), found live on-device: two parallel
+        // physical runways, 17R-35L (west) and 17L-35R (east), both 14,042 ft
+        // and sharing the same heading pair (173/353). RunwayDao orders
+        // same-length rows alphabetically by ident, so they arrive as
+        // 17L, 17R, 35L, 35R — not in true-pair order — and heading+length
+        // alone cannot tell 35L from 35R as 17L's partner. Real threshold
+        // coordinates (OurAirports, verified against a Jeppesen chart) are
+        // what settles it.
+        val seventeenLeft = runway(1, 173.0, 14_042, ident = "17L", lat = 29.4949, lon = 60.904701)
+        val seventeenRight = runway(2, 173.0, 14_042, ident = "17R", lat = 29.494642, lon = 60.902241)
+        val thirtyFiveLeft = runway(3, 353.0, 14_042, ident = "35L", lat = 29.458872, lon = 60.907368)
+        val thirtyFiveRight = runway(4, 353.0, 14_042, ident = "35R", lat = 29.458836, lon = 60.909866)
+        val runways = listOf(seventeenLeft, seventeenRight, thirtyFiveLeft, thirtyFiveRight)
+
+        val groups = pairPhysicalRunways(runways)
+
+        // 17L's real reciprocal is 35R (index 3), not 35L (index 2) — the
+        // first opposite-heading, same-length candidate in arrival order,
+        // which is what the pre-fix greedy match picked and drew as a cross.
+        groups.first { 0 in it.runwayIndices }.runwayIndices shouldBe listOf(0, 3)
+        groups.first { 1 in it.runwayIndices }.runwayIndices shouldBe listOf(1, 2)
     }
 
     @Test

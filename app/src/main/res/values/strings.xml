@@ -115,7 +115,6 @@
     <string name="plan_picker_names_unavailable">Airport names could not be loaded, so only ICAO codes are matched.</string>
     <string name="plan_picker_names_retry">Retry</string>
 
-    <string name="plan_overflow_content_description">Plan actions</string>
     <string name="plan_action_browse_airports">Browse airports</string>
 
     <!-- Placeholder screens. Replaced as each phase builds its screen. -->
@@ -290,6 +289,7 @@
     <string name="route_detail_destination">DESTINATION</string>
     <string name="route_detail_loading_airport">Reading the airport…</string>
     <string name="route_detail_missing_airport">This airport is not in the dataset.</string>
+    <string name="route_detail_open_airport_action">Open airport</string>
 
     <!-- Headings, in degrees true. %1$s is already formatted as 093°. -->
     <string name="route_detail_heading_out">DEP HDG %1$s</string>

@@ -22,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.ui.chrome.LocalNavAnimatedVisibilityScope
 import com.github.daanbouwman.flightplanner.ui.chrome.LocalSharedTransitionScope
@@ -38,6 +39,7 @@ fun PlanRoute(
     onOpenSettings: () -> Unit,
     onOpenAirports: () -> Unit,
     onOpenRoute: (RouteRow) -> Unit,
+    onOpenAirport: (Airport) -> Unit,
     viewModel: PlanViewModel,
     modifier: Modifier = Modifier,
 ) {
@@ -98,6 +100,7 @@ fun PlanRoute(
                             )
                         },
                         onFlownConfirmed = paneViewModel::clear,
+                        onOpenAirport = onOpenAirport,
                     )
                 }
             },
