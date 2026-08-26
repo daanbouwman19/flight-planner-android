@@ -36,6 +36,16 @@ data class AppSettings(
      * could ever see.
      */
     val dynamicColour: Boolean = true,
+    /** Nautical/feet/knots vs. kilometres/metres/km-h. See [UnitSystem]. */
+    val unitSystem: UnitSystem = UnitSystem.AVIATION,
+    /**
+     * Restricts route generation to airports with a real ICAO code.
+     *
+     * Defaults **off**, matching [com.github.daanbouwman.flightplanner.routing.RouteGenerator]'s
+     * own default — enabling this is an opt-in narrowing of the pool, not a
+     * correction to previous behaviour.
+     */
+    val icaoOnly: Boolean = false,
 )
 
 private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -49,17 +59,31 @@ private val Context.settingsStore: DataStore<Preferences> by preferencesDataStor
  * user's actual theme a few milliseconds later — a light flash in front of
  * someone who chose Cockpit precisely so they would not get one.
  *
+ * An interface — like `AirportRepository`, `FleetRepository` and
+ * `LogbookRepository` in `:core:database` — so that `PlanViewModel` (icaoOnly)
+ * and any other consumer can be unit-tested against a fake rather than a real
+ * DataStore, which needs a `Context`. See `di/SettingsModule.kt` for the `@Binds`.
+ */
+interface SettingsRepository {
+    val settings: StateFlow<AppSettings?>
+    fun setThemeChoice(choice: ThemeChoice)
+    fun setDynamicColour(enabled: Boolean)
+    fun setUnitSystem(system: UnitSystem)
+    fun setIcaoOnly(enabled: Boolean)
+}
+
+/**
  * The read is a single small file and it runs in parallel with the airport
  * index, so it costs nothing measurable against the cold-start budget.
  */
 @Singleton
-class SettingsRepository @Inject constructor(
+internal class DefaultSettingsRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
     @param:ApplicationScope private val scope: CoroutineScope,
-) {
+) : SettingsRepository {
     private val store = context.settingsStore
 
-    val settings: StateFlow<AppSettings?> = store.data
+    override val settings: StateFlow<AppSettings?> = store.data
         // A corrupt or unreadable preferences file must not take the app down
         // over a colour scheme; the defaults are a perfectly good app.
         .catch { failure -> if (failure is IOException) emit(emptyPreferences()) else throw failure }
@@ -67,24 +91,40 @@ class SettingsRepository @Inject constructor(
             AppSettings(
                 themeChoice = preferences[THEME]?.let(::themeChoiceOf) ?: ThemeChoice.SYSTEM,
                 dynamicColour = preferences[DYNAMIC_COLOUR] ?: true,
+                unitSystem = preferences[UNIT_SYSTEM]?.let(::unitSystemOf) ?: UnitSystem.AVIATION,
+                icaoOnly = preferences[ICAO_ONLY] ?: false,
             )
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
-    fun setThemeChoice(choice: ThemeChoice) {
+    override fun setThemeChoice(choice: ThemeChoice) {
         scope.launch { store.edit { it[THEME] = choice.name } }
     }
 
-    fun setDynamicColour(enabled: Boolean) {
+    override fun setDynamicColour(enabled: Boolean) {
         scope.launch { store.edit { it[DYNAMIC_COLOUR] = enabled } }
+    }
+
+    override fun setUnitSystem(system: UnitSystem) {
+        scope.launch { store.edit { it[UNIT_SYSTEM] = system.name } }
+    }
+
+    override fun setIcaoOnly(enabled: Boolean) {
+        scope.launch { store.edit { it[ICAO_ONLY] = enabled } }
     }
 
     /** Tolerates a stored name that no longer exists, e.g. after a rename. */
     private fun themeChoiceOf(name: String): ThemeChoice =
         ThemeChoice.entries.firstOrNull { it.name == name } ?: ThemeChoice.SYSTEM
 
+    /** Tolerates a stored name that no longer exists, e.g. after a rename. */
+    private fun unitSystemOf(name: String): UnitSystem =
+        UnitSystem.entries.firstOrNull { it.name == name } ?: UnitSystem.AVIATION
+
     private companion object {
         val THEME = stringPreferencesKey("theme_choice")
         val DYNAMIC_COLOUR = booleanPreferencesKey("dynamic_colour")
+        val UNIT_SYSTEM = stringPreferencesKey("unit_system")
+        val ICAO_ONLY = booleanPreferencesKey("icao_only")
     }
 }

@@ -23,6 +23,7 @@ import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.search.airportSearchScope
 import com.github.daanbouwman.flightplanner.search.rankedAircraftResults
 import com.github.daanbouwman.flightplanner.search.rankedAirportResults
+import com.github.daanbouwman.flightplanner.settings.SettingsRepository
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -38,7 +39,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -87,6 +91,7 @@ class PlanViewModel @Inject constructor(
     private val logbookRepository: LogbookRepository,
     private val airportRepository: AirportRepository,
     private val worldOutlineLoader: WorldOutlineLoader,
+    private val settingsRepository: SettingsRepository,
     @param:DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -207,7 +212,23 @@ class PlanViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            selection.collectLatest { runSelection(it) }
+            // Combined with the selection, rather than read at the point of
+            // generation, so toggling ICAO-only while Plan is open regenerates
+            // the list immediately — the same reactivity a mode change already
+            // gets from being folded into `selection` itself.
+            //
+            // `filterNotNull` rather than defaulting the unloaded state to
+            // `false`: the repository's `settings` is `null` until the first
+            // DataStore read completes, and the Plan screen can compose before
+            // that read finishes. Defaulting through `?: false` would let
+            // `combine` fire once with the wrong value and then immediately
+            // again with the real one — a visible run-then-restart on cold
+            // start whenever the persisted value is `true`. Waiting for the
+            // real value costs nothing perceptible: it loads in parallel with
+            // the airport index, both well inside the splash's hold window.
+            val icaoOnly = settingsRepository.settings.filterNotNull().map { it.icaoOnly }.distinctUntilChanged()
+            combine(selection, icaoOnly) { sel, only -> sel to only }
+                .collectLatest { (sel, only) -> runSelection(sel, only) }
         }
         viewModelScope.launch {
             // Ranked search needs the name index, and building it is a full-table
@@ -513,7 +534,7 @@ class PlanViewModel @Inject constructor(
 
     // -------------------------------------------------------------- generation
 
-    private suspend fun runSelection(selected: Selection) {
+    private suspend fun runSelection(selected: Selection, icaoOnly: Boolean) {
         batch = null
         if (selected.generation == 0L) {
             routes.value = emptyList()
@@ -529,7 +550,7 @@ class PlanViewModel @Inject constructor(
         routes.value = emptyList()
         status.value = PlanStatus.Generating
 
-        val prepared = prepare(selected)
+        val prepared = prepare(selected, icaoOnly)
         if (prepared == null) return
         batch = prepared
 
@@ -551,7 +572,7 @@ class PlanViewModel @Inject constructor(
         }
     }
 
-    private suspend fun prepare(selected: Selection): Batch? {
+    private suspend fun prepare(selected: Selection, icaoOnly: Boolean): Batch? {
         val index = runCatchingCancellable { indexProvider.get() }
             .onFailure { fail(it, PlanFailure.IndexUnavailable) }
             .getOrNull() ?: return null
@@ -610,6 +631,7 @@ class PlanViewModel @Inject constructor(
                 fleet = airframes,
                 amount = DEFAULT_ROUTE_BATCH,
                 lockedDepartureIcao = selected.lockedDeparture?.icao,
+                icaoOnly = icaoOnly,
             ),
         )
     }

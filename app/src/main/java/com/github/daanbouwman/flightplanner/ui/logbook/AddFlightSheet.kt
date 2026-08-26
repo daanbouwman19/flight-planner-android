@@ -38,7 +38,8 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.ValueCh
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
-import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.distanceText
+import com.github.daanbouwman.flightplanner.ui.lengthText
 import com.github.daanbouwman.flightplanner.ui.picker.PickerTarget
 import com.github.daanbouwman.flightplanner.ui.picker.PlanPickerSheet
 import com.github.daanbouwman.flightplanner.ui.plan.SearchScope
@@ -149,7 +150,7 @@ fun AddFlightSheet(
             validation.distanceNm?.let { distance ->
                 ValueChip(
                     label = stringResource(R.string.plan_chip_distance),
-                    value = stringResource(R.string.plan_value_nautical_miles, distance.asFigure()),
+                    value = distanceText(distance),
                 )
             }
 
@@ -158,8 +159,8 @@ fun AddFlightSheet(
                     // overRange implies both aircraft and distanceNm are non-null.
                     validation.overRange -> stringResource(
                         R.string.logbook_add_error_over_range,
-                        validation.distanceNm!!.asFigure(),
-                        selectedAircraft!!.rangeNm.asFigure(),
+                        distanceText(validation.distanceNm!!),
+                        distanceText(selectedAircraft!!.rangeNm),
                     )
                     validation.sameAirport -> stringResource(R.string.logbook_add_error_same_airport)
                     // Not a specific rule to explain, just fields still unset —
@@ -309,7 +310,7 @@ private fun AddFlightFields(
                 label = stringResource(R.string.logbook_add_field_aircraft),
                 value = aircraft?.variant ?: unset,
                 detail = aircraft?.let {
-                    stringResource(R.string.plan_filter_envelope, it.rangeNm.asFigure(), it.requiredRunwayFt.asFigure())
+                    stringResource(R.string.plan_filter_envelope, distanceText(it.rangeNm), lengthText(it.requiredRunwayFt))
                 },
                 selected = aircraft != null,
                 onClick = onPickAircraft,

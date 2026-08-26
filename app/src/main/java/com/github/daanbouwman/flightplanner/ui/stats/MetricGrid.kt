@@ -23,6 +23,7 @@ import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.distanceText
 
 /**
  * 2x2 grid of key flight metric summary cards.
@@ -53,10 +54,7 @@ fun MetricGrid(
             )
             MetricTile(
                 title = stringResource(R.string.stats_metric_avg_distance),
-                value = stringResource(
-                    R.string.plan_value_nautical_miles,
-                    averageDistanceNm.toInt().asFigure(),
-                ),
+                value = distanceText(averageDistanceNm.toInt()),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -68,7 +66,7 @@ fun MetricGrid(
                 title = stringResource(R.string.stats_metric_longest_flight),
                 value = longestFlight?.legDisplayName ?: "—",
                 subtitle = longestFlight?.let {
-                    stringResource(R.string.plan_value_nautical_miles, it.distanceNm.asFigure())
+                    distanceText(it.distanceNm)
                 },
                 onClick = longestFlight?.let { { onOpenRoute(it) } },
                 modifier = Modifier.weight(1f),
@@ -77,7 +75,7 @@ fun MetricGrid(
                 title = stringResource(R.string.stats_metric_shortest_flight),
                 value = shortestFlight?.legDisplayName ?: "—",
                 subtitle = shortestFlight?.let {
-                    stringResource(R.string.plan_value_nautical_miles, it.distanceNm.asFigure())
+                    distanceText(it.distanceNm)
                 },
                 onClick = shortestFlight?.let { { onOpenRoute(it) } },
                 modifier = Modifier.weight(1f),

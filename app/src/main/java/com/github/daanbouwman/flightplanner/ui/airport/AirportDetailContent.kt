@@ -24,10 +24,10 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.Skeleto
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.Runway
-import com.github.daanbouwman.flightplanner.ui.asFigure
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
+import com.github.daanbouwman.flightplanner.ui.lengthText
 import com.github.daanbouwman.flightplanner.ui.detail.AirportLinks
 import com.github.daanbouwman.flightplanner.ui.detail.RunwayLine
 import com.github.daanbouwman.flightplanner.ui.detail.WeatherReservedHeight
@@ -81,7 +81,7 @@ private fun AirportDetailBody(
         Text(text = airport.name, style = MaterialTheme.typography.titleMedium)
         val facts = listOfNotNull(
             listOfNotNull(airport.municipality, airport.country).joinToString(", ").ifBlank { null },
-            stringResource(R.string.route_detail_elevation, airport.elevationFt.asFigure())
+            stringResource(R.string.route_detail_elevation, lengthText(airport.elevationFt))
                 .takeIf { airport.elevationFt != 0 },
         )
         if (facts.isNotEmpty()) {
@@ -97,7 +97,7 @@ private fun AirportDetailBody(
 
     if (runways.isEmpty()) {
         Text(
-            text = stringResource(R.string.plan_runway_value, airport.longestRunwayFt.asFigure()),
+            text = stringResource(R.string.plan_runway_value, lengthText(airport.longestRunwayFt)),
             style = MaterialTheme.typography.labelMedium.asChartFigure(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

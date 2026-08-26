@@ -1530,8 +1530,12 @@ softening it would be decoration with nothing left to say.
 
 ## 7. Phase E — Airports, Stats, Settings
 
-**E5 is partly built.** The appearance half of Settings landed with the design
-review; the rest of the screen is still Phase E work.
+**E5 is done except for the two items blocked on later phases.** The
+appearance half landed with the design review; units, the ICAO-only toggle,
+dataset info and licences landed together in one pass. Weather provider and
+tile provider are deliberately not built — they would configure Phase F and
+Phase G, neither of which exists yet, so a setting for either now would be
+inert. They land alongside their phases instead.
 
 **F10 changes where two of these land, not what they build.** E3 (Stats dashboard)
 and E5 (Settings) now build inside the Profile section D1 already opened, in the
@@ -1546,7 +1550,7 @@ moving it; it now hangs off an overflow item on Plan's own header instead — se
 | **E2** | ~~Airport detail~~ | **Complete.** `RunwayDiagram` (new, `:core:designsystem`) — a compass-style chart, one ray per runway end at its true heading, no desktop precedent — idents, true headings, surface, length, a copyable coordinate label and Google Maps link (shared with Route detail's `AirportLinks`), plus "fly from here", which locks the departure via `PlanViewModel.setDeparture` and pops back to Plan, mirroring `generateRoutesFor`'s own pattern. A reserved-height METAR placeholder awaits Phase F. Route detail's own departure/destination blocks (and the Logbook detail pane, which reuses them) now tap through to this screen, keyed on the airport's own `id` rather than its code |
 | **E3** | ~~Stats dashboard~~ | **Complete.** All nine statistics metrics, hero distance card with count-up animation and Earth equator multiplier badge, top-aircraft rankings, and longest/shortest flight cards |
 | **E4** | ~~Visited mini-globe~~ | **Complete.** 2D visited network map projection rendering land polygons, coastlines, visited airport nodes, and great-circle connecting flight arcs |
-| **E5** | Settings | Partly done: theme (four choices) and dynamic colour ship now, in Preferences DataStore, because F6 of the design review found the brand palette and the Cockpit theme were unreachable without them. Still to do — units, ICAO-only toggle, weather provider, tile provider, dataset info, licences |
+| **E5** | Settings | Theme (four choices) and dynamic colour shipped with the design review (F6). This pass added: a unit system (Aviation NM/ft/kt, Metric km/m/km-h) threaded through `Figures.kt`'s formatters and a `LocalUnitSystem` provided from `MainActivity`; an ICAO-only toggle wired to `RouteRequest.icaoOnly` (the pipeline already existed end-to-end — `AirportIndex.hasIcaoCode`, `RouteGenerator.kt` — only the Settings UI and the wiring were missing), regenerating the Plan list live via the same `combine`+`collectLatest` path a mode change already uses; dataset info (`DatasetMetaDao`, already collected by the self-check screen, now surfaced to the user); and a hand-rolled Licences screen (Apache-2.0 dependencies, OurAirports and Natural Earth attribution). `SettingsRepository` became an interface + `DefaultSettingsRepository`, matching the `AirportRepository`/`FleetRepository` shape, so `PlanViewModel` could take a fake in tests. **Still to do** — weather provider and tile provider, deferred to Phases F and G |
 | **E6** | ~~Motion~~ | **Complete.** Distance count-up with `FlightMotion.rememberCountUp()`, monthly activity bar height animation with `FlightMotion.effects()`, and interactive metric switcher |
 
 ---

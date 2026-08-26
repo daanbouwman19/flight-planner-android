@@ -8,6 +8,7 @@ import com.github.daanbouwman.flightplanner.core.database.airport.IndexLoadTimin
 import com.github.daanbouwman.flightplanner.core.database.repository.AirportRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.LogbookRepository
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.ThemeChoice
 import com.github.daanbouwman.flightplanner.index.AirportIndexProvider
 import com.github.daanbouwman.flightplanner.index.IndexState
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
@@ -18,6 +19,9 @@ import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.AirportIndexBuilder
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
+import com.github.daanbouwman.flightplanner.settings.AppSettings
+import com.github.daanbouwman.flightplanner.settings.SettingsRepository
+import com.github.daanbouwman.flightplanner.settings.UnitSystem
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -56,7 +60,7 @@ private data class Fixture(val airports: List<Airport>) {
                 longitude = airport.longitude,
                 longestRunway = airport.longestRunwayFt,
                 packedFlags = AirportIndex.packFlags(
-                    hasIcao = true,
+                    hasIcao = airport.hasIcaoCode,
                     hardSurface = true,
                     lighting = true,
                     sizeClass = airport.sizeClass,
@@ -66,7 +70,15 @@ private data class Fixture(val airports: List<Airport>) {
     }.build()
 }
 
-private fun airport(id: Int, icao: String, name: String, lat: Double, lon: Double, runway: Int) = Airport(
+private fun airport(
+    id: Int,
+    icao: String,
+    name: String,
+    lat: Double,
+    lon: Double,
+    runway: Int,
+    hasIcaoCode: Boolean = true,
+) = Airport(
     id = id,
     icao = icao,
     name = name,
@@ -79,7 +91,7 @@ private fun airport(id: Int, icao: String, name: String, lat: Double, lon: Doubl
     longestRunwayFt = runway,
     runwayCount = 2,
     hasHardSurface = true,
-    hasIcaoCode = true,
+    hasIcaoCode = hasIcaoCode,
 )
 
 private val fixture = Fixture(
@@ -90,6 +102,15 @@ private val fixture = Fixture(
         airport(4, "LFPG", "Paris", 49.01, 2.55, 13829),
         airport(5, "EKCH", "Copenhagen", 55.62, 12.66, 11811),
     ),
+)
+
+/**
+ * As [fixture], plus one local-code airfield with no real ICAO code — kept
+ * separate from [fixture] so this doesn't change what any other test in this
+ * file generates from.
+ */
+private val icaoMixedFixture = Fixture(
+    fixture.airports + airport(6, "EH99", "Hilversum", 52.18, 5.19, 12000, hasIcaoCode = false),
 )
 
 private fun spec(id: Int, code: String, range: Int, flown: Boolean = false) = AircraftSpec(
@@ -222,6 +243,22 @@ private class FakeAirportRepository(private val world: Fixture) : AirportReposit
     override fun nameIndexOrNull(): AirportNameIndex? = null
 }
 
+/** Backed by a plain [MutableStateFlow] rather than a real DataStore, which needs a `Context`. */
+private class FakeSettingsRepository(initial: AppSettings? = AppSettings()) : SettingsRepository {
+    private val state = MutableStateFlow(initial)
+
+    override val settings: StateFlow<AppSettings?> = state
+
+    fun update(transform: (AppSettings) -> AppSettings) {
+        state.value = transform(state.value ?: AppSettings())
+    }
+
+    override fun setThemeChoice(choice: ThemeChoice) = update { it.copy(themeChoice = choice) }
+    override fun setDynamicColour(enabled: Boolean) = update { it.copy(dynamicColour = enabled) }
+    override fun setUnitSystem(system: UnitSystem) = update { it.copy(unitSystem = system) }
+    override fun setIcaoOnly(enabled: Boolean) = update { it.copy(icaoOnly = enabled) }
+}
+
 class PlanViewModelTest {
 
     private val dispatcher = StandardTestDispatcher()
@@ -248,6 +285,7 @@ class PlanViewModelTest {
         airports: FakeAirportRepository = FakeAirportRepository(fixture),
         index: AirportIndex? = fixture.index,
         fleetRepository: FakeFleetRepository = FakeFleetRepository(fleet),
+        settingsRepository: FakeSettingsRepository = FakeSettingsRepository(),
         body: suspend TestScope.(PlanViewModel) -> Unit,
     ) = runTest(dispatcher) {
         val model = PlanViewModel(
@@ -256,6 +294,7 @@ class PlanViewModelTest {
             logbookRepository = logbook,
             airportRepository = airports,
             worldOutlineLoader = { WorldOutline.Empty },
+            settingsRepository = settingsRepository,
             defaultDispatcher = dispatcher,
         )
         backgroundScope.launch(dispatcher) { model.uiState.collect {} }
@@ -306,6 +345,42 @@ class PlanViewModelTest {
         (second.routes.first().id != first.first().id) shouldBe true
         // Not-flown may only draw from airframes that have never been flown.
         second.routes.all { !it.aircraft.flown } shouldBe true
+    }
+
+    @Test
+    fun `enabling ICAO-only in settings regenerates the list live and excludes local-code airports`() {
+        val settingsRepository = FakeSettingsRepository()
+        planTest(
+            index = icaoMixedFixture.index,
+            airports = FakeAirportRepository(icaoMixedFixture),
+            settingsRepository = settingsRepository,
+        ) { model ->
+            // Sanity check first: across a few unfiltered batches, the local-code
+            // airfield (id 6, EH99, no ICAO code) does turn up — otherwise the
+            // exclusion asserted below would pass vacuously, having proven nothing.
+            val seenBeforeFilter = buildSet {
+                repeat(3) {
+                    model.generate()
+                    advanceUntilIdle()
+                    model.uiState.value.routes.forEach { add(it.departure.id); add(it.destination.id) }
+                }
+            }
+            (6 in seenBeforeFilter) shouldBe true
+
+            val beforeToggle = model.uiState.value.routes
+
+            // No explicit generate()/setMode() call — the point is that toggling
+            // the *setting* alone, through the reactive combine(selection, icaoOnly)
+            // path in PlanViewModel's init, is enough to regenerate the list.
+            settingsRepository.setIcaoOnly(true)
+            advanceUntilIdle()
+
+            val afterToggle = model.uiState.value
+            afterToggle.status shouldBe PlanStatus.Ready
+            (afterToggle.routes.first().id != beforeToggle.first().id) shouldBe true
+            afterToggle.routes.none { it.departure.id == 6 || it.destination.id == 6 } shouldBe true
+            afterToggle.routes.all { it.departure.hasIcaoCode && it.destination.hasIcaoCode } shouldBe true
+        }
     }
 
     @Test

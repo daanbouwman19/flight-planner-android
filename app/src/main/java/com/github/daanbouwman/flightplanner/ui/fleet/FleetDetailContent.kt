@@ -29,7 +29,9 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.Skeleto
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
-import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.distanceText
+import com.github.daanbouwman.flightplanner.ui.lengthText
+import com.github.daanbouwman.flightplanner.ui.speedText
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
@@ -150,15 +152,15 @@ private fun EnvelopeHero(aircraft: AircraftSpec, modifier: Modifier = Modifier) 
                 val range = FlightMotion.rememberCountUp(aircraft.rangeNm)
                 EnvelopeStat(
                     label = stringResource(R.string.fleet_detail_range),
-                    value = stringResource(R.string.plan_value_nautical_miles, range.asFigure()),
+                    value = distanceText(range),
                 )
                 EnvelopeStat(
                     label = stringResource(R.string.fleet_detail_cruise),
-                    value = stringResource(R.string.fleet_detail_value_knots, aircraft.cruiseSpeedKt.asFigure()),
+                    value = speedText(aircraft.cruiseSpeedKt),
                 )
                 EnvelopeStat(
                     label = stringResource(R.string.fleet_detail_takeoff),
-                    value = stringResource(R.string.plan_value_feet, aircraft.requiredRunwayFt.asFigure()),
+                    value = lengthText(aircraft.requiredRunwayFt),
                 )
             }
         }

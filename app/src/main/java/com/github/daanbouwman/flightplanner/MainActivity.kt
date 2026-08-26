@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
@@ -17,6 +18,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.index.AirportIndexProvider
 import com.github.daanbouwman.flightplanner.ui.FlightPlannerApp
+import com.github.daanbouwman.flightplanner.ui.LocalUnitSystem
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -57,19 +59,21 @@ class MainActivity : ComponentActivity() {
         setContent {
             val settings by settingsRepository.settings.collectAsStateWithLifecycle()
             val resolved = settings ?: AppSettings()
-            FlightPlannerTheme(
-                themeChoice = resolved.themeChoice,
-                dynamicColor = resolved.dynamicColour,
-            ) {
-                // Publishes every `Modifier.testTag` in the tree as an
-                // accessibility resource id, which is the only way UiAutomator
-                // — and therefore `:macrobenchmark` — can address a Compose node
-                // by name rather than by guessing at the first scrollable thing
-                // it finds. It adds a string to nodes that already carry
-                // semantics and changes nothing a user can observe.
-                FlightPlannerApp(
-                    modifier = Modifier.semantics { testTagsAsResourceId = true },
-                )
+            CompositionLocalProvider(LocalUnitSystem provides resolved.unitSystem) {
+                FlightPlannerTheme(
+                    themeChoice = resolved.themeChoice,
+                    dynamicColor = resolved.dynamicColour,
+                ) {
+                    // Publishes every `Modifier.testTag` in the tree as an
+                    // accessibility resource id, which is the only way UiAutomator
+                    // — and therefore `:macrobenchmark` — can address a Compose node
+                    // by name rather than by guessing at the first scrollable thing
+                    // it finds. It adds a string to nodes that already carry
+                    // semantics and changes nothing a user can observe.
+                    FlightPlannerApp(
+                        modifier = Modifier.semantics { testTagsAsResourceId = true },
+                    )
+                }
             }
         }
     }

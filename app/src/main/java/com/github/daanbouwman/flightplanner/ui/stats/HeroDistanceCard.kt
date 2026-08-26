@@ -25,7 +25,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDa
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
-import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.distanceText
 import java.util.Locale
 
 /**
@@ -58,7 +58,7 @@ fun HeroDistanceCard(
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = stringResource(R.string.plan_value_nautical_miles, animatedDistance.asFigure()),
+                text = distanceText(animatedDistance),
                 style = MaterialTheme.typography.headlineLarge.asChartFigure(),
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold,

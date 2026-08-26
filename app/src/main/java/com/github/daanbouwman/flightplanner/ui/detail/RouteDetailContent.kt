@@ -64,13 +64,16 @@ import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.model.SurfaceKind
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.ui.asBearing
-import com.github.daanbouwman.flightplanner.ui.asFigure
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.SharedRouteKeys
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.ui.chrome.sharedRouteElement
 import com.github.daanbouwman.flightplanner.ui.coordinates
+import com.github.daanbouwman.flightplanner.ui.distanceText
+import com.github.daanbouwman.flightplanner.ui.lengthText
+import com.github.daanbouwman.flightplanner.ui.runwayDimensionsText
+import com.github.daanbouwman.flightplanner.ui.speedText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -398,7 +401,7 @@ private fun AirportBlock(
             // surprising.
             val facts = listOfNotNull(
                 it.municipality,
-                stringResource(R.string.route_detail_elevation, it.elevationFt.asFigure())
+                stringResource(R.string.route_detail_elevation, lengthText(it.elevationFt))
                     .takeIf { _ -> it.elevationFt != 0 },
             )
             if (facts.isNotEmpty()) {
@@ -439,7 +442,7 @@ private fun AirportBlock(
 private fun Runways(runways: List<Runway>, airport: Airport, requiredRunwayFt: Int) {
     if (runways.isEmpty()) {
         Text(
-            text = stringResource(R.string.plan_runway_value, airport.longestRunwayFt.asFigure()),
+            text = stringResource(R.string.plan_runway_value, lengthText(airport.longestRunwayFt)),
             style = MaterialTheme.typography.labelMedium.asChartFigure(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -514,13 +517,9 @@ internal fun RunwayLine(runway: Runway, requiredRunwayFt: Int) {
         // that as zero — so a positional format states `3,444 × 0 ft`, which is
         // not a narrow runway, it is a runway whose width nobody recorded.
         if (runway.widthFt > 0) {
-            stringResource(
-                R.string.route_detail_runway_size,
-                runway.lengthFt.asFigure(),
-                runway.widthFt.asFigure(),
-            )
+            runwayDimensionsText(runway.lengthFt, runway.widthFt)
         } else {
-            stringResource(R.string.route_detail_runway_length, runway.lengthFt.asFigure())
+            lengthText(runway.lengthFt)
         },
         surfaceLabel(runway.surfaceKind),
         stringResource(R.string.route_detail_runway_lit).takeIf { runway.lighted },
@@ -628,7 +627,7 @@ private fun LegBlock(state: RouteDetailUiState, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.Bottom,
         ) {
             Text(
-                text = stringResource(R.string.plan_value_nautical_miles, distance.asFigure()),
+                text = distanceText(distance),
                 style = MaterialTheme.typography.headlineSmall.asChartFigure(),
             )
             Text(
@@ -641,7 +640,7 @@ private fun LegBlock(state: RouteDetailUiState, modifier: Modifier = Modifier) {
             Text(
                 text = stringResource(
                     R.string.route_detail_cruise,
-                    time.effectiveSpeedKt.toInt().asFigure(),
+                    speedText(time.effectiveSpeedKt.toInt()),
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

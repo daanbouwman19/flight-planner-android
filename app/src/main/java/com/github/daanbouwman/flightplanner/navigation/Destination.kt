@@ -116,4 +116,8 @@ sealed interface Destination {
      */
     @Serializable
     data object SelfCheck : Destination
+
+    /** Open-source licences and data attributions, reached from Settings' About section. */
+    @Serializable
+    data object Licences : Destination
 }

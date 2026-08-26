@@ -7,10 +7,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.model.Airport
 
@@ -38,7 +36,7 @@ internal fun AirportRow(airport: Airport, onClick: () -> Unit, modifier: Modifie
         },
         trailingContent = {
             Text(
-                text = stringResource(R.string.plan_value_feet, airport.longestRunwayFt.asFigure()),
+                text = lengthText(airport.longestRunwayFt),
                 style = MaterialTheme.typography.labelMedium.withTabularFigures(),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -85,7 +85,12 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigur
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.rememberMorphShape
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.routing.FlightTime
+import com.github.daanbouwman.flightplanner.settings.UnitSystem
+import com.github.daanbouwman.flightplanner.ui.LocalUnitSystem
 import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.distanceText
+import com.github.daanbouwman.flightplanner.ui.distanceUnitSuffix
+import com.github.daanbouwman.flightplanner.ui.nmToDisplayDistance
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -304,8 +309,25 @@ private fun LogbookList(
     modifier: Modifier = Modifier,
 ) {
     val flightsLabel = stringResource(R.string.logbook_summary_flights)
-    val distanceLabel = stringResource(R.string.logbook_summary_distance)
     val hoursLabel = stringResource(R.string.logbook_summary_hours)
+    // StatTile.format is a plain (Int) -> String — not @Composable, so it
+    // cannot call distanceText() itself, but nmToDisplayDistance isn't
+    // @Composable either, so the lambda calls that directly. The *target*
+    // handed to StatTile.value stays raw NM, exactly as every other
+    // rememberCountUp target in this app does: converting the target itself
+    // would change it whenever the unit toggles, re-triggering a full
+    // count-up animation for a number that never actually changed.
+    val unitSystem = LocalUnitSystem.current
+    val distanceSuffix = distanceUnitSuffix(unitSystem)
+    // The tile's own caption, not just its value, names the unit — otherwise
+    // toggling Metric leaves "NM" captioning a distance now shown in km.
+    val distanceLabel = stringResource(
+        if (unitSystem == UnitSystem.METRIC) {
+            R.string.logbook_summary_distance_metric
+        } else {
+            R.string.logbook_summary_distance_aviation
+        },
+    )
 
     LazyColumn(
         state = listState,
@@ -322,7 +344,7 @@ private fun LogbookList(
                     StatTile(
                         label = distanceLabel,
                         value = state.summary.distanceNm,
-                        format = { it.asFigure() },
+                        format = { "${nmToDisplayDistance(it, unitSystem).asFigure()} $distanceSuffix" },
                     ),
                     StatTile(
                         label = hoursLabel,
@@ -436,7 +458,7 @@ private fun LogbookRowCard(
 ) {
     val aircraftName = row.aircraftDisplayName
         ?: stringResource(R.string.logbook_aircraft_unknown_format, row.aircraftId)
-    val distanceText = row.distanceNm?.let { stringResource(R.string.plan_value_nautical_miles, it.asFigure()) }
+    val distanceDisplayText = row.distanceNm?.let { distanceText(it) }
         ?: stringResource(R.string.logbook_row_distance_placeholder)
     val durationText = row.flightTime?.format() ?: stringResource(R.string.logbook_row_duration_placeholder)
 
@@ -509,7 +531,7 @@ private fun LogbookRowCard(
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = distanceText,
+                    text = distanceDisplayText,
                     style = MaterialTheme.typography.labelSmall.asChartFigure(),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -44,7 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.ui.AirportRow
 import com.github.daanbouwman.flightplanner.ui.SuggestionsHeader
-import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.distanceText
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
@@ -281,7 +281,7 @@ private fun AircraftResults(
                         text = stringResource(
                             R.string.plan_picker_aircraft_detail,
                             spec.category,
-                            spec.rangeNm.asFigure(),
+                            distanceText(spec.rangeNm),
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

@@ -41,6 +41,8 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlanne
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.ThemeChoice
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
+import com.github.daanbouwman.flightplanner.settings.UnitSystem
+import com.github.daanbouwman.flightplanner.ui.asFigure
 
 /**
  * Appearance settings, and the on-device self-check.
@@ -64,10 +66,12 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDa
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenSelfCheck: () -> Unit,
+    onOpenLicences: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val datasetInfo by viewModel.datasetInfo.collectAsStateWithLifecycle()
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -134,6 +138,62 @@ fun SettingsScreen(
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             Text(
+                text = stringResource(R.string.settings_units),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+
+            Column(modifier = Modifier.selectableGroup()) {
+                UnitSystem.entries.forEach { system ->
+                    UnitRow(
+                        system = system,
+                        selected = settings.unitSystem == system,
+                        onSelect = { viewModel.setUnitSystem(system) },
+                    )
+                }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text(
+                text = stringResource(R.string.settings_airports),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+
+            SwitchRow(
+                title = stringResource(R.string.settings_icao_only),
+                detail = stringResource(R.string.settings_icao_only_detail),
+                checked = settings.icaoOnly,
+                enabled = true,
+                onCheckedChange = viewModel::setIcaoOnly,
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text(
+                text = stringResource(R.string.settings_about),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+
+            datasetInfo?.let { info ->
+                DatasetInfoBlock(info)
+            }
+
+            OutlinedButton(
+                onClick = onOpenLicences,
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text(stringResource(R.string.settings_licences_action))
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text(
                 text = stringResource(R.string.settings_empty_message),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -148,6 +208,64 @@ fun SettingsScreen(
         }
     }
 }
+
+@Composable
+private fun UnitRow(system: UnitSystem, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = stringResource(system.labelRes), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = stringResource(system.detailRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DatasetInfoBlock(info: DatasetInfo) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = stringResource(R.string.settings_dataset_snapshot, info.upstreamModified),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = stringResource(
+                R.string.settings_dataset_counts,
+                info.airportCount.asFigure(),
+                info.runwayCount.asFigure(),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = stringResource(R.string.settings_dataset_notice),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private val UnitSystem.labelRes: Int
+    get() = when (this) {
+        UnitSystem.AVIATION -> R.string.settings_unit_aviation
+        UnitSystem.METRIC -> R.string.settings_unit_metric
+    }
+
+private val UnitSystem.detailRes: Int
+    get() = when (this) {
+        UnitSystem.AVIATION -> R.string.settings_unit_aviation_detail
+        UnitSystem.METRIC -> R.string.settings_unit_metric_detail
+    }
 
 @Composable
 private fun ThemeRow(choice: ThemeChoice, selected: Boolean, onSelect: () -> Unit) {
@@ -253,6 +371,24 @@ private fun SettingsContentPreview() {
             checked = true,
             enabled = true,
             onCheckedChange = {},
+        )
+        UnitSystem.entries.forEach { system ->
+            UnitRow(system = system, selected = system == UnitSystem.AVIATION, onSelect = {})
+        }
+        SwitchRow(
+            title = stringResource(R.string.settings_icao_only),
+            detail = stringResource(R.string.settings_icao_only_detail),
+            checked = false,
+            enabled = true,
+            onCheckedChange = {},
+        )
+        DatasetInfoBlock(
+            info = DatasetInfo(
+                source = "https://ourairports.com",
+                upstreamModified = "2026-06-01",
+                airportCount = 24_073,
+                runwayCount = 41_812,
+            ),
         )
     }
 }

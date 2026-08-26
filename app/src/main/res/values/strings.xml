@@ -8,6 +8,7 @@
     <string name="destination_fleet">Fleet</string>
     <string name="destination_stats">Stats</string>
     <string name="destination_settings">Settings</string>
+    <string name="destination_licences">Licences</string>
     <string name="action_back">Back</string>
 
     <!-- Plan screen -->
@@ -56,10 +57,10 @@
     <string name="plan_filter_unset">Any</string>
     <!--
         What a chosen airframe costs every route in the list: its range and the
-        runway it needs. %1$s is nautical miles and %2$s is feet, both already grouped —
-        the app formats aviation figures in a fixed locale. Keep them %1$s and %2$s.
+        runway it needs. Both %1$s and %2$s already carry their own unit suffix
+        (distanceText/lengthText in Figures.kt), which is why neither is repeated here.
     -->
-    <string name="plan_filter_envelope">%1$s NM · %2$s ft</string>
+    <string name="plan_filter_envelope">%1$s · %2$s</string>
 
     <string name="plan_action_generate">Generate</string>
     <string name="plan_action_undo">Undo</string>
@@ -73,14 +74,9 @@
 
     <string name="plan_chip_distance">DIST</string>
     <string name="plan_chip_time">ETE</string>
-    <!-- Runway length shown under an airport code. %1$s is the length in feet, already
-         grouped: the app formats aviation figures in a fixed locale so they read as chart
-         figures everywhere. Keep it %1$s — a %1$d here throws at runtime. -->
-    <string name="plan_runway_value">RWY %1$s ft</string>
-    <!-- %1$s is a distance in nautical miles, already grouped. Keep it %1$s. -->
-    <string name="plan_value_nautical_miles">%1$s NM</string>
-    <!-- %1$s is a runway length in feet, already grouped. Keep it %1$s. -->
-    <string name="plan_value_feet">%1$s ft</string>
+    <!-- Runway length shown under an airport code. %1$s already carries its own unit
+         suffix (lengthText in Figures.kt). Keep it %1$s — a %1$d here throws at runtime. -->
+    <string name="plan_runway_value">RWY %1$s</string>
 
     <string name="plan_runway_short">Runway shorter than this aircraft needs</string>
 
@@ -105,8 +101,9 @@
     <string name="plan_picker_clear_aircraft">Any aircraft</string>
     <string name="plan_picker_largest_airports">Largest airports</string>
     <string name="plan_picker_already_flown">Already flown</string>
-    <!-- %1$s is a category such as "Jet"; %2$s is the range in nautical miles, already grouped. -->
-    <string name="plan_picker_aircraft_detail">%1$s · %2$s NM range</string>
+    <!-- %1$s is a category such as "Jet"; %2$s is the range, already carrying its own
+         unit suffix (distanceText in Figures.kt). -->
+    <string name="plan_picker_aircraft_detail">%1$s · %2$s range</string>
     <string name="plan_picker_no_results_title">No matches</string>
     <!-- %1$s is what the user typed. -->
     <string name="plan_picker_no_results_message">Nothing matches “%1$s”.</string>
@@ -133,8 +130,8 @@
     <string name="logbook_add_submit">Add to logbook</string>
     <string name="logbook_add_error_same_airport">Departure and destination must be different.</string>
     <string name="logbook_add_error_missing_fields">Set the aircraft, departure and destination to add this flight.</string>
-    <!-- %1$s is the route's distance in nautical miles, %2$s the aircraft's range, both already grouped. -->
-    <string name="logbook_add_error_over_range">%1$s NM exceeds this aircraft’s %2$s NM range.</string>
+    <!-- %1$s and %2$s already carry their own unit suffix (distanceText in Figures.kt). -->
+    <string name="logbook_add_error_over_range">%1$s exceeds this aircraft’s %2$s range.</string>
     <!-- Snackbar after a flight is logged manually. %1$s and %2$s are ICAO codes. -->
     <string name="logbook_flight_added">Flight logged: %1$s → %2$s</string>
     <string name="logbook_flight_add_failed">Couldn’t log the flight</string>
@@ -194,8 +191,6 @@
     <string name="fleet_detail_range">RANGE</string>
     <string name="fleet_detail_cruise">CRUISE</string>
     <string name="fleet_detail_takeoff">TAKEOFF</string>
-    <!-- %1$s is a cruise speed in knots, already grouped. Keep it %1$s. -->
-    <string name="fleet_detail_value_knots">%1$s kt</string>
     <string name="fleet_detail_action_edit">Edit envelope</string>
     <string name="fleet_detail_edit_title">Edit envelope</string>
     <string name="fleet_detail_action_save">Save</string>
@@ -237,13 +232,15 @@
     <string name="stats_most_visited_airport">Most visited</string>
 
     <string name="stats_aircraft_rank_format">%1$d. %2$s</string>
-    <string name="stats_aircraft_flights_format">%1$d flights · %2$s NM</string>
+    <!-- %2$s already carries its own unit suffix (distanceText in Figures.kt). -->
+    <string name="stats_aircraft_flights_format">%1$d flights · %2$s</string>
     <string name="stats_airport_count_format">%1$s · %2$d</string>
 
     <!-- Logbook (D1): the summary strip's three captions. Short and aviation-terse,
          matching plan_chip_distance/plan_chip_time. -->
     <string name="logbook_summary_flights">FLIGHTS</string>
-    <string name="logbook_summary_distance">NM</string>
+    <string name="logbook_summary_distance_aviation">NM</string>
+    <string name="logbook_summary_distance_metric">KM</string>
     <string name="logbook_summary_hours">HOURS</string>
 
     <!-- Logbook row. Shown when the flight has no recorded distance or duration. -->
@@ -279,8 +276,36 @@
     <string name="settings_dynamic_colour_detail">Off uses the app’s own palette: avgas blue and runway amber.</string>
     <string name="settings_dynamic_colour_cockpit">Cockpit sets its own colours.</string>
     <string name="settings_dynamic_colour_chart">Chart sets its own colours.</string>
-    <string name="settings_empty_message">Units, weather provider and dataset information are still to come.</string>
+    <string name="settings_units">UNITS</string>
+    <string name="settings_unit_aviation">Aviation</string>
+    <string name="settings_unit_aviation_detail">Nautical miles, feet, knots — as on a chart.</string>
+    <string name="settings_unit_metric">Metric</string>
+    <string name="settings_unit_metric_detail">Kilometres, metres, kilometres per hour.</string>
+
+    <string name="settings_airports">AIRPORTS</string>
+    <string name="settings_icao_only">Only ICAO airports</string>
+    <string name="settings_icao_only_detail">Hides small strips identified only by a local code, in generated routes.</string>
+
+    <string name="settings_about">ABOUT</string>
+    <!-- %1$s is the upstream snapshot date, an opaque string from the dataset itself
+         rather than a formatted date — see DatasetMetaKeys.UPSTREAM_MODIFIED. -->
+    <string name="settings_dataset_snapshot">OurAirports snapshot — %1$s</string>
+    <!-- %1$s and %2$s are plain counts, already grouped (Int.asFigure()) — not
+         distances or lengths, so no unit suffix. -->
+    <string name="settings_dataset_counts">%1$s airports · %2$s runway ends</string>
+    <string name="settings_dataset_notice">Public-domain data from OurAirports and Natural Earth.</string>
+    <string name="settings_licences_action">Licences</string>
+
+    <string name="settings_empty_message">Weather and tile providers are still to come.</string>
     <string name="settings_self_check_action">Run on-device self-check</string>
+
+    <string name="licences_open_source_title">OPEN-SOURCE SOFTWARE</string>
+    <string name="licences_open_source_body">AndroidX and Jetpack Compose, Material Components, Kotlin and
+        kotlinx.coroutines/serialization, Dagger/Hilt, Room, OkHttp, Coil and Filament — all licensed
+        under the Apache License, Version 2.0.</string>
+    <string name="licences_data_title">DATA</string>
+    <string name="licences_data_ourairports">OurAirports airport and runway data — public domain.</string>
+    <string name="licences_data_naturalearth">Natural Earth coastline data (ne_110m_land) — public domain.</string>
 
     <!-- Route detail -->
     <!-- Spoken for the app bar title, which is drawn as two codes and an arrow. -->
@@ -294,16 +319,16 @@
     <!-- Headings, in degrees true. %1$s is already formatted as 093°. -->
     <string name="route_detail_heading_out">DEP HDG %1$s</string>
     <string name="route_detail_heading_in">ARR HDG %1$s</string>
-    <!-- Field elevation. %1$s is in feet, already grouped. -->
-    <string name="route_detail_elevation">ELEV %1$s ft</string>
-    <!-- Provenance for the estimate. %1$s is a cruise speed in knots, already grouped. -->
-    <string name="route_detail_cruise">at %1$s kt cruise</string>
+    <!-- Field elevation. %1$s already carries its own unit suffix (lengthText in Figures.kt). -->
+    <string name="route_detail_elevation">ELEV %1$s</string>
+    <!-- Provenance for the estimate. %1$s already carries its own unit suffix (speedText in Figures.kt). -->
+    <string name="route_detail_cruise">at %1$s cruise</string>
 
-    <!-- One runway end: ident, true heading, length × width, surface. -->
-    <!-- One runway end. The line is assembled from the fields that are known. -->
-    <string name="route_detail_runway_size">%1$s × %2$s ft</string>
-    <!-- Used where the dataset publishes no width, which is 7.6 % of runway ends. -->
-    <string name="route_detail_runway_length">%1$s ft</string>
+    <!-- One runway end: ident, true heading, length × width, surface. Length/width
+         (or length alone, where the dataset publishes no width — 7.6% of runway
+         ends) is formatted directly by runwayDimensionsText/lengthText in
+         Figures.kt, not a string resource — there is no surrounding prose to
+         translate, only the figure. -->
     <string name="route_detail_runway_lit">Lit</string>
     <!-- Runway surfaces, from the normalised classification rather than the raw
          upstream column — see RunwayLine for why. -->

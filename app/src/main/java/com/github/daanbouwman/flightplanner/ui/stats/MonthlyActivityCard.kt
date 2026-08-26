@@ -31,7 +31,9 @@ import androidx.compose.ui.unit.sp
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
+import com.github.daanbouwman.flightplanner.ui.LocalUnitSystem
 import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.nmToDisplayDistance
 
 /**
  * Monthly activity bar chart with flight count vs distance toggle.
@@ -101,6 +103,13 @@ fun MonthlyActivityCard(
                     } else {
                         monthItem.distanceNm
                     }
+                    // The bar height is a ratio of two values in the same unit, so it is
+                    // unaffected by which unit that is — only the label needs converting.
+                    val displayVal = if (selectedMetric == ChartMetric.FLIGHTS) {
+                        currentVal
+                    } else {
+                        nmToDisplayDistance(currentVal, LocalUnitSystem.current)
+                    }
                     val targetFraction = (currentVal.toFloat() / maxVal).coerceIn(0.04f, 1f)
                     val animatedFraction by animateFloatAsState(
                         targetValue = targetFraction,
@@ -115,13 +124,13 @@ fun MonthlyActivityCard(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            text = if (currentVal > 0) {
+                            text = if (displayVal > 0) {
                                 if (selectedMetric == ChartMetric.FLIGHTS) {
-                                    "$currentVal"
-                                } else if (currentVal < 1000) {
-                                    currentVal.asFigure()
+                                    "$displayVal"
+                                } else if (displayVal < 1000) {
+                                    displayVal.asFigure()
                                 } else {
-                                    "${Math.round(currentVal / 1000.0)}k"
+                                    "${Math.round(displayVal / 1000.0)}k"
                                 }
                             } else {
                                 ""

@@ -78,7 +78,8 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigur
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.rememberMorphShape
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.ui.SettingsAction
-import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.distanceText
+import com.github.daanbouwman.flightplanner.ui.lengthText
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.ScreenBottomGutter
 import com.github.daanbouwman.flightplanner.ui.chrome.ScreenCompactTopGutter
@@ -437,8 +438,8 @@ private fun FleetRowCard(
     val haptics = LocalHapticFeedback.current
     val envelope = stringResource(
         R.string.plan_filter_envelope,
-        aircraft.rangeNm.asFigure(),
-        aircraft.requiredRunwayFt.asFigure(),
+        distanceText(aircraft.rangeNm),
+        lengthText(aircraft.requiredRunwayFt),
     )
     val flownLabel = stringResource(
         if (aircraft.flown) R.string.fleet_row_flown_spoken else R.string.fleet_row_not_flown_spoken,

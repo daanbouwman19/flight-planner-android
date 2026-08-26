@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
-import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.distanceText
 
 /**
  * Ranked list of top most flown aircraft in the fleet.
@@ -88,7 +88,7 @@ fun TopAircraftCard(
                             text = stringResource(
                                 R.string.stats_aircraft_flights_format,
                                 stat.flightCount,
-                                stat.totalDistanceNm.asFigure(),
+                                distanceText(stat.totalDistanceNm),
                             ),
                             style = MaterialTheme.typography.bodySmall.asChartFigure(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

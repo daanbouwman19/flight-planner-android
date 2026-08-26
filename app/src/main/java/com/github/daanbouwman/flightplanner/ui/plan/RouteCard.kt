@@ -26,10 +26,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.github.daanbouwman.flightplanner.ui.asFigure
 import com.github.daanbouwman.flightplanner.ui.chrome.SharedRouteKeys
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.ui.chrome.sharedRouteElement
+import com.github.daanbouwman.flightplanner.ui.distanceText
+import com.github.daanbouwman.flightplanner.ui.lengthText
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.FlightRulesBadge
@@ -327,7 +328,7 @@ private fun AirportEnd(
             modifier = Modifier.sharedRouteElement(sharedKey),
         )
         Text(
-            text = stringResource(R.string.plan_runway_value, runwayFt.asFigure()),
+            text = stringResource(R.string.plan_runway_value, lengthText(runwayFt)),
             style = MaterialTheme.typography.labelSmall.asChartFigure(),
             // Colour carries the warning rather than a separate icon, so the
             // figure and the judgement of it are the same glyphs. The
@@ -387,8 +388,7 @@ private fun FlightRulesSlot(rules: FlightRules, alignment: Alignment.Horizontal)
  */
 @Composable
 private fun FactLine(row: RouteRow) {
-    val distance = stringResource(R.string.plan_chip_distance) to
-        stringResource(R.string.plan_value_nautical_miles, row.distanceNm.asFigure())
+    val distance = stringResource(R.string.plan_chip_distance) to distanceText(row.distanceNm)
     val time = stringResource(R.string.plan_chip_time) to row.flightTime.format()
 
     // Past a certain size two chips cannot share a phone's width at all: at scale
