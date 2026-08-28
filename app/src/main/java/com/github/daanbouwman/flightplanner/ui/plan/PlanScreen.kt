@@ -88,6 +88,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.Skeleto
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SwipeActionBackground
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SwipeActionSide
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
+import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.ui.picker.PickerTarget
 import com.github.daanbouwman.flightplanner.ui.picker.PlanPickerSheet
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
@@ -201,6 +202,7 @@ fun PlanScreen(
     }
 
     InfiniteScroll(listState = listState, itemCount = state.routes.size, onLoadMore = viewModel::loadMore)
+    VisibleWeatherStations(listState = listState, routes = state.routes, onVisible = viewModel::setVisibleIcaos)
 
     // Tapping Plan in the navigation bar while already on Plan comes back here. It
     // matters more than usual on this screen: the controls are the list's first
@@ -744,6 +746,7 @@ private fun RouteList(
             SwipeableRoute(
                 row = row,
                 outline = outline,
+                weatherByStation = state.weatherByStation,
                 onOpen = { onOpenRoute(row) },
                 onMarkFlown = { onMarkFlown(row) },
                 onReplace = { onReplace(row) },
@@ -914,6 +917,7 @@ private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<
 private fun SwipeableRoute(
     row: RouteRow,
     outline: WorldOutline,
+    weatherByStation: Map<String, Metar>,
     onOpen: () -> Unit,
     onMarkFlown: () -> Unit,
     onReplace: () -> Unit,
@@ -1030,6 +1034,7 @@ private fun SwipeableRoute(
             onClick = onOpen,
             onMarkFlown = onMarkFlown,
             onReplace = onReplace,
+            weatherByStation = weatherByStation,
         )
     }
 }
@@ -1065,6 +1070,38 @@ private fun InfiniteScroll(
             .distinctUntilChanged()
             .filter { it }
             .collect { onLoadMore() }
+    }
+}
+
+/**
+ * Reports which airports are currently on screen, for F2's debounced batch
+ * fetch.
+ *
+ * `snapshotFlow` over the same `LazyListState` [InfiniteScroll] reads, rather
+ * than a `LaunchedEffect` inside each row — an effect per item fires once per
+ * *composition* of that item, so scrolling back over an already-resolved row
+ * would ask for it again. One observer outside the list reports the visible
+ * set as it actually changes; the ViewModel does the debouncing and the
+ * de-duplication, keyed on what it has already **asked** about rather than on
+ * what has already resolved — a station with no report never resolves, and
+ * de-duplicating on the answers would have re-asked about it on every settle.
+ */
+@Composable
+private fun VisibleWeatherStations(
+    listState: LazyListState,
+    routes: List<RouteRow>,
+    onVisible: (Set<String>) -> Unit,
+) {
+    LaunchedEffect(listState, routes) {
+        snapshotFlow {
+            // The header occupies index 0, so a visible list item's index is
+            // one past its position in `routes`.
+            listState.layoutInfo.visibleItemsInfo
+                .mapNotNull { info -> routes.getOrNull(info.index - 1) }
+                .flatMapTo(mutableSetOf()) { row -> listOf(row.departure.icao, row.destination.icao) }
+        }
+            .distinctUntilChanged()
+            .collect(onVisible)
     }
 }
 

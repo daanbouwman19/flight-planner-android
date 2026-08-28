@@ -100,6 +100,25 @@ data class FlightLogEntity(
  * Deliberately in the *user* database rather than alongside the airports: the
  * desktop app keeps its `metar_cache` in the airport database, where refreshing
  * the dataset would wipe it.
+ *
+ * ### Version 3 stores `raw` plus the provider supplement, and nothing else
+ *
+ * Cloud layers, present weather, wind, visibility and the altimeter are **not
+ * columns**. They are re-derived from [raw] by
+ * [com.github.daanbouwman.flightplanner.model.MetarParser] on read, through the
+ * same `buildMetar` a fresh fetch uses, so a cache hit and a live response are
+ * the same object.
+ *
+ * That is why version 2's flat decoded columns are gone. They were a
+ * hand-maintained second copy of information already in this table, and v2's own
+ * KDoc warned that a forgotten field would read as data "flickering between two
+ * visits of the same station within fifteen minutes". **There is now nothing to
+ * forget** — the columns that remain are exactly the facts a METAR text does not
+ * carry.
+ *
+ * No column has a Kotlin default value, deliberately: a field added here is a
+ * compile error at both mapping directions until it is wired, which is the guard
+ * v2 lacked.
  */
 @Entity(tableName = "metar_cache")
 data class MetarCacheEntity(
@@ -107,19 +126,57 @@ data class MetarCacheEntity(
     @ColumnInfo(name = "station")
     val station: String,
 
+    /** The only lossless field, and the source every decoded value is re-derived from. */
     @ColumnInfo(name = "raw")
     val raw: String,
-
-    @ColumnInfo(name = "flight_rules")
-    val flightRules: String?,
-
-    @ColumnInfo(name = "observation_time")
-    val observationTime: String?,
-
-    @ColumnInfo(name = "observation_instant")
-    val observationInstant: String?,
 
     /** Epoch millis; drives the freshness TTL. */
     @ColumnInfo(name = "fetched_at")
     val fetchedAt: Long,
+
+    @ColumnInfo(name = "flight_rules")
+    val flightRules: String?,
+
+    @ColumnInfo(name = "report_kind")
+    val reportKind: String?,
+
+    @ColumnInfo(name = "observation_epoch_seconds")
+    val observationEpochSeconds: Long?,
+
+    @ColumnInfo(name = "temperature_c")
+    val temperatureC: Double?,
+
+    @ColumnInfo(name = "dewpoint_c")
+    val dewpointC: Double?,
+
+    @ColumnInfo(name = "sea_level_pressure_hpa")
+    val seaLevelPressureHpa: Double?,
+
+    @ColumnInfo(name = "precip_in")
+    val hourlyPrecipInches: Double?,
+
+    @ColumnInfo(name = "precip_3h_in")
+    val precip3hInches: Double?,
+
+    @ColumnInfo(name = "precip_6h_in")
+    val precip6hInches: Double?,
+
+    @ColumnInfo(name = "precip_24h_in")
+    val precip24hInches: Double?,
+
+    @ColumnInfo(name = "snow_depth_in")
+    val snowDepthInches: Double?,
+
+    @ColumnInfo(name = "latitude")
+    val latitude: Double?,
+
+    @ColumnInfo(name = "longitude")
+    val longitude: Double?,
+
+    /** **Feet.** NOAA sends `elev` in metres; converted in `:core:network`. */
+    @ColumnInfo(name = "elevation_ft")
+    val elevationFt: Int?,
+
+    @ColumnInfo(name = "station_name")
+    val stationName: String?,
 )

@@ -15,7 +15,7 @@ with the source, the source wins and this file is stale.
 ## Theme
 
 ```kotlin
-enum class ThemeChoice { SYSTEM, LIGHT, DARK, COCKPIT }
+enum class ThemeChoice { SYSTEM, LIGHT, DARK, COCKPIT, CHART }
 
 @Composable
 fun FlightPlannerTheme(
@@ -29,12 +29,18 @@ Wraps `MaterialExpressiveTheme` with `MotionScheme.expressive()`, `FlightShapeSc
 and `FlightTypography`. Scheme selection, in order:
 
 1. `COCKPIT` → `CockpitColorScheme`, a near-black instrument panel with amber
-   accents. It **ignores `dynamicColor` deliberately** — the theme exists so the
-   screen stops competing with the pilot's dark adaptation, and a scheme derived
-   from whatever the wallpaper happens to be cannot promise that.
+   accents; `CHART` → `ChartColorScheme`, paper and ink. Both **ignore
+   `dynamicColor` deliberately** — each theme's identity is a specific pair of
+   surfaces and ink (Cockpit's so the screen stops competing with the pilot's dark
+   adaptation), and a scheme derived from whatever the wallpaper happens to be
+   cannot promise that.
 2. `dynamicColor` on → wallpaper scheme. No version guard; `minSdk` is 35 and dynamic colour is API 31+.
 3. Otherwise → `BrandLightColorScheme` / `BrandDarkColorScheme`, avgas blue with
    runway-marking amber.
+
+**There are five values here and two of them are not a light or a dark anything.**
+That is what makes the theme choice, rather than the tone mapping, the right key
+for anything scenic — see `SkyColors` below.
 
 It also sets the **system-bar appearance** from the scheme it just resolved —
 `isAppearanceLightStatusBars` and `isAppearanceLightNavigationBars` — because the
@@ -223,6 +229,19 @@ Box(Modifier.clip(rememberMorphShape(Morph(FlightShapes.Circle, FlightShapes.Coo
                             onClick: () -> Unit, modifier: Modifier = Modifier,
                             detail: String? = null)
 
+data class StatTile(val label: String, val value: Int,
+                    val format: (Int) -> String = { it.toString() },
+                    val contentDescription: String? = null)
+
+@Composable fun StatSummaryStrip(tiles: List<StatTile>, modifier: Modifier = Modifier)
+
+@Composable fun MonthHeader(label: String, modifier: Modifier = Modifier)
+
+@Composable fun FlightDatePickerDialog(selectedDate: LocalDate, maxDate: LocalDate,
+                                       onDateSelected: (LocalDate) -> Unit,
+                                       onDismiss: () -> Unit,
+                                       modifier: Modifier = Modifier)
+
 
 @Composable fun RouteMap(arc: GeoArc, outline: WorldOutline, modifier: Modifier = Modifier,
                          landColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
@@ -230,7 +249,13 @@ Box(Modifier.clip(rememberMorphShape(Morph(FlightShapes.Circle, FlightShapes.Coo
                          routeColor: Color = MaterialTheme.colorScheme.primary,
                          casingColor: Color = MaterialTheme.colorScheme.surfaceContainer)
 
+@Immutable data class DiagramWind(val directionFromDeg: Int?, val speedKt: Int,
+                                  val gustKt: Int? = null, val variable: Boolean = false) {
+    val hasDirection: Boolean
+}
+
 @Composable fun RunwayDiagram(runways: List<Runway>, modifier: Modifier = Modifier,
+                              wind: DiagramWind? = null,
                               hardColor: Color = MaterialTheme.colorScheme.onSurface,
                               softColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
                               litColor: Color = MaterialTheme.colorScheme.primary)
@@ -302,17 +327,67 @@ Notes that are easy to get wrong:
   off-window coastline had the whole screen to draw on. The crop is a `clipRect`
   inside the draw scope rather than `Modifier.clipToBounds()`, which is a
   `graphicsLayer` and would put an offscreen layer on every card in the list.
-- **`RunwayDiagram` is a compass, not a plan.** One ray per runway end from a
-  shared centre, at its true heading, with no ident-suffix pairing: the model
-  already splits a physical strip into two ends roughly 180° apart, so two
-  rays reconstruct the strip through the centre for free. Ray length is the
-  end's length as a *fraction of the field's longest*, floored so a short
-  strip stays visible — a relative-orientation chart, the same "texture, not
-  imagery" honesty `RouteMap` states for its own land fill, not a scaled plan.
-  There is no desktop precedent to port; the reference's airport detail is a
-  plain text table. Ends with no published heading (real on grass strips)
-  are skipped and reported as a count underneath rather than silently
-  dropped — they still belong in the caller's own textual runway list.
+- **`RunwayDiagram` draws a true plan when the data has one, and a compass when
+  it does not.** OurAirports publishes real threshold coordinates for every end
+  of most well-documented fields and for very few small ones, so there are two
+  layouts. When every diagrammed end has both a latitude and a longitude,
+  `positionedRays` projects them onto a small local plane (equirectangular — an
+  airport spans a few kilometres, far too little for curvature to matter) and
+  draws each physical runway as the real segment between its two thresholds: a
+  genuine miniature of Denver or Schiphol. Otherwise `layoutRunways` falls back
+  to the compass schematic — one ray per end at its true heading, with
+  *roughly parallel* families fanned into evenly spaced lanes. The fan is not
+  decoration: a first version drew every ray through one shared centre and turned
+  Edwards Air Force Base's three near-parallel runways into a starburst through a
+  point that does not exist. Pairing is by opposite heading and matching length,
+  never by parsing `09`/`27` or `18R`/`36L`. Ends with no published heading (real
+  on grass strips) are skipped and reported as a count underneath rather than
+  silently dropped.
+- **A runway's designator goes at its threshold, and getting that wrong is
+  actively misleading.** Both layouts tip a ray at the end the runway *points
+  toward*, and the diagram used to anchor the ident there — so every designator
+  sat at the wrong end. Nobody noticed until `wind` arrived: a reader then saw
+  `30` at the north-west end, applied the convention every FAA and Jeppesen plate
+  uses, and concluded that departing 30 meant rolling south-east — downwind, and
+  the opposite of what `SurfaceWind` had actually recommended. `RunwayRay` now
+  carries an explicit `threshold`, because neither layout can derive it from the
+  ray alone: positioned rays start at the end's own published coordinate, while
+  the two lane-schematic rays of one strip *share* an origin and must mirror the
+  tip about it instead.
+- **`RunwayDiagram`'s optional `wind` is where a crosswind stops being
+  arithmetic.** A wind direction in degrees has to be compared against a runway
+  heading, and drawn in the same frame as the runways the comparison becomes a
+  picture: the sock points down the strip or across it. It brings a windsock, a
+  halo under the favoured strip and the preferred end's ident in bold sock
+  orange — the halo says *which strip*, the numeral says *which end of it*, and
+  the second is the question being asked. `SurfaceWind` in `:core:routing` does
+  the trigonometry, returning `null` below 3 kt rather than inventing a
+  recommendation. **Lift is length, not droop**: this is a plan view, and from
+  directly above you cannot see a sock hang, you see it foreshortened. A version
+  that tilted it made the sock rise *above* its own mast in a northerly, because
+  the droop was being added to the bearing's screen-space Y component — a
+  quantity a top-down view does not have. The mast is a dot for the same reason.
+  `DiagramWind` is its own type rather than two nullables because *calm*,
+  *variable* and *steady* are three different facts — a `VRB` group is a real
+  speed with no usable direction, and a 0 kt report is the station saying the air
+  is still — and no combination of a nullable direction and a nullable speed
+  expresses that without the call site remembering which pairing means what.
+- **`StatSummaryStrip` is not `ValueChip` stretched.** A chip is a small
+  label-left/value-right unit sized to sit over a route card's map; a summary
+  strip wants the opposite grammar — a few large centred figures under their
+  captions, the way a statistics screen states a headline. Each tile counts up
+  through `FlightMotion.rememberCountUp` once when it appears or changes, which
+  is the motion principle's own example of an animation worth having: it draws
+  the eye to a value that changed. `StatTile.format` is a plain `(Int) -> String`
+  and **not** `@Composable`, because it is called on every frame of that count-up
+  — so a unit-aware tile captures its suffix once outside the lambda rather than
+  reading `LocalUnitSystem` inside it.
+- **`MonthHeader` is opaque, and that is not a violation of the transparent-bars
+  invariant.** That invariant is about the *window's* chrome — nothing may be
+  painted behind the status and navigation bars. A sticky section header inside a
+  scrolling list is a different object: it has to stay legible over whichever row
+  happens to be passing behind it, which a translucent surface cannot promise for
+  an arbitrary row's colours.
 - **`SwipeActionBackground` takes colours rather than choosing them.** "Confirm"
   and "destroy" are the caller's semantics. Pass the *solid* roles, not the
   containers: a pale container behind a `surfaceContainer` card is two
@@ -324,6 +399,204 @@ Notes that are easy to get wrong:
   to the drag. `committed` is a discrete event and gets a sprung response.
 - Every atom carries a `@LightDarkPreview`. A component only ever viewed in one
   theme is a component whose other theme is broken and nobody has noticed.
+
+## Scenery colours
+
+```kotlin
+@Immutable data class SkyBand(val low: Color, val high: Color,
+                              val cloudBody: Color, val cloudEdge: Color,
+                              val convective: Color) {
+    val precipitation: Color            // cloudEdge, deliberately
+}
+
+@Immutable data class CelestialInk(val sun: Color, val sunGlow: Color,
+                                   val moonLit: Color, val moonDark: Color)
+@Immutable data class GroundInk(val subsurface: Color, val dry: Color, val wet: Color,
+                                val snow: Color, val frost: Color, val icy: Color,
+                                val fog: Color) {
+    operator fun get(condition: GroundCondition): Color?   // null for Unknown
+}
+@Immutable data class SockInk(val mast: Color, val band: Color, val alternateBand: Color)
+
+@Immutable data class SkyColors(val day: SkyBand, val twilight: SkyBand, val night: SkyBand,
+                                val celestial: CelestialInk, val ground: GroundInk,
+                                val sock: SockInk)
+
+val LocalSkyColors: ProvidableCompositionLocal<SkyColors>
+val BrandLightSkyColors / BrandDarkSkyColors / CockpitSkyColors / ChartSkyColors
+```
+
+**Four authored palettes, keyed on `ThemeChoice` rather than on light/dark** — which
+is the difference from `FlightRulesColors` and the reason it exists. Flight-rules
+colours are *safety data* and must never be re-themed, so Cockpit shares the dark
+set unchanged. **The sky is scenery**, and Cockpit exists to protect a pilot's dark
+adaptation, so a bright day gradient there would be an actual defect rather than a
+mismatch. Chart is paper and ink and is a light theme of nothing.
+
+Flight-rules colours appear in the scene **only in the measuring apparatus** — the
+threshold hairlines and the ceiling wedge — never in a sky, cloud or ground fill.
+Nothing in `SkyColors` is a flight-rules colour.
+
+- **Anything drawn as a mark against the air belongs to `SkyBand`.** This has now
+  been forced three times. A cloud's underside needs 3:1 against the air, and no
+  single ink clears that against both a bright day sky and a near-black night one —
+  a dark line that reads at noon disappears at midnight. `cloudEdge` moved in first;
+  `convective` followed after measurement showed Brand light's single value clearing
+  only **2.66:1** against its own night band, with the two constraints provably
+  contradictory (≤ 0.077 luminance for the day air, ≥ 0.124 for the night). The
+  escape is never a cleverer colour, it is pairing.
+- **`precipitation` is `cloudEdge` itself.** A falling streak is a hairline against
+  the same three airs, so it has the identical constraint including the polarity
+  reversal. Reusing the ink inherits a proved guarantee rather than making a fourth
+  attempt at satisfying it — and rain is the same water as the cloud it fell from.
+- **`GroundInk[Unknown]` returns null on purpose.** A grey is a colour the scene
+  *could* paint, and painting anything asserts the surface state is known. The
+  caller must reach for the hatch instead. That is the shape of the bug this whole
+  redesign fixes, expressed in the palette.
+- **Blending two bands is not always safe.** `blendBands` interpolates air and both
+  inks, and `bandsAgreeOnPolarity` is what a caller must check first: where the ink
+  reverses (Brand light and Chart, twilight→night) the intermediate value theorem
+  guarantees a blend point at which ink and air have *equal* luminance and the
+  deck's underside is a 1.0:1 line. No third ink exists — the endpoint constraints
+  contradict. `SkyProfile` therefore drives that one crossing from a
+  `FlightMotion.effects()` traversal instead of from the sun's elevation, turning
+  twenty minutes of an invisible edge into a few hundred milliseconds of one.
+- `SkyColorsContrastTest` enforces every claim above. Two of its rules were verified
+  by **planting violations** — a bright sky pasted into Cockpit, an amber sun into
+  Chart — because a rule that matches nothing passes silently and looks identical to
+  a clean tree.
+
+## The sky profile
+
+```kotlin
+enum class SkyPhase { DAY, TWILIGHT, NIGHT }
+
+object SkyProfileHeight { val AirportDetail: Dp = 220.dp; val RouteDetail: Dp = 168.dp }
+
+@Composable fun SkyProfile(metar: Metar?, modifier: Modifier = Modifier,
+                           celestial: CelestialState? = null,
+                           phase: SkyPhase = SkyPhase.DAY,
+                           height: Dp = SkyProfileHeight.AirportDetail,
+                           showAltitudeLabels: Boolean = true,
+                           colors: SkyColors = LocalSkyColors.current,
+                           rulesColors: FlightRulesColors = LocalFlightRulesColors.current,
+                           axisColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+                           unknownAirColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest)
+```
+
+**It is not a picture of the sky.** It is a vertical cross-section read the way an
+approach plate's profile view is: altitude on the Y axis, every deck at its true
+base, the flight-rules thresholds as hairlines, the ground at the bottom. Read
+[docs/WEATHER-PLAN.md](WEATHER-PLAN.md) before changing it.
+
+- **The axis is the signature element and is deliberately not linear.** Piecewise,
+  with breakpoints *at* the flight-rules thresholds, spending 56 % of its height on
+  the first 3,000 ft. Linear, a 900 ft ceiling and a 2,900 ft one — the difference
+  between IFR and MVFR — would be two hairlines 4 dp apart. The cost is a compressed
+  upper air, which is the right trade: nobody reads a cirrus base to two significant
+  figures and everybody reads a ceiling.
+- **The air is four flat steps, and they break at the flight-rules thresholds.** It
+  was a gradient, and that was the wrong mark twice over: a soft atmospheric wash
+  beside the route card's flat map silhouette reads as a different application, and
+  a wash puts its tone changes at heights that mean nothing. Each step is now the air
+  inside one band, so the tone change and the hairline are the same edge stated
+  twice, and the scene's coarsest channel — how dark the air is where a deck sits —
+  answers the question the diagram is for. The warm lift near the ground survives as
+  a *tint on the lowest steps* rather than as a gradient over them; it is small, and
+  it is the whole of what stops four flat greys reading as a bar chart.
+- **The graticule rides over the scene, and the numerals sit on chips.** Under the
+  decks it failed in exactly the case it is for: an overcast lid at 900 ft covers the
+  1,000 ft hairline, so the band structure disappears when the deck's position
+  relative to it is the entire content of the frame. On a printed chart the
+  graticule's ink is a different system from the data's, and rides above it. That
+  costs a legibility guarantee, which the chip buys back: a numeral straight onto the
+  scene would have to clear its bound against whichever step, deck or fog slab it
+  landed on, and `onSurfaceVariant` — proved against a card surface these pixels are
+  nowhere near — lands around 2.3:1 on the night band. The chip is one known mix
+  between the band's two ends, inked in `cloudEdge`, which is proved against both.
+  Reserving a left gutter for them is gone with it; the decks run full width.
+- **Fog is an opaque slab with a hard top edge, not a fade.** Drawn as a gradient
+  into the air it met the sky at about 1.1:1, so the headline case — a half-mile
+  `FG VV002` field — looked like a clear day with a wash at the bottom. Fog is not a
+  tint on the air; it is a surface, with a top you can see from above and cannot see
+  through. Its edge takes `cloudEdge` for the same reason every other edge does: it
+  is a deck's underside, upside down.
+- **A convective deck gets two lightning strikes, not a tick.** The tick was the
+  quietest possible way to mark the one thing in the frame that is dangerous, and at
+  168 dp a 2 dp line in the band's convective ink is a smudge competing with the
+  silhouette it stands on. Struck down toward the field, because the reach across the
+  gap is what reads as a strike. The envelope is mostly dark with a leader and a
+  return stroke a few frames apart — the eye reads that pair as lightning where it
+  reads a single fade as a pulse — and the two bolts run at coprime whole-number
+  rates inside one master cycle, so they neither drift out of the loop nor flash in
+  lockstep. The bolt's **width is fixed in dp** while its height is the gap: scaled
+  uniformly, a 4,300 ft CB produced a maroon slab a fifth of the frame across.
+- **Precipitation varies per drop, and length is tied to speed.** The field read as
+  pen hatching because every stroke was the same length, weight, opacity and speed.
+  A streak is what the eye keeps of a drop that has already moved on, so it is long
+  *because* it is fast — length and speed varying independently is the tell. Speeds
+  are whole crossings of the frame per cycle (2, 3 or 4) and that is not a rounding
+  convenience: one shared phase puts a drop at `(start + progress × speed) mod 1`, so
+  a fractional speed leaves it mid-frame at the restart and the whole field jumps at
+  once, once a cycle, forever.
+- **The structure is what makes the original defect unrepresentable.** A sun over an
+  IFR field was possible because the category was a label pinned beside a cartoon.
+  Here the category is a *consequence of the geometry*, and there is no arrangement
+  of this drawing that shows a 700 ft overcast as a nice day.
+- **Three things can be unknown independently and each hatches**: no report at all,
+  an unreported sky, an unreported surface. They compose — a report with a
+  temperature but no cloud group draws real ground under hatched air.
+- **`celestial` is resolved by the caller, at the observation instant, never at
+  now.** The scene takes no clock: a composable that read `System.currentTimeMillis()`
+  could not be previewed at dusk and would recompose on a schedule nobody asked for.
+  Using the *observation* instant also keeps the frame one moment — a current sun
+  over a three-day-old report is two times in one picture. `phase` remains for
+  previews and for reports with no position.
+- **The sun and moon ride a horizon rail at fractions 0.86–0.935, not the altitude
+  axis.** A body has an elevation *angle*, not an altitude in feet, so the layer
+  must never invite a reader to drop a horizontal onto the ruler. The defence is
+  that `CeilingThresholds` tops out at 3,000 ft = fraction 0.56, so no hairline,
+  tick or numeral exists anywhere near the rail; `HorizonRailTest` asserts that
+  rather than assuming it. Each body used to carry a short datum and a stem beneath
+  it as a second defence; that was removed, because the rail is only about 11 dp
+  tall on the route-detail scene against a 7 dp disc radius, so what it drew was a
+  line stuck under the sun that read as a shadow rather than as a baseline.
+  Reinstating it needs a taller rail first. `sin(azimuth)` places a body across the
+  frame — east right, west left, north and south folded to the centre, because once
+  the section is cut east–west that fold *is* the projection. The inset that keeps a
+  disc whole clears the ceiling wedge's depth as well as the frame's edge: a clear
+  sky puts that wedge at the top of the axis, which is where a high moon at a
+  westerly azimuth sits.
+- **Cloud occlusion is alpha, not painting order.** The rail sits above almost every
+  deck, so paint order would let a cirrus hide the sun while a 700 ft overcast let
+  it shine through — the drawing lying, in the exact shape this redesign removes.
+  Keyed to the lowest ceiling instead. Painting under the decks was tried and buried
+  KDEN's afternoon sun outright.
+- **The same east–west commitment is used three times** and that is the point: it
+  places the bodies, slants the precipitation, and steers the deck drift. A
+  northerly wind therefore drifts nothing and drops its rain vertically, because a
+  wind along the section's line of sight has no component in it. Before the drift
+  was directional, the rain and the deck it fell out of could slant opposite ways.
+- **`Ceiling.Unlimited` gets the same wedge `Ceiling.At` does**, at the top of the
+  axis. An affirmatively clear sky used to draw *nothing*, so it differed from an
+  unknown one only by the absence of hatch — absence of evidence, one layer up.
+- **Every phase-driven term must complete an integer number of cycles**, or it snaps
+  at the repeat boundary; a deleted fog animation shipped that bug. The deck drift
+  obeys it by construction. Precipitation meets it on each axis differently, and
+  both halves are load-bearing: **horizontally** it sidesteps the rule by making `x`
+  a function of `y`, so the particle *set* is invariant at any slant — the usual
+  integer-tiles fix cannot work there, because the horizontal travel is not a whole
+  number of frame widths for any angle the data produces — and **vertically** it
+  obeys the rule strictly, which is why a drop's speed is a whole number of crossings
+  per cycle rather than the continuous spread it looks like it could be.
+- **Reduce motion is not uniform, and the asymmetry is deliberate.** Deck drift and
+  sock flutter go off *entirely*, because the wind is told twice over. Precipitation
+  is drawn **still** rather than dropped: it is the only thing in the scene that
+  says it is raining, and a reduce-motion setting is a request about motion, not
+  about content.
+- All testable geometry is `internal` top-level pure functions in
+  `SkyProfileGeometry.kt`, because this module has JVM tests only — the same
+  arithmetic inlined into `drawWithCache` could only be looked at.
 
 ## Preview annotations
 

@@ -46,6 +46,14 @@ data class AppSettings(
      * correction to previous behaviour.
      */
     val icaoOnly: Boolean = false,
+    /** Which service resolves METAR/flight-rules data. See [WeatherProvider]. */
+    val weatherProvider: WeatherProvider = WeatherProvider.NOAA,
+    /**
+     * Masked in the UI. Null or blank means "no key set", which keeps the
+     * app on NOAA regardless of [weatherProvider] — an explicit AVWX choice
+     * with no key must read as "no weather", not silently fall back.
+     */
+    val avwxApiKey: String? = null,
 )
 
 private val Context.settingsStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -70,6 +78,9 @@ interface SettingsRepository {
     fun setDynamicColour(enabled: Boolean)
     fun setUnitSystem(system: UnitSystem)
     fun setIcaoOnly(enabled: Boolean)
+    fun setWeatherProvider(provider: WeatherProvider)
+    /** A blank or null [key] clears the stored value. */
+    fun setAvwxApiKey(key: String?)
 }
 
 /**
@@ -93,6 +104,8 @@ internal class DefaultSettingsRepository @Inject constructor(
                 dynamicColour = preferences[DYNAMIC_COLOUR] ?: true,
                 unitSystem = preferences[UNIT_SYSTEM]?.let(::unitSystemOf) ?: UnitSystem.AVIATION,
                 icaoOnly = preferences[ICAO_ONLY] ?: false,
+                weatherProvider = preferences[WEATHER_PROVIDER]?.let(::weatherProviderOf) ?: WeatherProvider.NOAA,
+                avwxApiKey = preferences[AVWX_API_KEY],
             )
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
@@ -113,6 +126,18 @@ internal class DefaultSettingsRepository @Inject constructor(
         scope.launch { store.edit { it[ICAO_ONLY] = enabled } }
     }
 
+    override fun setWeatherProvider(provider: WeatherProvider) {
+        scope.launch { store.edit { it[WEATHER_PROVIDER] = provider.name } }
+    }
+
+    override fun setAvwxApiKey(key: String?) {
+        scope.launch {
+            store.edit {
+                if (key.isNullOrBlank()) it.remove(AVWX_API_KEY) else it[AVWX_API_KEY] = key
+            }
+        }
+    }
+
     /** Tolerates a stored name that no longer exists, e.g. after a rename. */
     private fun themeChoiceOf(name: String): ThemeChoice =
         ThemeChoice.entries.firstOrNull { it.name == name } ?: ThemeChoice.SYSTEM
@@ -121,10 +146,16 @@ internal class DefaultSettingsRepository @Inject constructor(
     private fun unitSystemOf(name: String): UnitSystem =
         UnitSystem.entries.firstOrNull { it.name == name } ?: UnitSystem.AVIATION
 
+    /** Tolerates a stored name that no longer exists, e.g. after a rename. */
+    private fun weatherProviderOf(name: String): WeatherProvider =
+        WeatherProvider.entries.firstOrNull { it.name == name } ?: WeatherProvider.NOAA
+
     private companion object {
         val THEME = stringPreferencesKey("theme_choice")
         val DYNAMIC_COLOUR = booleanPreferencesKey("dynamic_colour")
         val UNIT_SYSTEM = stringPreferencesKey("unit_system")
         val ICAO_ONLY = booleanPreferencesKey("icao_only")
+        val WEATHER_PROVIDER = stringPreferencesKey("weather_provider")
+        val AVWX_API_KEY = stringPreferencesKey("avwx_api_key")
     }
 }

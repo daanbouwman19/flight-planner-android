@@ -1,8 +1,10 @@
 package com.github.daanbouwman.flightplanner.core.designsystem.components
 
+import androidx.compose.ui.geometry.Offset
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.model.SurfaceKind
 import io.kotest.matchers.doubles.shouldBeGreaterThan
+import io.kotest.matchers.floats.shouldBeGreaterThan
 import io.kotest.matchers.doubles.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -247,5 +249,228 @@ class RunwayDiagramProjectionTest {
         val distance = kotlin.math.hypot((b.x - a.x).toDouble(), (b.y - a.y).toDouble())
         distance shouldBeGreaterThan 1_100.0
         distance shouldBeLessThan 1_125.0
+    }
+}
+
+/**
+ * Where a runway's designator is drawn.
+ *
+ * Every real airport diagram paints it at the **threshold** — the end you cross
+ * on landing and start the roll from on takeoff. [RunwayDiagram] painted it at
+ * the ray tip, which in both layouts is the end the runway *points toward*, so
+ * every ident sat at the wrong end of its own strip. Invisible until the
+ * favoured-end highlight arrived: a pilot then read `30` at the north-west end,
+ * applied the convention, and concluded that departing 30 meant rolling
+ * south-east — downwind, and the opposite of what `SurfaceWind` had chosen.
+ *
+ * The two layouts reach the threshold differently, so both are asserted here.
+ * The property they share is the one that would have caught the original defect:
+ * **an ident's anchor is on the opposite side of the strip's midpoint from its
+ * own ray tip.**
+ */
+class RunwayIdentAnchorTest {
+
+    private val center = Offset(100f, 100f)
+    private val radius = 80f
+
+    private fun runway(
+        id: Int,
+        heading: Double,
+        ident: String,
+        lat: Double? = null,
+        lon: Double? = null,
+    ) = Runway(
+        id = id,
+        airportId = 0,
+        ident = ident,
+        trueHeadingDeg = heading,
+        lengthFt = 10_000,
+        widthFt = 150,
+        surface = "ASPH",
+        surfaceKind = SurfaceKind.HARD,
+        latitude = lat,
+        longitude = lon,
+        elevationFt = 0,
+        lighted = false,
+    )
+
+    /** The signed position of [point] along the strip, measured from its midpoint. */
+    private fun alongStrip(ray: RunwayRay, point: Offset): Float {
+        val midpoint = Offset((ray.origin.x + ray.tip.x) / 2f, (ray.origin.y + ray.tip.y) / 2f)
+        val axis = ray.tip - ray.origin
+        val length = kotlin.math.hypot(axis.x, axis.y)
+        val unit = Offset(axis.x / length, axis.y / length)
+        val delta = point - midpoint
+        return delta.x * unit.x + delta.y * unit.y
+    }
+
+    /**
+     * The ident is behind the strip's midpoint and the tip is in front of it.
+     *
+     * **What this does and does not catch.** It bites hardest where the threshold
+     * is *computed* — the lane-schematic mirror, which lands 1.5 strip-lengths
+     * behind the midpoint and could easily be reflected the wrong way. Where the
+     * threshold is simply the origin, as it is for every unpaired end and for a
+     * positioned paired one, it holds by construction and proves only that the
+     * value was not set to the tip. Those cases assert `threshold shouldBe origin`
+     * directly, which is the claim that actually matters for them; this is kept
+     * alongside as a cheap guard on the shared shape.
+     */
+    private fun assertOppositeSideOfMidpoint(ray: RunwayRay) {
+        val tipSide = alongStrip(ray, ray.tip)
+        val thresholdSide = alongStrip(ray, ray.threshold)
+
+        // Not merely "different": strictly opposite signs, so a threshold that
+        // crept to the same half of the strip as its tip fails even if the two
+        // are not identical.
+        (tipSide > 0f) shouldBe true
+        (thresholdSide < 0f) shouldBe true
+    }
+
+    @Test
+    fun `in the positioned layout an ident sits at its own published threshold`() {
+        // A paired runway drawn between two real threshold coordinates. `09`'s
+        // own coordinate is the western one; it points east, so its ray tips at
+        // `27`'s threshold and its ident must stay in the west.
+        val west = 4.740
+        val east = 4.780
+        val lat = 52.3166
+        val runways = listOf(
+            runway(1, heading = 87.0, ident = "09", lat = lat, lon = west),
+            runway(2, heading = 267.0, ident = "27", lat = lat, lon = east),
+        )
+        val rays = positionedRays(
+            runways = runways,
+            groups = pairPhysicalRunways(runways),
+            center = center,
+            radius = radius,
+            maxLengthFt = 10_000,
+        )
+
+        rays.forEach(::assertOppositeSideOfMidpoint)
+        // And concretely: 09's designator is west of 27's, which is the whole
+        // claim a reader takes off the diagram.
+        (rays[0].threshold.x < rays[1].threshold.x) shouldBe true
+        // The strip itself is unchanged — only the label moved.
+        rays[0].origin shouldBe rays[1].tip
+        rays[0].tip shouldBe rays[1].origin
+    }
+
+    @Test
+    fun `an unpaired positioned stub anchors at the one real point it has`() {
+        val runways = listOf(runway(1, heading = 90.0, ident = "09", lat = 52.3, lon = 4.74))
+        val rays = positionedRays(
+            runways = runways,
+            groups = pairPhysicalRunways(runways),
+            center = center,
+            radius = radius,
+            maxLengthFt = 10_000,
+        )
+
+        // The published coordinate *is* the threshold, so the stub's origin
+        // carries the ident and the ray runs away from it.
+        rays.single().threshold shouldBe rays.single().origin
+        assertOppositeSideOfMidpoint(rays.single())
+    }
+
+    @Test
+    fun `in the lane schematic the tip is mirrored, because both ends share an origin`() {
+        // The case `ray.origin` cannot serve: 12 and 30 are one strip and are
+        // laid out from the same lane point, so an origin-anchored ident would
+        // stack both designators on top of each other in the middle.
+        val twelve = laneRay(runway(1, 120.0, "12"), laneOffsetPx = 0.0, center = center, radius = radius, maxLengthFt = 10_000, paired = true)
+        val thirty = laneRay(runway(2, 300.0, "30"), laneOffsetPx = 0.0, center = center, radius = radius, maxLengthFt = 10_000, paired = true)
+
+        twelve.origin shouldBe thirty.origin
+        twelve.threshold shouldNotBe thirty.threshold
+
+        assertOppositeSideOfMidpoint(twelve)
+        assertOppositeSideOfMidpoint(thirty)
+
+        // Mirroring puts each designator where its opposite number's ray tips,
+        // which is exactly the threshold a printed diagram paints it at.
+        abs((twelve.threshold - thirty.tip).x).toDouble() shouldBeLessThan 0.01
+        abs((twelve.threshold - thirty.tip).y).toDouble() shouldBeLessThan 0.01
+    }
+
+    @Test
+    fun `an unpaired lane stub anchors at its origin, not at a mirrored phantom`() {
+        // The gap the paired case hid. `pairPhysicalRunways` makes a physical
+        // runway of one whenever the reciprocal end has no published heading, and
+        // only the origin-to-tip half is then ever drawn — so mirroring the tip
+        // through the origin puts the designator a full strip length out on bare
+        // canvas, detached from its own line and possibly over a neighbour's.
+        //
+        // Both calls are the same runway; only `paired` differs. That is the
+        // whole test: the flag has to change the answer.
+        val stub = runway(1, 90.0, "09")
+        val unpaired = laneRay(stub, laneOffsetPx = 0.0, center = center, radius = radius, maxLengthFt = 10_000, paired = false)
+        val mirrored = laneRay(stub, laneOffsetPx = 0.0, center = center, radius = radius, maxLengthFt = 10_000, paired = true)
+
+        unpaired.threshold shouldBe unpaired.origin
+        mirrored.threshold shouldNotBe mirrored.origin
+        // And the strip drawn is identical either way — this moves the label only.
+        unpaired.origin shouldBe mirrored.origin
+        unpaired.tip shouldBe mirrored.tip
+    }
+
+    @Test
+    fun `a lane offset displaces both designators without swapping their ends`() {
+        // The offset moves the whole strip sideways; it must not move a
+        // designator along it.
+        val offset = laneRay(runway(1, 120.0, "12"), laneOffsetPx = 12.0, center = center, radius = radius, maxLengthFt = 10_000, paired = true)
+
+        assertOppositeSideOfMidpoint(offset)
+    }
+}
+
+/**
+ * The windsock's drag — the app's first custom gesture.
+ *
+ * The physics is here rather than in the composable for the reason everything
+ * testable in this module is: `:core:designsystem` has JVM tests only, so a
+ * function can be asserted where the same arithmetic inside a `pointerInput`
+ * could only be felt.
+ */
+class WindsockDragTest {
+
+    @Test
+    fun `the resistance is the wind`() {
+        // The whole reason this is a function of speed. A sock held out straight by
+        // 25 kt is a stiff thing to push; one hanging limp in 3 kt swings with a
+        // finger. Same drag, different swing — so the object under the finger feels
+        // like the object on the field.
+        val calm = sockDragOffsetDeg(dragPx = 60f, windSpeedKt = 0)
+        val breezy = sockDragOffsetDeg(dragPx = 60f, windSpeedKt = 12)
+        val gale = sockDragOffsetDeg(dragPx = 60f, windSpeedKt = 45)
+
+        calm shouldBeGreaterThan breezy
+        breezy shouldBeGreaterThan gale
+    }
+
+    @Test
+    fun `even a gale still moves, because a control that does not respond reads as broken`() {
+        // The floor, and why it exists: without it a 60 kt report would pin the sock
+        // so hard the gesture would be indistinguishable from an absent one.
+        sockDragOffsetDeg(dragPx = 200f, windSpeedKt = 90) shouldBeGreaterThan 5f
+    }
+
+    @Test
+    fun `the swing is clamped, so the sock can never show the opposite quarter`() {
+        // A sock wound right round stops reading as a sock and starts reading as a
+        // dial — and a swing past 180 would briefly draw the wind coming from the
+        // wrong side, which is the one thing this component must not do.
+        sockDragOffsetDeg(dragPx = 100_000f, windSpeedKt = 5) shouldBe SockDragLimitDeg
+        sockDragOffsetDeg(dragPx = -100_000f, windSpeedKt = 5) shouldBe -SockDragLimitDeg
+        SockDragLimitDeg.toDouble() shouldBeLessThan 180.0
+    }
+
+    @Test
+    fun `the drag is symmetric and rests at the truth`() {
+        // It springs back to zero, and zero is the reported direction — so the toy
+        // cannot leave a false reading on screen.
+        sockDragOffsetDeg(dragPx = 0f, windSpeedKt = 10) shouldBe 0f
+        sockDragOffsetDeg(dragPx = 40f, windSpeedKt = 10) shouldBe
+            -sockDragOffsetDeg(dragPx = -40f, windSpeedKt = 10)
     }
 }

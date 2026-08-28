@@ -1,12 +1,15 @@
 package com.github.daanbouwman.flightplanner.ui.detail
 
+import android.util.Log
 import com.github.daanbouwman.flightplanner.core.database.repository.AirportRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.routing.GreatCircle
 import com.github.daanbouwman.flightplanner.routing.RouteArc
+import com.github.daanbouwman.flightplanner.weather.WeatherRepository
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
@@ -25,12 +28,16 @@ import kotlin.math.roundToInt
  * [load] returns everything the screen leads with — the airports, the arc, the
  * two bearings — and [withRunways] adds the runway lists afterwards. Splitting
  * them is what lets the hero map and the leg's figures draw without waiting on
- * two further queries for detail nobody has scrolled to yet.
+ * two further queries for detail nobody has scrolled to yet. [withWeather] is
+ * a third, later step still: it is the network-bound one, so it is published
+ * last, after the two on-device queries, and behind the weather panel's own
+ * reserved height so nothing reflows when it lands.
  */
 class RouteDetailLoader @Inject constructor(
     private val airportRepository: AirportRepository,
     private val fleetRepository: FleetRepository,
     private val worldOutlineLoader: WorldOutlineLoader,
+    private val weatherRepository: WeatherRepository,
 ) {
 
     /** Everything the screen leads with. Two indexed lookups and the fleet row. */
@@ -73,6 +80,35 @@ class RouteDetailLoader @Inject constructor(
         departureRunways = state.departure?.let { airportRepository.runwaysFor(it.id) }.orEmpty(),
         destinationRunways = state.destination?.let { airportRepository.runwaysFor(it.id) }.orEmpty(),
     )
+
+    /**
+     * Weather for both ends of an already-loaded [state]. A missing station is
+     * simply absent from the result.
+     *
+     * **A failure returns the state unweathered rather than propagating**, which is
+     * the same shape `PlanViewModel` gives its own batch fetch and the reason it is
+     * here rather than at the two call sites: both of them assign the result
+     * straight into a `MutableStateFlow` inside a bare `launch`, so anything thrown
+     * takes the process down. `fetch` is not only network — it reaches Room, and it
+     * builds a URL, which throws `IllegalArgumentException` rather than `IOException`
+     * on a malformed one. A route detail with no weather is a legible screen; a
+     * crash is not.
+     */
+    suspend fun withWeather(state: RouteDetailUiState): RouteDetailUiState {
+        val stations = listOfNotNull(state.departure?.icao, state.destination?.icao)
+        val fetched = if (stations.isEmpty()) {
+            emptyMap()
+        } else {
+            runCatchingCancellable { weatherRepository.fetch(stations) }
+                .onFailure { Log.w(TAG, "Fetching weather for $stations failed", it) }
+                .getOrNull()
+                .orEmpty()
+        }
+        return state.copy(
+            departureMetar = state.departure?.icao?.let(fetched::get),
+            destinationMetar = state.destination?.icao?.let(fetched::get),
+        )
+    }
 }
 
 /**
@@ -91,4 +127,23 @@ private fun bearing(
     return compute(from.latitude, from.longitude, to.latitude, to.longitude)
         .roundToInt()
         .mod(360)
+}
+
+private const val TAG = "RouteDetailLoader"
+
+/**
+ * `runCatching`, minus the part that swallows cancellation.
+ *
+ * The same helper `PlanViewModel` and four other ViewModels carry, and it is
+ * file-private in each of them for the same reason: `runCatching` catches
+ * `Throwable`, which includes `CancellationException`, and swallowing that breaks
+ * structured concurrency — a cancelled load would be reported as a failure and the
+ * coroutine would carry on running past the point it was told to stop.
+ */
+private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
+    Result.success(block())
+} catch (cancellation: CancellationException) {
+    throw cancellation
+} catch (failure: Throwable) {
+    Result.failure(failure)
 }

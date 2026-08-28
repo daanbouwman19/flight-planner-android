@@ -286,6 +286,18 @@
     <string name="settings_icao_only">Only ICAO airports</string>
     <string name="settings_icao_only_detail">Hides small strips identified only by a local code, in generated routes.</string>
 
+    <string name="settings_weather">WEATHER</string>
+    <string name="settings_weather_provider_noaa">NOAA</string>
+    <string name="settings_weather_provider_noaa_detail">The default. Keyless, no account needed.</string>
+    <string name="settings_weather_provider_avwx">AVWX</string>
+    <string name="settings_weather_provider_avwx_detail">Needs an API key from avwx.rest.</string>
+    <string name="settings_avwx_api_key_label">AVWX API key</string>
+    <string name="settings_avwx_api_key_placeholder">Paste your key</string>
+    <string name="settings_avwx_api_key_show">Show key</string>
+    <string name="settings_avwx_api_key_hide">Hide key</string>
+    <string name="settings_avwx_api_key_clear">Clear key</string>
+    <string name="settings_avwx_get_key_action">Get a key at avwx.rest</string>
+
     <string name="settings_about">ABOUT</string>
     <!-- %1$s is the upstream snapshot date, an opaque string from the dataset itself
          rather than a formatted date — see DatasetMetaKeys.UPSTREAM_MODIFIED. -->
@@ -296,7 +308,8 @@
     <string name="settings_dataset_notice">Public-domain data from OurAirports and Natural Earth.</string>
     <string name="settings_licences_action">Licences</string>
 
-    <string name="settings_empty_message">Weather and tile providers are still to come.</string>
+    <string name="settings_empty_message">A tile provider for the 3D globe is still to come.</string>
+    <!-- Opens the Sky Profile gallery: every weather state the scene can draw, one per tap. -->
     <string name="settings_self_check_action">Run on-device self-check</string>
 
     <string name="licences_open_source_title">OPEN-SOURCE SOFTWARE</string>
@@ -346,12 +359,86 @@
     </plurals>
     <string name="route_detail_runways_fewer">Show fewer</string>
 
-    <!-- Weather. A placeholder until the weather phase; it says so rather than looking broken. -->
+    <!-- Weather section label, on the route detail and airport detail screens. -->
     <string name="route_detail_weather">WEATHER</string>
     <!-- The detail pane before a route has been chosen from the list beside it. -->
     <string name="route_detail_pane_empty_title">No route selected</string>
     <string name="route_detail_pane_empty">Choose a route to see its fields, runways and headings.</string>
-    <string name="route_detail_weather_pending">Live weather is not in this version yet. The flight category and the raw METAR for both fields will appear here.</string>
+    <!-- Shown in a MetarPanel when a station has no fresh report: not yet fetched, or nothing returned. -->
+    <string name="route_detail_weather_unavailable">No recent report for %1$s.</string>
+
+    <!--
+        The sky, in words. `route_detail_sky_unknown` is deliberately explicit:
+        an unreported sky used to be drawn as a sun, and saying so out loud is
+        what keeps the fix visible on a device.
+    -->
+    <string name="route_detail_sky_unknown">Sky not reported</string>
+    <string name="route_detail_sky_clear">Sky clear</string>
+    <string name="route_detail_sky_obscured">Sky obscured</string>
+    <!-- %1$s is the vertical visibility, already formatted with its unit. -->
+    <string name="route_detail_sky_obscured_at">Sky obscured, vertical visibility %1$s</string>
+
+    <!--
+        How old the observation is.
+
+        A METAR carries no expiry, and before this line existed a three-day-old
+        report drew exactly like one from four minutes ago. The elapsed figure is
+        what makes the difference readable, so it is never abbreviated away: the
+        colour flags a report that has aged, but the words say by how much on
+        their own, for a reader who cannot use the colour.
+    -->
+    <!-- %1$s is the report's own ddhhmmZ group, %2$s the elapsed time below. -->
+    <string name="weather_observed_at">%1$s · %2$s</string>
+    <string name="weather_age_just_now">just now</string>
+    <string name="weather_age_minutes">%1$d min ago</string>
+    <string name="weather_age_hours">%1$d h ago</string>
+    <plurals name="weather_age_days">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
+    </plurals>
+    <!-- The report carried no unambiguous timestamp, so its age cannot be stated. -->
+    <string name="weather_age_unknown">age unknown</string>
+
+    <!--
+        The weather panel's figure chips. Set in the same ValueChip the route card
+        uses for DIST and ETE, so these labels follow the same convention: short,
+        upper case, and the abbreviation a pilot already reads off a report rather
+        than an expanded English word.
+    -->
+    <string name="weather_chip_wind">WIND</string>
+    <string name="weather_chip_visibility">VIS</string>
+    <string name="weather_chip_ceiling">CEIL</string>
+    <!-- The altimeter setting. QNH internationally, and the label stays QNH even
+         where the value is stated in inches — see altimeterText, which shows each
+         station in its own convention. -->
+    <string name="weather_chip_altimeter">QNH</string>
+    <!-- Temperature over dewpoint, as the report states the pair. -->
+    <string name="weather_chip_temperature">TEMP</string>
+    <!--
+        The three readings a METAR's wind group can carry. "Calm" and "VRB" are not
+        formatting variants of a bearing: 000° is the code for no wind rather than a
+        heading of north, and a null direction with VRB set means the wind has no
+        settled direction — which is a crosswind on every runway, not a gap in the
+        report.
+    -->
+    <string name="weather_wind_calm">Calm</string>
+    <!-- The METAR code itself, which is what a pilot reads off the report. -->
+    <string name="weather_wind_variable">VRB</string>
+    <!-- %1$s is the speed, with its gust already attached: "18" or "35G50". -->
+    <string name="weather_wind_speed">%1$s kt</string>
+    <!-- An affirmative reading of a clear sky, not a missing figure. -->
+    <string name="weather_ceiling_unlimited">Unlimited</string>
+
+    <!-- Spoken by the accessibility service for the whole weather card, which
+         toggles the raw report text. -->
+    <string name="weather_raw_expand">Show the raw report</string>
+    <string name="weather_raw_collapse">Hide the raw report</string>
+
+    <!-- Cloud cover codes, as words. Each is followed by the layer's base. -->
+    <string name="route_detail_cover_few">Few</string>
+    <string name="route_detail_cover_scattered">Scattered</string>
+    <string name="route_detail_cover_broken">Broken</string>
+    <string name="route_detail_cover_overcast">Overcast</string>
 
     <!-- Actions -->
     <string name="route_detail_action_mark_flown">Mark as flown</string>
@@ -379,6 +466,5 @@
     <string name="airport_detail_not_found_title">Airport not found</string>
     <string name="airport_detail_not_found_message">This airport may have been removed from the dataset.</string>
     <string name="airport_detail_fly_from_here">Fly from here</string>
-    <string name="airport_detail_weather_pending">Live weather is not in this version yet. The flight category and the raw METAR for this airport will appear here.</string>
 
 </resources>

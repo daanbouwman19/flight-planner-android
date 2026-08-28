@@ -64,6 +64,43 @@ animating because it draws the eye to a value that changed. A logo spinning is
 not. Anything the user will see more than ten times a session gets shorter and
 quieter, not longer.
 
+**Weather's exception got narrower, because the design got more rigorous.** This
+paragraph used to license the weather glyph to be "playful and interactive — sun,
+drifting cloud, falling rain/snow, drifting fog" as a bounded carve-out from the
+two principles above. That glyph is gone, and the carve-out went with most of it.
+
+`SkyProfile` replaced it with a measured atmospheric cross-section: altitude on the
+Y axis, breakpoints at the flight-rules thresholds, every deck at its true base.
+**That is not an exception to "the app is an instrument" — it is an expression of
+it**, and it needs no special licence. It also earns the motion principle rather
+than being excused from it: the decks drift at a rate taken from the reported wind
+speed and faster at altitude, so the movement answers "how hard is it blowing", and
+a calm field is visibly still. Motion explaining, not performing.
+
+Two things remain genuinely playful, and they are the whole of what is left:
+
+- **The windsock's drag.** Grabbing and swinging it is interaction for its own sake.
+  It is defensible because a sock is a physical object a pilot already knows the feel
+  of, and because it springs back to the truth — the toy cannot leave a false reading
+  on screen.
+- **The ambient drift of the decks.** Wind-driven, but the *choice* to animate air at
+  all rather than draw it still is a pleasure decision.
+
+Everything else about weather now lives under the main principles:
+- The scene is driven entirely by the decoded METAR, and its unknown states are
+  drawn as hatch precisely so that ornament can never stand in for data. The defect
+  that prompted the redesign was ornament outvoting content.
+- The Plan card's flight-rules badge stays the plain chart-figure chip it always was.
+  A fifty-row list is exactly the density this principle exists to protect. The card
+  glyph was **removed**, not restyled.
+- Every other visual decision already made stands unchanged: chart colours for
+  flight rules, tabular figures, the rejected map colouring and route-label icons
+  from Phase B++. Nothing here reopens those.
+
+See **[docs/WEATHER-PLAN.md](WEATHER-PLAN.md)** for the scene itself, and
+`SkyColors`' KDoc for why weather scenery is per-theme while the flight-rules
+colours are not.
+
 ### Visual language
 
 - **Material 3 Expressive** as the base — `MaterialExpressiveTheme`, the expressive
@@ -1556,6 +1593,16 @@ moving it; it now hangs off an overflow item on Plan's own header instead — se
 ---
 
 ## 8. Phase F — Weather
+
+> **F1–F6 shipped, then the visual layer was replaced wholesale (Phase F′).** The
+> reason is a defect, not a preference: `WeatherCondition.derive()` rendered a null
+> ceiling as good weather, so an IFR field drew a sun icon. F4's chips survive
+> unchanged; F6's glyph is deleted.
+>
+> **[docs/WEATHER-PLAN.md](WEATHER-PLAN.md) is the live plan** — what shipped, the
+> known defects, and everything still outstanding. Read it rather than this table
+> before touching weather, and read its *Known defects* section first: one of them
+> is a diagnosis a fresh reader would very likely get backwards.
 
 | ID | Task | Notes |
 | --- | --- | --- |

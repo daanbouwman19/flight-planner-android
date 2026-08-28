@@ -15,6 +15,7 @@ import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.model.FlightRecord
+import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.AirportIndexBuilder
@@ -22,6 +23,8 @@ import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.settings.AppSettings
 import com.github.daanbouwman.flightplanner.settings.SettingsRepository
 import com.github.daanbouwman.flightplanner.settings.UnitSystem
+import com.github.daanbouwman.flightplanner.settings.WeatherProvider
+import com.github.daanbouwman.flightplanner.weather.WeatherRepository
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -257,6 +260,13 @@ private class FakeSettingsRepository(initial: AppSettings? = AppSettings()) : Se
     override fun setDynamicColour(enabled: Boolean) = update { it.copy(dynamicColour = enabled) }
     override fun setUnitSystem(system: UnitSystem) = update { it.copy(unitSystem = system) }
     override fun setIcaoOnly(enabled: Boolean) = update { it.copy(icaoOnly = enabled) }
+    override fun setWeatherProvider(provider: WeatherProvider) = update { it.copy(weatherProvider = provider) }
+    override fun setAvwxApiKey(key: String?) = update { it.copy(avwxApiKey = key) }
+}
+
+/** Never resolves anything — Plan's weather pipeline is exercised in its own test file, not here. */
+private class FakeWeatherRepository : WeatherRepository {
+    override suspend fun fetch(stations: List<String>): Map<String, Metar> = emptyMap()
 }
 
 class PlanViewModelTest {
@@ -295,6 +305,7 @@ class PlanViewModelTest {
             airportRepository = airports,
             worldOutlineLoader = { WorldOutline.Empty },
             settingsRepository = settingsRepository,
+            weatherRepository = FakeWeatherRepository(),
             defaultDispatcher = dispatcher,
         )
         backgroundScope.launch(dispatcher) { model.uiState.collect {} }

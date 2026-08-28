@@ -16,6 +16,7 @@ deliberately diverges, say so in a KDoc.
 | --- | --- |
 | [docs/PLAN.md](docs/PLAN.md) | Architecture, module layout, the data pipeline, the parity matrix |
 | [docs/UI-PLAN.md](docs/UI-PLAN.md) | The task breakdown (stable IDs — "do B4"), design and motion direction, phase status |
+| [docs/WEATHER-PLAN.md](docs/WEATHER-PLAN.md) | Phase F′ (weather / Sky Profile): what shipped, the known defects, and what is left. **Resumable — read its Known defects first** |
 | [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) | The `:core:designsystem` API every screen builds on |
 | [docs/API-GROUND-TRUTH.md](docs/API-GROUND-TRUTH.md) | What actually compiles in the pinned dependency versions |
 

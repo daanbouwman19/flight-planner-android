@@ -57,6 +57,11 @@ enum class ThemeChoice { SYSTEM, LIGHT, DARK, COCKPIT, CHART }
  * [LocalFlightRulesColors]; they vary only between the light and dark tone
  * mappings. [FlightRulesColors] explains why.
  *
+ * The sky-profile scenery bypasses it too, through [LocalSkyColors], but varies by
+ * [themeChoice] rather than by tone mapping — Cockpit and Chart each get a palette
+ * of their own. [SkyColors] explains why those two cannot be a light or a dark
+ * variant of anything.
+ *
  * ### The system bars
  *
  * The window is edge to edge and the bars are transparent, so the clock and the
@@ -106,8 +111,21 @@ fun FlightPlannerTheme(
         }
     }
 
+    // Scenery, unlike the flight-rules colours, varies per *theme* rather than per
+    // tone mapping: Cockpit needs a dim warm sky to protect dark adaptation and
+    // Chart needs a printed one, and neither is reachable by picking a light or a
+    // dark variant. Dynamic colour is ignored here for the same reason it is for
+    // the flight-rules palette — a wallpaper-derived sky is not a sky.
+    val skyColors = when {
+        themeChoice == ThemeChoice.COCKPIT -> CockpitSkyColors
+        themeChoice == ThemeChoice.CHART -> ChartSkyColors
+        dark -> BrandDarkSkyColors
+        else -> BrandLightSkyColors
+    }
+
     CompositionLocalProvider(
         LocalFlightRulesColors provides if (dark) DarkFlightRulesColors else LightFlightRulesColors,
+        LocalSkyColors provides skyColors,
         // Resolved once here, for the whole tree. Every component that needs it
         // reads LocalReduceMotion; resolving it per component would register a
         // ContentObserver per component.

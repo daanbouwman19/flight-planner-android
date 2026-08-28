@@ -69,7 +69,9 @@ class RouteDetailPaneViewModel @Inject constructor(
         loading = viewModelScope.launch {
             val loaded = loader.load(route)
             _state.value = RouteDetailPaneState(route, loaded)
-            _state.value = RouteDetailPaneState(route, loader.withRunways(loaded))
+            val withRunways = loader.withRunways(loaded)
+            _state.value = RouteDetailPaneState(route, withRunways)
+            _state.value = RouteDetailPaneState(route, loader.withWeather(withRunways))
         }
     }
 

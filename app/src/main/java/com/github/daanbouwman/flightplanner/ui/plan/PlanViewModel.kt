@@ -11,6 +11,8 @@ import com.github.daanbouwman.flightplanner.index.AirportIndexProvider
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.FlightRecord
+import com.github.daanbouwman.flightplanner.model.Metar
+import com.github.daanbouwman.flightplanner.weather.WeatherRepository
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.DEFAULT_ROUTE_BATCH
 import com.github.daanbouwman.flightplanner.routing.GeneratedRoute
@@ -39,6 +41,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
@@ -92,6 +95,7 @@ class PlanViewModel @Inject constructor(
     private val airportRepository: AirportRepository,
     private val worldOutlineLoader: WorldOutlineLoader,
     private val settingsRepository: SettingsRepository,
+    private val weatherRepository: WeatherRepository,
     @param:DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -154,6 +158,34 @@ class PlanViewModel @Inject constructor(
     private val routes = MutableStateFlow<List<RouteRow>>(emptyList())
     private val status = MutableStateFlow<PlanStatus>(PlanStatus.Idle)
 
+    /** ICAOs currently on screen, fed by [PlanScreen]'s `LazyListState`. See [setVisibleIcaos]. */
+    private val visibleIcaos = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * Resolved weather, additive across the session.
+     *
+     * Never replaced wholesale: a station that scrolls off screen keeps its
+     * chip resolved rather than reverting to unknown, and the 15-minute
+     * cache TTL — not client-side eviction — is what makes a station
+     * scrolling back into view get a fresh report once its old one is stale.
+     */
+    private val weatherByStation = MutableStateFlow<Map<String, Metar>>(emptyMap())
+
+    /**
+     * When each station was last **asked** about, which is not the same as when one
+     * last answered.
+     *
+     * A plain `MutableMap` rather than a state holder: nothing observes it, and it
+     * is touched from exactly one coroutine — the visible-stations collector below,
+     * which runs on `viewModelScope`'s main dispatcher. `collectLatest` cancels and
+     * restarts that collector but never runs two of it at once.
+     *
+     * It is unbounded in principle and bounded in practice by how many airports a
+     * session scrolls past, at a few tens of bytes each. Clearing it on a timer
+     * would only re-open the hole it exists to close.
+     */
+    private val weatherAskedAt = mutableMapOf<String, Long>()
+
     /**
      * One-shot events, as a channel rather than as state.
      *
@@ -199,7 +231,7 @@ class PlanViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), WorldOutline.Empty)
 
     val uiState: StateFlow<PlanUiState> =
-        combine(selection, routes, status, notFlownCount) { selected, rows, phase, notFlown ->
+        combine(selection, routes, status, notFlownCount, weatherByStation) { selected, rows, phase, notFlown, weather ->
             PlanUiState(
                 mode = selected.mode,
                 lockedDeparture = selected.lockedDeparture,
@@ -207,6 +239,7 @@ class PlanViewModel @Inject constructor(
                 notFlownCount = notFlown,
                 routes = rows,
                 status = phase,
+                weatherByStation = weather,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), PlanUiState())
 
@@ -237,6 +270,54 @@ class PlanViewModel @Inject constructor(
             // ViewModel rather than from Application.onCreate keeps it off the
             // cold-start path. The repository makes the call idempotent.
             runCatchingCancellable { airportRepository.prepareNameIndex(indexProvider.get()) }
+        }
+        viewModelScope.launch {
+            // Debounced and `collectLatest`, the same cancellation shape B1
+            // gives route generation: a fast scroll producing a new visible
+            // set cancels whatever fetch was in flight for the previous one,
+            // rather than letting a stale batch's request race the current
+            // screenful's.
+            visibleIcaos
+                .debounce(VISIBLE_ICAO_DEBOUNCE_MILLIS)
+                .distinctUntilChanged()
+                .collectLatest { icaos ->
+                    if (icaos.isEmpty()) return@collectLatest
+                    // Only what has not been asked about lately.
+                    //
+                    // `PlanScreen`'s `VisibleWeatherStations` KDoc has always
+                    // claimed this happened here; it did not. Filtering on the
+                    // *resolved* map alone would not have been enough either, and
+                    // that is the interesting half: `WeatherRepository` caches hits
+                    // and never misses, so a station with no report is absent from
+                    // the result, absent from the cache, and asked again on the next
+                    // settle — forever. A list of small GA fields therefore issued a
+                    // full network request every 300 ms of scrolling, and on AVWX
+                    // one concurrent request *per airport*.
+                    //
+                    // So the memory is of what was **asked**, not of what came back,
+                    // which covers both cases with one mechanism and expires on the
+                    // cache's own clock rather than never.
+                    val now = System.currentTimeMillis()
+                    val unasked = icaos.filter {
+                        now - (weatherAskedAt[it] ?: 0L) >= WeatherRepository.TTL_MILLIS
+                    }
+                    if (unasked.isEmpty()) return@collectLatest
+                    unasked.chunked(WEATHER_BATCH_SIZE).forEach { chunk ->
+                        // Marked before the call, so a station that legitimately has
+                        // no report backs off. Unmarked again if the call *failed*,
+                        // because a dropped connection is not an answer and must not
+                        // buy fifteen minutes of silence.
+                        chunk.forEach { weatherAskedAt[it] = now }
+                        val fetched = runCatchingCancellable { weatherRepository.fetch(chunk) }
+                            .onFailure {
+                                Log.w(TAG, "Fetching weather for $chunk failed", it)
+                                chunk.forEach { station -> weatherAskedAt.remove(station) }
+                            }
+                            .getOrNull()
+                            .orEmpty()
+                        if (fetched.isNotEmpty()) weatherByStation.update { it + fetched }
+                    }
+                }
         }
 
         // Open with routes already on screen.
@@ -280,6 +361,11 @@ class PlanViewModel @Inject constructor(
                 mode = if (aircraft != null) PlanMode.SelectedAircraft else PlanMode.Any,
             )
         }
+    }
+
+    /** The ICAOs currently visible in the list, from [PlanScreen]'s `LazyListState`. */
+    fun setVisibleIcaos(icaos: Set<String>) {
+        visibleIcaos.value = icaos
     }
 
     /** Generates a fresh batch, replacing whatever is on screen. */
@@ -793,6 +879,12 @@ class PlanViewModel @Inject constructor(
          * eight of them do not cost a frame.
          */
         const val REPLACEMENT_CANDIDATES = 8
+
+        /** Matches Plan B+'s other scroll-driven signals — long enough to skip a fling, short enough to feel live. */
+        const val VISIBLE_ICAO_DEBOUNCE_MILLIS = 300L
+
+        /** NOAA's documented ceiling per request; also what docs/PLAN.md's "chunk by 50" specifies. */
+        const val WEATHER_BATCH_SIZE = 50
     }
 }
 

@@ -3,6 +3,7 @@ package com.github.daanbouwman.flightplanner.ui.plan
 import androidx.compose.runtime.Immutable
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
+import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.routing.FlightTime
 import com.github.daanbouwman.flightplanner.routing.GeoArc
 
@@ -151,6 +152,8 @@ data class PlanUiState(
     val notFlownCount: Int = 0,
     val routes: List<RouteRow> = emptyList(),
     val status: PlanStatus = PlanStatus.Idle,
+    /** Resolved weather, keyed by ICAO. See `PlanViewModel`'s `weatherByStation` for why it only ever grows. */
+    val weatherByStation: Map<String, Metar> = emptyMap(),
 ) {
     /**
      * The user chose "this aircraft" without choosing one. Generation is held

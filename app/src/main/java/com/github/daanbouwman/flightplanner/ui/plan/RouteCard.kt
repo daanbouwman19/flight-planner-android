@@ -1,5 +1,8 @@
 package com.github.daanbouwman.flightplanner.ui.plan
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,10 +40,12 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.FlightR
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMap
 import com.github.daanbouwman.flightplanner.core.designsystem.components.ValueChip
+import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.model.FlightRules
+import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 
 /**
@@ -114,6 +119,7 @@ fun RouteCard(
     onMarkFlown: () -> Unit,
     onReplace: () -> Unit,
     modifier: Modifier = Modifier,
+    weatherByStation: Map<String, Metar> = emptyMap(),
 ) {
     // One description for the whole card. Left to itself the card announces
     // eleven separate nodes — two codes, two names, two "N/A" chips and three
@@ -220,7 +226,7 @@ fun RouteCard(
                 // The gap between the eyebrow and the codes is the map's, and it
                 // takes whatever height the card has left over.
                 Box(modifier = Modifier.weight(1f))
-                AirportLine(row)
+                AirportLine(row, weatherByStation)
                 FactLine(row)
             }
         }
@@ -270,7 +276,7 @@ private fun AircraftLine(row: RouteRow) {
  * belongs to the detail screen, where there is room to read it.
  */
 @Composable
-private fun AirportLine(row: RouteRow) {
+private fun AirportLine(row: RouteRow, weatherByStation: Map<String, Metar>) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -278,6 +284,7 @@ private fun AirportLine(row: RouteRow) {
     ) {
         AirportEnd(
             icao = row.departure.icao,
+            rules = weatherByStation[row.departure.icao]?.flightRules ?: FlightRules.UNKNOWN,
             runwayFt = row.departureRunwayFt,
             runwayTooShort = row.departureRunwayTooShort,
             alignment = Alignment.Start,
@@ -291,6 +298,7 @@ private fun AirportLine(row: RouteRow) {
         Box(modifier = Modifier.weight(1f))
         AirportEnd(
             icao = row.destination.icao,
+            rules = weatherByStation[row.destination.icao]?.flightRules ?: FlightRules.UNKNOWN,
             runwayFt = row.destinationRunwayFt,
             runwayTooShort = row.destinationRunwayTooShort,
             alignment = Alignment.End,
@@ -307,6 +315,7 @@ private fun AirportLine(row: RouteRow) {
 @Composable
 private fun AirportEnd(
     icao: String,
+    rules: FlightRules,
     runwayFt: Int,
     runwayTooShort: Boolean,
     alignment: Alignment.Horizontal,
@@ -318,7 +327,7 @@ private fun AirportEnd(
         horizontalAlignment = alignment,
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        FlightRulesSlot(rules = FlightRules.UNKNOWN, alignment = alignment)
+        FlightRulesSlot(rules = rules, alignment = alignment)
         Text(
             text = icao,
             style = MaterialTheme.typography.headlineSmall.withTabularFigures(),
@@ -356,11 +365,14 @@ private fun AirportEnd(
  * METAR line in the detail view — grow away from the figures rather than pushing
  * them into the chips.
  *
- * Phase F resolves these. The height is reserved now so the badge can fade in
- * then without shifting anything: F6's "never a layout jump" is only free if the
- * space was there from the start. Nothing is drawn in the meantime, because two
- * placeholder pills per card is a lot of ink to spend on the absence of
- * information.
+ * The height is reserved unconditionally, so the badge can fade in without
+ * shifting anything: "never a layout jump" is only free if the space was
+ * there from the start. The fade itself is [FlightMotion.effectsSlow] — the
+ * token documented for exactly this, "a chip resolving from unknown" — and
+ * has no exit: [rules] only ever moves from [FlightRules.UNKNOWN] to a real
+ * category within one card's lifetime (`PlanViewModel`'s weather map is
+ * additive, never cleared), so a chip that has resolved never needs to
+ * revert.
  */
 @Composable
 private fun FlightRulesSlot(rules: FlightRules, alignment: Alignment.Horizontal) {
@@ -368,7 +380,13 @@ private fun FlightRulesSlot(rules: FlightRules, alignment: Alignment.Horizontal)
         modifier = Modifier.defaultMinSize(minHeight = FlightRulesSlotHeight),
         contentAlignment = if (alignment == Alignment.Start) Alignment.CenterStart else Alignment.CenterEnd,
     ) {
-        if (rules != FlightRules.UNKNOWN) FlightRulesBadge(rules = rules)
+        AnimatedVisibility(
+            visible = rules != FlightRules.UNKNOWN,
+            enter = fadeIn(animationSpec = FlightMotion.effectsSlow()),
+            exit = ExitTransition.None,
+        ) {
+            FlightRulesBadge(rules = rules)
+        }
     }
 }
 

@@ -1,6 +1,9 @@
 package com.github.daanbouwman.flightplanner.ui.detail
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,11 +19,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHostState
@@ -31,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -50,19 +54,35 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.core.designsystem.components.FlightRulesBadge
 import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMap
+import com.github.daanbouwman.flightplanner.core.designsystem.components.SkyProfile
+import com.github.daanbouwman.flightplanner.core.designsystem.components.SkyProfileHeight
+import com.github.daanbouwman.flightplanner.core.designsystem.components.ValueChip
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.model.Airport
+import com.github.daanbouwman.flightplanner.model.Ceiling
+import com.github.daanbouwman.flightplanner.model.CloudCover
+import com.github.daanbouwman.flightplanner.model.FlightRules
+import com.github.daanbouwman.flightplanner.model.Metar
+import com.github.daanbouwman.flightplanner.model.ObservationAge
+import com.github.daanbouwman.flightplanner.model.ObservationAges
+import com.github.daanbouwman.flightplanner.model.ObservationFreshness
 import com.github.daanbouwman.flightplanner.model.Runway
+import com.github.daanbouwman.flightplanner.model.SkyCover
 import com.github.daanbouwman.flightplanner.model.SurfaceKind
 import com.github.daanbouwman.flightplanner.navigation.Destination
+import com.github.daanbouwman.flightplanner.routing.Celestial
+import com.github.daanbouwman.flightplanner.routing.CelestialState
+import com.github.daanbouwman.flightplanner.ui.altimeterText
 import com.github.daanbouwman.flightplanner.ui.asBearing
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
@@ -74,6 +94,9 @@ import com.github.daanbouwman.flightplanner.ui.distanceText
 import com.github.daanbouwman.flightplanner.ui.lengthText
 import com.github.daanbouwman.flightplanner.ui.runwayDimensionsText
 import com.github.daanbouwman.flightplanner.ui.speedText
+import com.github.daanbouwman.flightplanner.ui.temperatureText
+import com.github.daanbouwman.flightplanner.ui.visibilityText
+import com.github.daanbouwman.flightplanner.ui.windText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -243,7 +266,13 @@ fun RouteDetailContent(
             )
         }
 
-        WeatherBlock(modifier = Modifier.enterStaggered(3, animateEntrance))
+        WeatherBlock(
+            departureIcao = state.departure?.icao,
+            departureMetar = state.departureMetar,
+            destinationIcao = state.destination?.icao,
+            destinationMetar = state.destinationMetar,
+            modifier = Modifier.enterStaggered(3, animateEntrance),
+        )
 
         ActionsBlock(
             state = state,
@@ -650,17 +679,21 @@ private fun LegBlock(state: RouteDetailUiState, modifier: Modifier = Modifier) {
 }
 
 /**
- * Where the weather will be.
+ * Weather for both ends of the leg, one [MetarPanel] each.
  *
- * It states what is missing and where it will appear rather than drawing an empty
- * pair of chips, because an unexplained blank reads as something that broke. The
- * block also holds roughly the height two decoded reports will occupy, so when
- * the weather phase fills it the page does not jump — reserving the space from
- * the start is what makes "fade in, never reflow" free rather than a separate
- * piece of work later.
+ * Two panels rather than a shared one: the desktop reference's own METAR
+ * dialog is per-airport, and a route has two airports whose conditions can
+ * differ completely — an IFR departure into a clear destination is common
+ * and worth two independent reads, not one blended one.
  */
 @Composable
-private fun WeatherBlock(modifier: Modifier = Modifier) {
+private fun WeatherBlock(
+    departureIcao: String?,
+    departureMetar: Metar?,
+    destinationIcao: String?,
+    destinationMetar: Metar?,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -670,26 +703,373 @@ private fun WeatherBlock(modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            // A floor on the container rather than a fixed height on the text.
-            // Fixed, the message sat in the top of a box with a band of nothing
-            // under it, which reads as content that failed to load — the exact
-            // impression a placeholder exists to avoid.
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = WeatherReservedHeight),
+        MetarPanel(icao = departureIcao, metar = departureMetar, modifier = Modifier.fillMaxWidth())
+        MetarPanel(icao = destinationIcao, metar = destinationMetar, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/**
+ * One airport's weather: the sky profile across the top, then the station code
+ * and its flight-rules chip, a decoded line of whichever fields the report
+ * carries, and the raw text in monospace — reused as-is by
+ * [com.github.daanbouwman.flightplanner.ui.airport.AirportDetailContent], which
+ * has exactly one of these instead of two and gives it more height.
+ *
+ * [metar] null means "not yet resolved, or nothing for this station" — both read
+ * the same here, and both draw [SkyProfile]'s hatched no-data frame rather than
+ * anything that could pass for weather.
+ *
+ * The scene sets the panel's height, so there is no floor to reserve: the old
+ * `WeatherReservedHeight` existed to stop a data-poor station shrinking the row
+ * its neighbour aligned against, and it was already vestigial once both panels
+ * moved into a [Column] with no neighbour to align with.
+ */
+@Composable
+internal fun MetarPanel(
+    icao: String?,
+    metar: Metar?,
+    modifier: Modifier = Modifier,
+    sceneHeight: Dp = SkyProfileHeight.RouteDetail,
+) {
+    val celestial = rememberCelestialState(metar)
+    // Survives a rotation and a process death, because it is a reading position
+    // rather than a transient: a pilot who opened the raw text to check a remark
+    // has not changed their mind about wanting it by turning the phone.
+    var expanded by rememberSaveable(icao) { mutableStateOf(false) }
+    val expandLabel = stringResource(
+        if (expanded) R.string.weather_raw_collapse else R.string.weather_raw_expand,
+    )
+
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = modifier,
+    ) {
+        Column(
+            modifier = if (metar == null) {
+                Modifier
+            } else {
+                Modifier.clickable(onClickLabel = expandLabel, role = Role.Button) {
+                    expanded = !expanded
+                }
+            },
         ) {
-            Text(
-                text = stringResource(R.string.route_detail_weather_pending),
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(12.dp),
-            )
+            // Edge to edge inside the card, so the horizon meets the rounded
+            // corners. A cross-section inset on all four sides reads as a picture
+            // of a diagram rather than as the diagram.
+            SkyProfile(metar = metar, celestial = celestial, height = sceneHeight)
+            Column(
+                modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                // The station, its category and the report's age on one line. The
+                // age used to have a row to itself, which spent a whole line on a
+                // figure that is three characters wide and belongs beside the
+                // identifier it qualifies.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = icao ?: EmptyFigure,
+                        style = MaterialTheme.typography.headlineSmall.asChartFigure(),
+                    )
+                    MetarFlightRulesChip(rules = metar?.flightRules)
+                    if (metar != null) {
+                        Spacer(Modifier.weight(1f))
+                        ObservationAgeLine(metar)
+                    }
+                }
+                if (metar != null) {
+                    // The figures as `ValueChip`s, which is the same component the
+                    // route card sets DIST and ETE in. That is most of what makes
+                    // this panel read as part of the same application rather than as
+                    // a weather widget dropped into it — and a chip is a better fit
+                    // than the interpuncted run-on line it replaces, because these
+                    // are five independent readings rather than one sentence.
+                    MetarFigures(metar)
+                    // The sky in words, under the figures. It says what the scene
+                    // draws, and it is the line that used to be a sun over an IFR
+                    // field: an unreported sky now says so.
+                    Text(
+                        text = skyLine(metar),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    // The raw text behind a tap. Always shown before, and it is the
+                    // one element here nobody reads at a glance: forty characters of
+                    // monospace under every panel, twice over on the route screen,
+                    // pushed everything that is read at a glance off the top of it.
+                    AnimatedVisibility(visible = expanded, enter = fadeIn(animationSpec = FlightMotion.effects())) {
+                        Column {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Text(
+                                text = metar.raw,
+                                modifier = Modifier.padding(top = 8.dp),
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = stringResource(R.string.route_detail_weather_unavailable, icao.orEmpty()),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }
+
+/**
+ * Wind, visibility, ceiling, altimeter and temperature, as a two-column grid of
+ * [ValueChip]s.
+ *
+ * Two columns, and chunked here rather than left to a `FlowRow`: a flow row packs
+ * by measured width, so `WIND 270° 35G50 kt` and `VIS 0.5 SM` land two-up on one
+ * line and one-up on the next, and the labels stop aligning down an edge. The whole
+ * argument for this component is that a column of figures is read down its edges.
+ *
+ * A short last row keeps its hole rather than stretching to fill: a `QNH` chip twice
+ * the width of the `CEIL` above it would read as more important, which is the one
+ * thing the grid is arranged to avoid.
+ *
+ * Every chip is conditional on its own figure, because a METAR is a set of optional
+ * groups. A station that reports no altimeter shows four chips, not a fifth reading
+ * `—` — an [EmptyFigure] is for a value that should exist and does not, and a group
+ * a station never sends is not that.
+ */
+@Composable
+private fun MetarFigures(metar: Metar) {
+    val chips = buildList {
+        // **Gated on the speed alone**, which is the whole of the fix here. Requiring
+        // a direction as well drops two readings that are not missing data:
+        // `VRB05KT` parses to a null direction with `windVariable` set — the wind is
+        // genuinely swinging, which is a fact about the field a pilot wants — and a
+        // station that reports a speed with no direction has still reported a speed.
+        // Both used to render as *no wind chip at all*, which says "this station
+        // sent no wind", and it did. `AirportDetailContent` already builds its
+        // `DiagramWind` this way; this now matches it.
+        metar.windSpeedKt?.let { speed ->
+            val wind = windText(
+                directionDeg = metar.windDirectionDeg,
+                variable = metar.windVariable,
+                speedKt = speed,
+                gustKt = metar.windGustKt,
+            )
+            add(stringResource(R.string.weather_chip_wind) to wind)
+        }
+        metar.visibilityStatuteMiles?.let { miles ->
+            add(
+                stringResource(R.string.weather_chip_visibility) to
+                    visibilityText(miles = miles, orGreater = metar.visibilityIsOrGreater),
+            )
+        }
+        // Unlike the old decoded line, an unmeasured ceiling still gets a chip. It
+        // is the figure the whole flight category turns on, and "Unlimited" is an
+        // affirmative reading of a clear sky rather than a missing one — which is
+        // the same distinction the scene draws with its wedge at the top of the axis.
+        when (val ceiling = metar.ceiling) {
+            is Ceiling.At -> lengthText(ceiling.ft)
+            Ceiling.Unlimited -> stringResource(R.string.weather_ceiling_unlimited)
+            else -> null
+        }?.let { add(stringResource(R.string.weather_chip_ceiling) to it) }
+        altimeterText(
+            convention = metar.altimeterConvention,
+            inHg = metar.altimeterInHg,
+            hectopascals = metar.altimeterHectopascals,
+        )?.let { add(stringResource(R.string.weather_chip_altimeter) to it) }
+        val temperature = metar.temperatureC
+        val dewpoint = metar.dewpointC
+        if (temperature != null && dewpoint != null) {
+            add(stringResource(R.string.weather_chip_temperature) to temperatureText(temperature, dewpoint))
+        }
+    }
+    if (chips.isEmpty()) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        chips.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { (label, value) ->
+                    ValueChip(label = label, value = value, modifier = Modifier.weight(1f))
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/**
+ * Where the Sun and the Moon stood **at the moment of the observation**.
+ *
+ * Null unless the report carries all three of a latitude, a longitude and an
+ * unambiguous timestamp. NOAA supplies the position for nearly every station; a
+ * bare cache row or an AVWX report before its fields land does not, and the scene
+ * then draws no bodies rather than guessing at a position.
+ *
+ * **The observation instant rather than now**, which is the whole reason this is
+ * computed here instead of inside `SkyProfile`. The scene is a rendering of *this
+ * report*: the decks, the ground, the fog and the sky are all as-reported, and
+ * drawing the current sun over a three-day-old report would put two different
+ * moments in one frame — defect 3 wearing a different hat. It also means the
+ * celestial layer is entirely static, with nothing to animate and nothing to gate
+ * under reduce motion.
+ *
+ * `remember`ed on the three inputs, so about 45 sines run once per station rather
+ * than once per recomposition.
+ */
+@Composable
+private fun rememberCelestialState(metar: Metar?): CelestialState? {
+    val latitude = metar?.latitude
+    val longitude = metar?.longitude
+    val instant = metar?.observationEpochSeconds
+    return remember(latitude, longitude, instant) {
+        if (latitude == null || longitude == null || instant == null) {
+            null
+        } else {
+            Celestial.at(latitudeDeg = latitude, longitudeDeg = longitude, epochSeconds = instant)
+        }
+    }
+}
+
+/**
+ * When the observation was taken, and how long ago that was.
+ *
+ * **The fix for a stale report being drawn as if it were current.** `ZUZH
+ * 241300Z` — three days old — rendered identically to a report from four minutes
+ * ago, because [Metar.observationEpochSeconds] was fetched, cached and shown
+ * nowhere. Every other unknown in this panel draws as hatch; an out-of-date
+ * report drew as confident weather, which is why this is the one defect in the
+ * set with a safety flavour.
+ *
+ * Both halves earn their place. The `ddhhmmZ` group is the figure a pilot reads
+ * off every report and matches against an ATIS; the elapsed time is what
+ * actually answers *is this still true*, and computing it in the reader's head
+ * needs the date the group does not carry.
+ *
+ * The colour flags a report past its cycle, but it is not the only channel: "3
+ * days ago" says the same thing in words. Colour alone carrying meaning would
+ * fail exactly the reader who most needs the warning.
+ */
+@Composable
+private fun ObservationAgeLine(metar: Metar) {
+    val age = rememberObservationAge(metar.observationEpochSeconds)
+    val elapsed = when {
+        age == null -> stringResource(R.string.weather_age_unknown)
+        age.minutes < 1 -> stringResource(R.string.weather_age_just_now)
+        age.minutes < MinutesShownInMinutes -> stringResource(R.string.weather_age_minutes, age.minutes.toInt())
+        age.minutes < MinutesShownInHours -> stringResource(R.string.weather_age_hours, (age.minutes / 60).toInt())
+        else -> {
+            val days = (age.minutes / (24 * 60)).toInt()
+            pluralStringResource(R.plurals.weather_age_days, days, days)
+        }
+    }
+    val zulu = metar.observationTime
+    val stale = age != null && age.freshness != ObservationFreshness.CURRENT
+
+    Text(
+        text = if (zulu != null) stringResource(R.string.weather_observed_at, zulu, elapsed) else elapsed,
+        style = MaterialTheme.typography.labelSmall.asChartFigure(),
+        color = if (stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/**
+ * The observation's age, recomputed once a minute.
+ *
+ * This is the one place in the weather feature that reads a clock, and it is the
+ * one place that must. `SkyProfile`'s KDoc argues the opposite case for the scene
+ * — a composable that computes the sun's position from `System.currentTimeMillis()`
+ * cannot be previewed at dusk and recomposes on a schedule nobody asked for —
+ * and the distinction is that an *age* is a quantity about the clock rather than
+ * a quantity the clock happens to determine. A static one would reintroduce the
+ * defect on the path that produces it most easily: the app backgrounded for two
+ * hours and resumed still says "4 min ago", because nothing recomposed.
+ *
+ * A minute is the display's own resolution, so the tick costs one state write per
+ * minute per visible panel and never redraws anything that did not change.
+ */
+@Composable
+private fun rememberObservationAge(epochSeconds: Long?): ObservationAge? {
+    val initial = remember(epochSeconds) { ObservationAges.of(epochSeconds, nowEpochSeconds()) }
+    return produceState(initialValue = initial, key1 = epochSeconds) {
+        if (epochSeconds == null) return@produceState
+        while (true) {
+            delay(ObservationAgeTickMillis)
+            value = ObservationAges.of(epochSeconds, nowEpochSeconds())
+        }
+    }.value
+}
+
+private fun nowEpochSeconds(): Long = System.currentTimeMillis() / 1_000L
+
+/** The display's own resolution. See [rememberObservationAge]. */
+private const val ObservationAgeTickMillis = 60_000L
+
+/** Below two hours the figure stays in minutes, where a reader wants the precision. */
+private const val MinutesShownInMinutes = 120L
+
+/** Below two days it is hours; past that, days, because nobody counts 68 hours. */
+private const val MinutesShownInHours = 48 * 60L
+
+/**
+ * The sky in one line — a stopgap until `SkyProfile` draws it.
+ *
+ * Deliberately says "sky not reported" out loud for [SkyCover.Unknown]. That
+ * state used to be rendered as a sun, and having it visible in text while the
+ * scene is being built is how the fix stays verifiable on a device.
+ */
+@Composable
+private fun skyLine(metar: Metar): String {
+    return when (val sky = metar.skyCover) {
+        SkyCover.Unknown -> stringResource(R.string.route_detail_sky_unknown)
+        SkyCover.Clear -> stringResource(R.string.route_detail_sky_clear)
+        is SkyCover.Obscured -> {
+            val depth = sky.verticalVisibilityFt
+            if (depth == null) {
+                stringResource(R.string.route_detail_sky_obscured)
+            } else {
+                stringResource(R.string.route_detail_sky_obscured_at, lengthText(depth))
+            }
+        }
+        is SkyCover.Layers -> {
+            // A `for` loop rather than `joinToString`: the composable calls below
+            // sit in this function's own scope, where a non-composable lambda
+            // would not let them.
+            val parts = ArrayList<String>(sky.layers.size)
+            for (layer in sky.layers) {
+                val cover = stringResource(layer.cover.labelRes)
+                val base = lengthText(layer.baseFt)
+                val convective = layer.convective?.let { " ${it.code}" }.orEmpty()
+                parts += "$cover $base$convective"
+            }
+            parts.joinToString(FactSeparator)
+        }
+    }
+}
+
+private val CloudCover.labelRes: Int
+    get() = when (this) {
+        CloudCover.FEW -> R.string.route_detail_cover_few
+        CloudCover.SCATTERED -> R.string.route_detail_cover_scattered
+        CloudCover.BROKEN -> R.string.route_detail_cover_broken
+        CloudCover.OVERCAST -> R.string.route_detail_cover_overcast
+    }
+
+/** The same crossfade the Plan card's `FlightRulesSlot` uses — see that KDoc for why there is no exit transition. */
+@Composable
+private fun MetarFlightRulesChip(rules: FlightRules?) {
+    AnimatedVisibility(
+        visible = rules != null && rules != FlightRules.UNKNOWN,
+        enter = fadeIn(animationSpec = FlightMotion.effectsSlow()),
+        exit = ExitTransition.None,
+    ) {
+        if (rules != null) FlightRulesBadge(rules = rules)
+    }
+}
+
 
 /**
  * What a user does with a route once they have read it.
@@ -928,13 +1308,4 @@ private val SpineRowSpacing = 20.dp
 
 /** How far a section rises into place. Enough to read as arriving, not as sliding. */
 private val EnterRise = 12.dp
-
-/**
- * A floor, not a height: roughly what one decoded report will occupy.
- *
- * `internal`: Airport detail's own weather placeholder reserves the same
- * figure, so both screens hold the same amount of space for the same kind
- * of content once Phase F fills it in.
- */
-internal val WeatherReservedHeight = 72.dp
 

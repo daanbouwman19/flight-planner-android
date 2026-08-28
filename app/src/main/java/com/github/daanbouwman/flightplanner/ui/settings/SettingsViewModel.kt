@@ -8,6 +8,7 @@ import com.github.daanbouwman.flightplanner.model.DatasetMetaKeys
 import com.github.daanbouwman.flightplanner.settings.AppSettings
 import com.github.daanbouwman.flightplanner.settings.SettingsRepository
 import com.github.daanbouwman.flightplanner.settings.UnitSystem
+import com.github.daanbouwman.flightplanner.settings.WeatherProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -68,6 +69,10 @@ class SettingsViewModel @Inject constructor(
     fun setUnitSystem(system: UnitSystem) = repository.setUnitSystem(system)
 
     fun setIcaoOnly(enabled: Boolean) = repository.setIcaoOnly(enabled)
+
+    fun setWeatherProvider(provider: WeatherProvider) = repository.setWeatherProvider(provider)
+
+    fun setAvwxApiKey(key: String?) = repository.setAvwxApiKey(key)
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L

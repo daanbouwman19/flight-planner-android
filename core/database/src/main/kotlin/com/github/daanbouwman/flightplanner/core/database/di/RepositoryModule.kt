@@ -4,8 +4,10 @@ import com.github.daanbouwman.flightplanner.core.database.repository.AirportRepo
 import com.github.daanbouwman.flightplanner.core.database.repository.DefaultAirportRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.DefaultFleetRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.DefaultLogbookRepository
+import com.github.daanbouwman.flightplanner.core.database.repository.DefaultMetarCacheRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.LogbookRepository
+import com.github.daanbouwman.flightplanner.core.database.repository.MetarCacheRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -39,4 +41,8 @@ internal abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindLogbookRepository(impl: DefaultLogbookRepository): LogbookRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindMetarCacheRepository(impl: DefaultMetarCacheRepository): MetarCacheRepository
 }

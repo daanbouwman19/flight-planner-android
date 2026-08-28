@@ -7,11 +7,14 @@ import com.github.daanbouwman.flightplanner.core.database.repository.FleetReposi
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
+import com.github.daanbouwman.flightplanner.model.FlightRules
+import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.model.SurfaceKind
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
+import com.github.daanbouwman.flightplanner.weather.WeatherRepository
 import io.kotest.matchers.collections.shouldHaveSize
 import com.github.daanbouwman.flightplanner.routing.RouteArc
 import io.kotest.matchers.nulls.shouldBeNull
@@ -115,6 +118,19 @@ private class FakeFleetRepository(private val fleet: List<AircraftSpec>) : Fleet
     override suspend fun seedIfEmpty(): Int = 0
 }
 
+/** Returns a fixed [Metar] for whichever stations [known] names, nothing for the rest. */
+private class FakeWeatherRepository(private val known: Map<String, Metar> = emptyMap()) : WeatherRepository {
+    var fetchCalls = 0
+        private set
+
+    override suspend fun fetch(stations: List<String>): Map<String, Metar> {
+        fetchCalls++
+        return stations.mapNotNull { station -> known[station]?.let { station to it } }.toMap()
+    }
+}
+
+private fun metar(station: String) = Metar(station = station, raw = "$station RAW METAR", flightRules = FlightRules.VFR)
+
 class RouteDetailLoaderTest {
 
     private val route = Destination.RouteDetail(
@@ -127,16 +143,22 @@ class RouteDetailLoaderTest {
     private fun loader(
         airports: List<Airport> = listOf(eham, kjfk),
         runways: Map<Int, List<Runway>> = emptyMap(),
+        weather: FakeWeatherRepository = FakeWeatherRepository(),
         repository: FakeAirportRepository = FakeAirportRepository(airports, runways),
-    ) = repository to RouteDetailLoader(
-        airportRepository = repository,
-        fleetRepository = FakeFleetRepository(listOf(boeing)),
-        worldOutlineLoader = { WorldOutline.Empty },
+    ) = Triple(
+        repository,
+        weather,
+        RouteDetailLoader(
+            airportRepository = repository,
+            fleetRepository = FakeFleetRepository(listOf(boeing)),
+            worldOutlineLoader = { WorldOutline.Empty },
+            weatherRepository = weather,
+        ),
     )
 
     @Test
     fun `the first load resolves both ends, the arc and both bearings`() = runTest {
-        val (repository, loader) = loader()
+        val (repository, _, loader) = loader()
 
         val state = loader.load(route)
 
@@ -156,7 +178,7 @@ class RouteDetailLoaderTest {
 
     @Test
     fun `the runway lists arrive in a second call, one query per end`() = runTest {
-        val (repository, loader) = loader(
+        val (repository, _, loader) = loader(
             runways = mapOf(
                 1 to listOf(runway(1, 1, "18R", 12467), runway(2, 1, "06", 11329)),
                 2 to listOf(runway(3, 2, "04L", 12079)),
@@ -175,7 +197,7 @@ class RouteDetailLoaderTest {
         // Not a crash and not an error screen: the codes came through the
         // navigation arguments, so the title still draws. Only what needs two
         // positions is missing.
-        val (_, loader) = loader(airports = listOf(eham))
+        val (_, _, loader) = loader(airports = listOf(eham))
 
         val state = loader.load(route)
 
@@ -189,10 +211,44 @@ class RouteDetailLoaderTest {
 
     @Test
     fun `a missing airport is asked no runway questions`() = runTest {
-        val (repository, loader) = loader(airports = listOf(eham))
+        val (repository, _, loader) = loader(airports = listOf(eham))
 
         loader.withRunways(loader.load(route))
 
         repository.runwayQueries shouldBe 1
+    }
+
+    @Test
+    fun `weather resolves both ends in one fetch call`() = runTest {
+        val weather = FakeWeatherRepository(mapOf("EHAM" to metar("EHAM"), "KJFK" to metar("KJFK")))
+        val (_, _, loader) = loader(weather = weather)
+
+        val state = loader.withWeather(loader.load(route))
+
+        state.departureMetar?.station shouldBe "EHAM"
+        state.destinationMetar?.station shouldBe "KJFK"
+        weather.fetchCalls shouldBe 1
+    }
+
+    @Test
+    fun `a station with no report leaves that end's weather absent, not the whole call failing`() = runTest {
+        val weather = FakeWeatherRepository(mapOf("EHAM" to metar("EHAM")))
+        val (_, _, loader) = loader(weather = weather)
+
+        val state = loader.withWeather(loader.load(route))
+
+        state.departureMetar?.station shouldBe "EHAM"
+        state.destinationMetar.shouldBeNull()
+    }
+
+    @Test
+    fun `an airport missing from the dataset is asked no weather question for that end`() = runTest {
+        val weather = FakeWeatherRepository(mapOf("EHAM" to metar("EHAM")))
+        val (_, _, loader) = loader(airports = listOf(eham), weather = weather)
+
+        val state = loader.withWeather(loader.load(route))
+
+        state.departureMetar?.station shouldBe "EHAM"
+        state.destinationMetar.shouldBeNull()
     }
 }

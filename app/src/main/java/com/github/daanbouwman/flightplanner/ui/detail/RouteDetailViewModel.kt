@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
+import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.routing.FlightTime
@@ -47,6 +48,9 @@ data class RouteDetailUiState(
      */
     val departureRunways: List<Runway> = emptyList(),
     val destinationRunways: List<Runway> = emptyList(),
+    /** Weather for each end, once fetched. Null means not yet resolved — not necessarily unavailable. */
+    val departureMetar: Metar? = null,
+    val destinationMetar: Metar? = null,
     /**
      * The shortest runway this airframe can leave from, in feet. An end below it
      * is marked, exactly as the Plan card marks one.
@@ -87,7 +91,9 @@ class RouteDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val loaded = loader.load(route)
             _state.value = loaded
-            _state.value = loader.withRunways(loaded)
+            val withRunways = loader.withRunways(loaded)
+            _state.value = withRunways
+            _state.value = loader.withWeather(withRunways)
         }
     }
 }

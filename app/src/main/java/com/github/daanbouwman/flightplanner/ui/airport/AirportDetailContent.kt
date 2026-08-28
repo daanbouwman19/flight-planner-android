@@ -3,34 +3,34 @@ package com.github.daanbouwman.flightplanner.ui.airport
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.core.designsystem.components.DiagramWind
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
 import com.github.daanbouwman.flightplanner.core.designsystem.components.RunwayDiagram
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SkeletonCard
+import com.github.daanbouwman.flightplanner.core.designsystem.components.SkyProfileHeight
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.model.Airport
+import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.ui.lengthText
 import com.github.daanbouwman.flightplanner.ui.detail.AirportLinks
+import com.github.daanbouwman.flightplanner.ui.detail.MetarPanel
 import com.github.daanbouwman.flightplanner.ui.detail.RunwayLine
-import com.github.daanbouwman.flightplanner.ui.detail.WeatherReservedHeight
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
@@ -62,6 +62,7 @@ fun AirportDetailContent(
             else -> AirportDetailBody(
                 airport = state.airport,
                 runways = state.runways,
+                metar = state.metar,
                 onFlyFromHere = { onFlyFromHere(state.airport) },
                 snackbarHostState = snackbarHostState,
             )
@@ -73,6 +74,7 @@ fun AirportDetailContent(
 private fun AirportDetailBody(
     airport: Airport,
     runways: List<Runway>,
+    metar: Metar?,
     onFlyFromHere: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
@@ -93,7 +95,22 @@ private fun AirportDetailBody(
         }
     }
 
-    RunwayDiagram(runways = runways, modifier = Modifier.fillMaxWidth())
+    RunwayDiagram(
+        runways = runways,
+        // The wind belongs on the diagram, not only in the weather panel below:
+        // a direction in degrees has to be compared against a runway heading, and
+        // in the same frame as the runways that comparison stops being arithmetic.
+        wind = metar?.let {
+            val speed = it.windSpeedKt
+            if (speed == null) null else DiagramWind(
+                directionFromDeg = it.windDirectionDeg,
+                speedKt = speed,
+                gustKt = it.windGustKt,
+                variable = it.windVariable,
+            )
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
 
     if (runways.isEmpty()) {
         Text(
@@ -109,7 +126,7 @@ private fun AirportDetailBody(
 
     AirportLinks(airport = airport, snackbarHostState = snackbarHostState)
 
-    AirportWeatherBlock()
+    AirportWeatherBlock(icao = airport.icao, metar = metar)
 
     Button(onClick = onFlyFromHere, modifier = Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.airport_detail_fly_from_here))
@@ -117,31 +134,26 @@ private fun AirportDetailBody(
 }
 
 /**
- * Where the weather will be — the same "reserve the space, say what's
- * missing" shape as [com.github.daanbouwman.flightplanner.ui.detail.RouteDetailContent]'s
- * `WeatherBlock`, not shared with it: four lines, and the copy differs
- * ("this airport" rather than "both fields").
+ * Where the weather is — the same shape as
+ * [com.github.daanbouwman.flightplanner.ui.detail.RouteDetailContent]'s
+ * `WeatherBlock`, sharing its `MetarPanel`: one airport instead of two.
  */
 @Composable
-private fun AirportWeatherBlock() {
+private fun AirportWeatherBlock(icao: String, metar: Metar?) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = stringResource(R.string.route_detail_weather),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            modifier = Modifier.fillMaxWidth().heightIn(min = WeatherReservedHeight),
-        ) {
-            Text(
-                text = stringResource(R.string.airport_detail_weather_pending),
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(12.dp),
-            )
-        }
+        MetarPanel(
+            icao = icao,
+            metar = metar,
+            modifier = Modifier.fillMaxWidth(),
+            // The full hero here: one airport, one scene, and the screen whose
+            // whole subject this is.
+            sceneHeight = SkyProfileHeight.AirportDetail,
+        )
     }
 }
 

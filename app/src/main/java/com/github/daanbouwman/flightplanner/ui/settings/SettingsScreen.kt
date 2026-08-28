@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
@@ -20,19 +23,31 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -42,7 +57,9 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.ThemeChoice
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.settings.UnitSystem
+import com.github.daanbouwman.flightplanner.settings.WeatherProvider
 import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.detail.rememberRouteActionLauncher
 
 /**
  * Appearance settings, and the on-device self-check.
@@ -174,6 +191,37 @@ fun SettingsScreen(
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             Text(
+                text = stringResource(R.string.settings_weather),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+
+            Column(modifier = Modifier.selectableGroup()) {
+                WeatherProviderRow(
+                    label = stringResource(R.string.settings_weather_provider_noaa),
+                    detail = stringResource(R.string.settings_weather_provider_noaa_detail),
+                    selected = settings.weatherProvider == WeatherProvider.NOAA,
+                    onSelect = { viewModel.setWeatherProvider(WeatherProvider.NOAA) },
+                )
+                WeatherProviderRow(
+                    label = stringResource(R.string.settings_weather_provider_avwx),
+                    detail = stringResource(R.string.settings_weather_provider_avwx_detail),
+                    selected = settings.weatherProvider == WeatherProvider.AVWX,
+                    onSelect = { viewModel.setWeatherProvider(WeatherProvider.AVWX) },
+                )
+            }
+
+            AnimatedVisibility(visible = settings.weatherProvider == WeatherProvider.AVWX) {
+                AvwxApiKeyField(
+                    stored = settings.avwxApiKey.orEmpty(),
+                    onCommit = viewModel::setAvwxApiKey,
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text(
                 text = stringResource(R.string.settings_about),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
@@ -205,6 +253,7 @@ fun SettingsScreen(
             ) {
                 Text(stringResource(R.string.settings_self_check_action))
             }
+
         }
     }
 }
@@ -230,6 +279,111 @@ private fun UnitRow(system: UnitSystem, selected: Boolean, onSelect: () -> Unit)
         }
     }
 }
+
+@Composable
+private fun WeatherProviderRow(label: String, detail: String, selected: Boolean, onSelect: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            Text(text = detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
+ * The masked AVWX key field, matching the desktop reference's own affordances
+ * (`settings_popup.rs`): a show/hide toggle, a clear action once there is
+ * something to clear, and a link to get a key. The desktop's copy-with-
+ * "Copied!"-feedback button is deliberately not ported — Android already
+ * toasts on every clipboard write, the same reason the route-plan copy
+ * action carries no in-app confirmation of its own (see `RouteActions.kt`).
+ */
+@Composable
+private fun AvwxApiKeyField(stored: String, onCommit: (String) -> Unit, modifier: Modifier = Modifier) {
+    var visible by rememberSaveable { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val launcher = rememberRouteActionLauncher(scope = scope, onNoHandler = {})
+
+    // **The field owns its text; the store is written on the way out.**
+    //
+    // It used to be fully controlled off `settings`, which is a `StateFlow` fed by
+    // DataStore — so every keystroke went out to disk and the field then redrew
+    // from whatever emission had come back. It is the only high-frequency writer in
+    // a screen of one-shot toggles, and typing a 40-character key at speed into a
+    // control that redraws from an asynchronous round trip drops characters and
+    // jumps the cursor. The remedy is not a faster write, it is not writing on a
+    // keystroke at all: a key is entered once and read by nothing until a request
+    // is made.
+    //
+    // Keyed on [stored], so a change from *outside* this field — another process
+    // editing the store, or the clear button — reseats the draft. Typing does not
+    // change `stored`, so it never clobbers an edit in progress.
+    var draft by rememberSaveable(stored) { mutableStateOf(stored) }
+    val latestDraft by rememberUpdatedState(draft)
+    val latestStored by rememberUpdatedState(stored)
+    val latestCommit by rememberUpdatedState(onCommit)
+
+    // Focus loss is the ordinary path and covers tapping away or dismissing the
+    // keyboard. It does *not* cover leaving the screen, where the field is disposed
+    // with the focus never changing — and losing a pasted key because the user hit
+    // back is the same defect wearing a different hat.
+    DisposableEffect(Unit) {
+        onDispose { if (latestDraft != latestStored) latestCommit(latestDraft) }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth().padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            label = { Text(stringResource(R.string.settings_avwx_api_key_label)) },
+            placeholder = { Text(stringResource(R.string.settings_avwx_api_key_placeholder)) },
+            visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (draft != stored) onCommit(draft) }),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { if (!it.isFocused && latestDraft != latestStored) latestCommit(latestDraft) },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = { visible = !visible }) {
+                Text(
+                    stringResource(
+                        if (visible) R.string.settings_avwx_api_key_hide else R.string.settings_avwx_api_key_show,
+                    ),
+                )
+            }
+            if (draft.isNotBlank()) {
+                // Clears both, and immediately: this is an explicit action rather
+                // than an edit in progress, so there is nothing to defer.
+                TextButton(
+                    onClick = {
+                        draft = ""
+                        onCommit("")
+                    },
+                ) {
+                    Text(stringResource(R.string.settings_avwx_api_key_clear))
+                }
+            }
+        }
+        TextButton(onClick = { launcher.open(AvwxSignupUrl) }) {
+            Text(stringResource(R.string.settings_avwx_get_key_action))
+        }
+    }
+}
+
+private const val AvwxSignupUrl = "https://account.avwx.rest/"
 
 @Composable
 private fun DatasetInfoBlock(info: DatasetInfo) {
