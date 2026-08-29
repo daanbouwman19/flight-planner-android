@@ -1,0 +1,83 @@
+/*
+ * The world map on the statistics screen.
+ *
+ * `currentColor` is what the land and coastline are painted with, so the colour
+ * is set once here and inherited by both paths — the same arrangement RouteMap
+ * uses, for the same reason: one place decides how much of the surface the map
+ * is allowed to claim.
+ */
+.fp-visited-network {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--fp-shape-medium);
+  background: var(--fp-surface-container-low);
+  color: var(--fp-on-surface-variant);
+}
+
+/* The startup self-check list. */
+.fp-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+/*
+ * A fixed column for the glyph so the names align down a single edge whatever
+ * each check reported. A ragged left edge in a list read at a glance is a real
+ * cost, and the glyph is the narrowest thing on the row.
+ */
+.fp-check__glyph {
+  flex: 0 0 24px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.fp-check__summary {
+  display: block;
+}
+
+/*
+ * Status is a glyph *and* a colour *and* the word, never a colour alone — this
+ * is the surface where a colour-only signal fails hardest.
+ */
+.fp-check--pass {
+  /*
+   * A pass is the scheme's own primary, not VFR green. The flight-rules
+   * colours mean one thing on a chart, and borrowing one to say "this asset
+   * loaded" spends that meaning somewhere it does not apply.
+   */
+  color: var(--fp-primary);
+}
+
+.fp-check--warn {
+  color: var(--fp-tertiary);
+}
+
+.fp-check--fail {
+  color: var(--fp-error);
+}
+
+.fp-check--running {
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-check__word {
+  color: var(--fp-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* One dependency's licence. Undecorated, on purpose. */
+.fp-licence {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--fp-outline-variant);
+}
+
+.fp-licence:last-child {
+  border-bottom: none;
+}

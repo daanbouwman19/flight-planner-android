@@ -23,6 +23,23 @@ const props = {
     { icao: 'EGLL', name: 'Heathrow', visits: 9 },
     { icao: 'EDDF', name: 'Frankfurt', visits: 6 },
   ],
+  // Real coordinates, read out of the app's own airports.db. A plausible-looking
+  // field in the wrong place is a confidently wrong drawing.
+  visited: [
+    { icao: 'EHAM', lat: 52.308601, lon: 4.76389, visits: 14 },
+    { icao: 'EGLL', lat: 51.470748, lon: -0.459909, visits: 9 },
+    { icao: 'EDDF', lat: 50.026706, lon: 8.55835, visits: 6 },
+    { icao: 'LFPG', lat: 49.00896, lon: 2.554117, visits: 5 },
+    { icao: 'EBBR', lat: 50.901402, lon: 4.48444, visits: 4 },
+    { icao: 'LSZH', lat: 47.458056, lon: 8.548056, visits: 3 },
+    { icao: 'EKCH', lat: 55.6179, lon: 12.656, visits: 2 },
+  ],
+  visitedLegs: [
+    { from: [52.308601, 4.76389] as [number, number], to: [51.470748, -0.459909] as [number, number] },
+    { from: [52.308601, 4.76389] as [number, number], to: [50.026706, 8.55835] as [number, number] },
+    { from: [52.308601, 4.76389] as [number, number], to: [55.6179, 12.656] as [number, number] },
+    { from: [50.901402, 4.48444] as [number, number], to: [47.458056, 8.548056] as [number, number] },
+  ],
 }
 
 /** The headline figure, four metrics, and what the logbook adds up to. */

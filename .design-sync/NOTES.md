@@ -88,6 +88,28 @@ Recorded so a future sync does not read them as defects:
   scale intends.
 - Interaction-only states are not previewed: the windsock drag, swipe gesture
   tracking, and the FAB's shape-morph on press.
+- **The sheets, the picker and the date dialog carry no behaviour.** `BottomSheet`
+  renders inline rather than in a portal, so a sheet can be one element of a screen
+  concept; its drag handle is drawn and inert. `PickerSheet` reproduces the sheet's
+  shape and its result rows but not the focus-one-frame-late keyboard rise, the
+  query debounce, or the scroll-to-top on a new query. `FlightDatePickerDialog`
+  makes future days `disabled` — the app's constraint stated where the choice is,
+  rather than a validation after it — but nothing is clickable.
+- **Four app behaviours are deliberately absent, and the conventions header says so
+  in words** rather than half-implementing them: compact-height and landscape
+  reflow; the bottom bar and app bar retracting on scroll (`PhoneFrame` always
+  draws them); swipe-to-delete and the undo that follows (the
+  `SwipeActionBackground` component is here, the gesture and the snackbar are not);
+  and the picker's search affordances. A static library that faked one would let a
+  concept assume a gesture it cannot show.
+- **`VisitedNetworkCard` has no Compose counterpart yet.** It is the one component
+  in the mirror that is ahead of the app rather than behind it: the statistics
+  screen currently has no map. It reuses the app's own `MapFrame` and
+  `land.outline`, so the geometry is the app's, but if the concept is adopted the
+  Kotlin has to be written. Treat it as a proposal, not as a mirror.
+- **`StartupCheckScreen` and `LicencesScreen` are simplified.** Both are real
+  screens reachable from Settings; the mirror carries their shape and their status
+  vocabulary, not the live check results or the generated licence manifest.
 - **The shared-element transition is not reproduced.** In the app the route card's
   face travels to the detail screen's hero — one element holding the map *and* the
   figures printed over it — on a spatial `boundsTransform`, with `sharedEnter`/
@@ -121,6 +143,13 @@ anticipation, or the slots need explicit weights.
   it is a copy: it will not follow a dataset update on its own.
 - **Fonts are fetched from Google Fonts** by `fetch-fonts.mjs`. The committed woff2
   files are what ship; re-running the script pulls whatever version is current.
+- **`MetarPanel` is the single weather surface, and the screens compose it.** An
+  earlier draft had `AirportDetailScreen` and `RouteDetailScreen` each build a bare
+  `SkyProfile` inside a titled card, which is not what the app does and let the two
+  ends of a route drift apart. Both now render `MetarPanel`. If the app's panel
+  changes, this is the one component to follow.
+- **`StatsScreen` is a composition of the statistics cards**, not markup of its own.
+  A card retuned in a concept lands in every arrangement of those figures at once.
 - **The screens mirror the app as of Phase F′.** Phase G adds a 3D globe to the
   route detail hero, which this mirror has no equivalent for. When it lands, the
   screens here go stale unless updated.

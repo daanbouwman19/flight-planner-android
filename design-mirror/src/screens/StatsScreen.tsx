@@ -3,6 +3,15 @@ import { NavigationRail } from '../components/NavigationRail'
 import { TabletFrame } from '../components/TabletFrame'
 import type { ScreenLayout } from './PlanScreen'
 import { ModeSelector } from '../components/ModeSelector'
+import {
+  HeroDistanceCard,
+  MetricGrid,
+  MonthlyActivityCard,
+  RankedListCard,
+  VisitedNetworkCard,
+  type VisitedAirport,
+  type VisitedLeg,
+} from '../components/StatsCards'
 
 export interface StatsScreenProps {
   /** Already formatted — `48,213 NM`. */
@@ -17,6 +26,15 @@ export interface StatsScreenProps {
   topAircraft: Array<{ name: string; flights: number }>
   /** Airports visited most. */
   topAirports: Array<{ icao: string; name: string; visits: number }>
+  /**
+   * Every airport visited, with coordinates, for the network map.
+   *
+   * Omitted, the map is left out rather than drawn empty — a world map with
+   * nothing on it says less than no map at all.
+   */
+  visited?: VisitedAirport[]
+  /** The legs flown, drawn as great-circle arcs under the markers. */
+  visitedLegs?: VisitedLeg[]
   selectedRange?: number
   /** Defaults to `phone`. */
   layout?: ScreenLayout
@@ -30,6 +48,10 @@ export interface StatsScreenProps {
  * principle's own example of an animation worth having, because it draws the eye
  * to a value that changed. Every figure here is set in tabular figures so a column
  * of them aligns and a counting value does not make the layout twitch.
+ *
+ * The screen is a composition of the statistics cards rather than markup of its
+ * own, so a card redesigned in a concept lands here and in any other arrangement
+ * of these figures at once.
  */
 export function StatsScreen({
   totalDistance,
@@ -38,78 +60,49 @@ export function StatsScreen({
   monthly,
   topAircraft,
   topAirports,
+  visited,
+  visitedLegs,
   selectedRange = 0,
   layout = 'phone',
   className,
 }: StatsScreenProps) {
-  const peak = Math.max(1, ...monthly.map((m) => m.value))
   const body = (
     <div className={layout === 'tablet' ? 'fp-screen fp-content-cap fp-content-cap--wide' : 'fp-screen'}>
-        <div className="fp-screen__header">
-          <h1 className="fp-screen__title fp-type-headline-medium">Stats</h1>
-        </div>
+      <div className="fp-screen__header">
+        <h1 className="fp-screen__title fp-type-headline-medium">Stats</h1>
+      </div>
 
-        <div className="fp-screen__controls">
-          <ModeSelector
-            options={[{ label: 'All time' }, { label: 'This year' }, { label: '90 days' }]}
-            selectedIndex={selectedRange}
-          />
-        </div>
+      <div className="fp-screen__controls">
+        <ModeSelector
+          options={[{ label: 'All time' }, { label: 'This year' }, { label: '90 days' }]}
+          selectedIndex={selectedRange}
+        />
+      </div>
 
-        <div className="fp-screen__list">
-          <div className="fp-stats-hero">
-            <span className="fp-stats-hero__label fp-type-label-small">TOTAL DISTANCE</span>
-            <span className="fp-stats-hero__value fp-type-headline-large">{totalDistance}</span>
-            <span className="fp-stats-hero__pill fp-type-label-small">{earthCircumferences}</span>
-          </div>
+      <div className="fp-screen__list">
+        <HeroDistanceCard
+          totalDistance={totalDistance}
+          earthCircumferences={earthCircumferences}
+        />
 
-          <div className="fp-stats-metrics">
-            {metrics.map((m) => (
-              <div className="fp-stats-metric" key={m.label}>
-                <span className="fp-stats-metric__value fp-type-title-large">{m.value}</span>
-                <span className="fp-stats-metric__label fp-type-label-small">{m.label}</span>
-              </div>
-            ))}
-          </div>
+        <MetricGrid metrics={metrics} />
 
-          <div className="fp-screen__card">
-            <span className="fp-screen__card-title fp-type-label-large">Flights by month</span>
-            <div className="fp-stats-bars">
-              {monthly.map((m) => (
-                <div className="fp-stats-bars__column" key={m.label}>
-                  <div
-                    className="fp-stats-bars__bar"
-                    style={{ height: `${Math.round((m.value / peak) * 100)}%` }}
-                    title={`${m.label}: ${m.value}`}
-                  />
-                  <span className="fp-stats-bars__label fp-type-label-small">{m.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+        {visited != null && visited.length > 0 && (
+          <VisitedNetworkCard airports={visited} legs={visitedLegs} />
+        )}
 
-          <div className="fp-screen__card">
-            <span className="fp-screen__card-title fp-type-label-large">Most flown</span>
-            {topAircraft.map((a) => (
-              <div className="fp-stats-line" key={a.name}>
-                <span className="fp-stats-line__name fp-type-body-medium">{a.name}</span>
-                <span className="fp-screen__row-figure fp-type-label-large">{a.flights}</span>
-              </div>
-            ))}
-          </div>
+        <MonthlyActivityCard months={monthly} />
 
-          <div className="fp-screen__card">
-            <span className="fp-screen__card-title fp-type-label-large">Most visited</span>
-            {topAirports.map((a) => (
-              <div className="fp-stats-line" key={a.icao}>
-                <span className="fp-stats-line__name fp-type-body-medium">
-                  <strong>{a.icao}</strong> {a.name}
-                </span>
-                <span className="fp-screen__row-figure fp-type-label-large">{a.visits}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <RankedListCard
+          title="Most flown"
+          rows={topAircraft.map((a) => ({ name: a.name, count: a.flights }))}
+        />
+
+        <RankedListCard
+          title="Most visited"
+          rows={topAirports.map((a) => ({ name: a.name, code: a.icao, count: a.visits }))}
+        />
+      </div>
     </div>
   )
 

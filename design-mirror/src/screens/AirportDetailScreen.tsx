@@ -1,7 +1,8 @@
 import { PhoneFrame, TopAppBar } from '../components/AppChrome'
-import { FlightRulesBadge, type FlightRules } from '../components/FlightRulesBadge'
+import type { FlightRules } from '../components/FlightRulesBadge'
 import { RunwayDiagram, type DiagramWind } from '../components/RunwayDiagram'
-import { SkyProfile, type CelestialState } from '../components/SkyProfile'
+import { SkyProfileHeight, type CelestialState } from '../components/SkyProfile'
+import { MetarPanel, type MetarFigure } from '../components/MetarPanel'
 import { ValueChip } from '../components/ValueChip'
 import type { Runway } from '../geo/runwayLayout'
 import type { SkyCover } from '../geo/skyProfile'
@@ -19,8 +20,27 @@ export interface AirportDetailScreenProps {
   skyCover: SkyCover
   ceilingFt?: number | null
   celestial?: CelestialState | null
-  /** The raw METAR, shown verbatim under the decoded panel. */
+  fogOrMist?: boolean
+  visibilityStatuteMiles?: number | null
+  /** The report's figures, already formatted and already in the reader's units. */
+  figures?: MetarFigure[]
+  /** The sky in words — what the cross-section draws, said plainly. */
+  skyLine?: string
+  /** `Observed 1425Z · 12 min ago`. */
+  observed?: string
+  /** Draws the age in the error colour, for a report past its currency. */
+  stale?: boolean
+  /** The raw report. Revealed by {@link rawExpanded}. */
   metar?: string
+  /** Whether the raw report is showing. Defaults to `false`. */
+  rawExpanded?: boolean
+  /**
+   * Shown in place of the figures when there is no report for this station.
+   *
+   * The cross-section above still hatches rather than drawing a clear sky: an
+   * unreported sky and a clear sky are different facts and must not look alike.
+   */
+  unavailableText?: string
   className?: string
 }
 
@@ -43,7 +63,15 @@ export function AirportDetailScreen({
   skyCover,
   ceilingFt,
   celestial,
+  fogOrMist,
+  visibilityStatuteMiles,
+  figures,
+  skyLine,
+  observed,
+  stale,
   metar,
+  rawExpanded = false,
+  unavailableText,
   className,
 }: AirportDetailScreenProps) {
   return (
@@ -58,21 +86,31 @@ export function AirportDetailScreen({
             </div>
           </div>
 
-          <div className="fp-detail-hero">
-            <SkyProfile
-              skyCover={skyCover}
-              ceilingFt={ceilingFt}
-              celestial={celestial}
-            />
-          </div>
+          {/*
+              The whole weather block is one panel, the same one the route screen
+              shows twice. The category badge lives inside it, beside the station,
+              rather than in a card of its own: the category is a *reading* of this
+              report, and separating the two invites them to disagree.
+            */}
+          <MetarPanel
+            icao={icao}
+            flightRules={rules}
+            skyCover={skyCover}
+            ceilingFt={ceilingFt}
+            fogOrMist={fogOrMist}
+            visibilityStatuteMiles={visibilityStatuteMiles}
+            celestial={celestial}
+            figures={figures}
+            skyLine={skyLine}
+            observed={observed}
+            stale={stale}
+            raw={metar}
+            expanded={rawExpanded}
+            unavailableText={unavailableText}
+            sceneHeight={SkyProfileHeight.AirportDetail}
+          />
 
           <div className="fp-detail-facts">
-            {rules != null && (
-              <div className="fp-screen__card" style={{ padding: 12, gap: 8 }}>
-                <span className="fp-screen__card-title fp-type-label-small">CATEGORY</span>
-                <FlightRulesBadge rules={rules} />
-              </div>
-            )}
             <ValueChip label="ELEV" value={elevation} />
           </div>
 
@@ -83,14 +121,6 @@ export function AirportDetailScreen({
             </div>
           </div>
 
-          {metar != null && (
-            <div className="fp-screen__card">
-              <span className="fp-screen__card-title fp-type-label-large">Report</span>
-              {/* Verbatim, in a figure setting: a METAR is a chart figure from end
-                  to end and must never be reordered by the bidi algorithm. */}
-              <code className="fp-metar fp-type-body-small">{metar}</code>
-            </div>
-          )}
         </div>
       </div>
     </PhoneFrame>

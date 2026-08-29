@@ -23,6 +23,13 @@ export interface FleetDetailPaneProps {
   aircraft: Aircraft
   /** Already formatted — `124 kt`. */
   cruiseSpeed?: string
+  /**
+   * Draws the airframe's name at the top. Defaults to `true`.
+   *
+   * The phone screen puts the name in its app bar instead, so it passes `false`
+   * rather than stating it twice.
+   */
+  showTitle?: boolean
   className?: string
 }
 
@@ -33,12 +40,19 @@ export interface FleetDetailPaneProps {
  * two numbers are what every generated route is constrained by — a fleet entry
  * whose range the reader cannot see is one they cannot predict Plan's output from.
  */
-export function FleetDetailPane({ aircraft, cruiseSpeed, className }: FleetDetailPaneProps) {
+export function FleetDetailPane({
+  aircraft,
+  cruiseSpeed,
+  showTitle = true,
+  className,
+}: FleetDetailPaneProps) {
   return (
     <div className={['fp-screen', 'fp-content-cap', className].filter(Boolean).join(' ')}>
-      <div className="fp-screen__header">
-        <h1 className="fp-screen__title fp-type-headline-small">{aircraft.variant}</h1>
-      </div>
+      {showTitle && (
+        <div className="fp-screen__header">
+          <h1 className="fp-screen__title fp-type-headline-small">{aircraft.variant}</h1>
+        </div>
+      )}
       <div className="fp-screen__list">
         <span className="fp-screen__row-detail fp-type-body-medium">{aircraft.category}</span>
         <div className="fp-detail-facts">

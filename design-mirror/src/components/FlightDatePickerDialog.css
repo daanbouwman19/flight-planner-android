@@ -1,0 +1,87 @@
+.fp-datepicker {
+  display: flex;
+  flex-direction: column;
+  width: 328px;
+  box-sizing: border-box;
+  padding: 16px;
+  border-radius: var(--fp-shape-extra-large);
+  background: var(--fp-surface-container-high);
+  color: var(--fp-on-surface);
+}
+
+.fp-datepicker__caption {
+  color: var(--fp-on-surface-variant);
+  padding: 0 8px 8px;
+}
+
+.fp-datepicker__headline {
+  padding: 0 8px 12px;
+  border-bottom: 1px solid var(--fp-outline-variant);
+  color: var(--fp-on-surface);
+  /* A date is a chart figure: it reads left to right in every locale. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.fp-datepicker__month {
+  padding: 12px 8px 8px;
+  color: var(--fp-on-surface);
+}
+
+.fp-datepicker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  place-items: center;
+}
+
+.fp-datepicker__weekday {
+  color: var(--fp-on-surface-variant);
+  height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.fp-datepicker__day {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--fp-on-surface);
+  cursor: pointer;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  transition: background-color var(--fp-motion-effects-fast-duration)
+    var(--fp-motion-effects-fast-easing);
+}
+
+.fp-datepicker__day:hover:not(:disabled) {
+  background: var(--fp-surface-container-highest);
+}
+
+.fp-datepicker__day--selected {
+  background: var(--fp-primary);
+  color: var(--fp-on-primary);
+}
+
+.fp-datepicker__day--selected:hover:not(:disabled) {
+  background: var(--fp-primary);
+}
+
+/*
+ * A flight cannot be logged in the future, so those days are unselectable rather
+ * than rejected after the fact — the constraint is stated where the choice is made.
+ */
+.fp-datepicker__day:disabled {
+  color: var(--fp-on-surface);
+  opacity: 0.38;
+  cursor: default;
+}
+
+.fp-datepicker__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+}

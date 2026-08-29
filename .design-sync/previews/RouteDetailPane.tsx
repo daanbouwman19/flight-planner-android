@@ -28,6 +28,15 @@ export const TransAtlantic = () => (
         skyCover: { kind: 'layers', layers: [{ cover: 'SCATTERED', baseFt: 2800 }] },
         ceilingFt: null,
         celestial: { sunElevationDeg: 31, sunAzimuthDeg: 200 },
+        visibilityStatuteMiles: 10,
+        figures: [
+          { label: 'WIND', value: '250° 14 kt' },
+          { label: 'VIS', value: '10+ SM' },
+          { label: 'CEIL', value: 'Unlimited' },
+          { label: 'QNH', value: '1016 hPa' },
+        ],
+        skyLine: 'Scattered at 2,800 ft',
+        observed: '1355Z · 7 min ago',
       }}
       destination={{
         icao: 'KJFK',
@@ -39,6 +48,15 @@ export const TransAtlantic = () => (
         skyCover: { kind: 'layers', layers: [{ cover: 'OVERCAST', baseFt: 800 }] },
         ceilingFt: 800,
         celestial: { sunElevationDeg: 12, sunAzimuthDeg: 110 },
+        visibilityStatuteMiles: 4,
+        figures: [
+          { label: 'WIND', value: '090° 22G31 kt' },
+          { label: 'VIS', value: '4 SM' },
+          { label: 'CEIL', value: '800 ft' },
+          { label: 'QNH', value: '29.74 inHg' },
+        ],
+        skyLine: 'Overcast at 800 ft',
+        observed: '1351Z · 11 min ago',
       }}
     />
   </div>

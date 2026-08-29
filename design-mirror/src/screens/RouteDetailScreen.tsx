@@ -1,7 +1,8 @@
 import { PhoneFrame, TopAppBar } from '../components/AppChrome'
 import { FlightRulesBadge, type FlightRules } from '../components/FlightRulesBadge'
 import { RouteMap } from '../components/RouteMap'
-import { SkyProfile, SkyProfileHeight, type CelestialState } from '../components/SkyProfile'
+import { SkyProfileHeight, type CelestialState } from '../components/SkyProfile'
+import { MetarPanel, type MetarFigure } from '../components/MetarPanel'
 import { ValueChip } from '../components/ValueChip'
 import type { SkyCover } from '../geo/skyProfile'
 
@@ -15,6 +16,18 @@ export interface RouteDetailEnd {
   skyCover?: SkyCover
   ceilingFt?: number | null
   celestial?: CelestialState | null
+  fogOrMist?: boolean
+  visibilityStatuteMiles?: number | null
+  /** The report's figures, already formatted and already in the reader's units. */
+  figures?: MetarFigure[]
+  /** The sky in words — what the cross-section draws, said plainly. */
+  skyLine?: string
+  /** `Observed 1425Z · 12 min ago`. */
+  observed?: string
+  /** Draws the age in the error colour, for a report past its currency. */
+  stale?: boolean
+  /** The raw report, behind a tap. */
+  raw?: string
 }
 
 export interface RouteDetailPaneProps {
@@ -83,32 +96,17 @@ export function RouteDetailPane({
           <ValueChip label="ACFT" value={aircraft} />
         </div>
 
+        {/*
+            One panel per end, in flight order. They are the same component the
+            airport screen uses, so a station read here and a station read there
+            are the same reading rather than two arrangements of the same facts.
+          */}
         {departure.skyCover != null && (
-          <div className="fp-screen__card">
-            <span className="fp-screen__card-title fp-type-label-large">
-              {departure.icao} · departure
-            </span>
-            <SkyProfile
-              skyCover={departure.skyCover}
-              ceilingFt={departure.ceilingFt}
-              celestial={departure.celestial}
-              height={SkyProfileHeight.RouteDetail}
-            />
-          </div>
+          <MetarPanel {...endWeather(departure)} sceneHeight={SkyProfileHeight.RouteDetail} />
         )}
 
         {destination.skyCover != null && (
-          <div className="fp-screen__card">
-            <span className="fp-screen__card-title fp-type-label-large">
-              {destination.icao} · destination
-            </span>
-            <SkyProfile
-              skyCover={destination.skyCover}
-              ceilingFt={destination.ceilingFt}
-              celestial={destination.celestial}
-              height={SkyProfileHeight.RouteDetail}
-            />
-          </div>
+          <MetarPanel {...endWeather(destination)} sceneHeight={SkyProfileHeight.RouteDetail} />
         )}
       </div>
     </div>
@@ -131,4 +129,27 @@ export function RouteDetailScreen({ className, ...pane }: RouteDetailScreenProps
       <RouteDetailPane {...pane} />
     </PhoneFrame>
   )
+}
+
+/**
+ * The weather half of a {@link RouteDetailEnd}, as {@link MetarPanel}'s props.
+ *
+ * Split out so the two ends cannot pick up different sets of fields, which is
+ * exactly what happened while each end had its own block of markup.
+ */
+function endWeather(end: RouteDetailEnd) {
+  return {
+    icao: end.icao,
+    flightRules: end.rules,
+    skyCover: end.skyCover,
+    ceilingFt: end.ceilingFt,
+    fogOrMist: end.fogOrMist,
+    visibilityStatuteMiles: end.visibilityStatuteMiles,
+    celestial: end.celestial,
+    figures: end.figures,
+    skyLine: end.skyLine,
+    observed: end.observed,
+    stale: end.stale,
+    raw: end.raw,
+  }
 }

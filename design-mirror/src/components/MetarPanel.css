@@ -1,0 +1,91 @@
+/*
+ * One station's weather.
+ *
+ * `overflow: hidden` with the large corner is what lets the cross-section run
+ * edge to edge and still meet the card's rounded corners.
+ */
+.fp-metar {
+  display: block;
+  border-radius: var(--fp-shape-large);
+  background: var(--fp-surface-container-low);
+  overflow: hidden;
+}
+
+.fp-metar__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+/*
+ * Station, category and age on one line. The age is pushed to the trailing edge
+ * because it qualifies the identifier rather than competing with it.
+ */
+.fp-metar__station {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fp-metar__icao {
+  color: var(--fp-on-surface);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.fp-metar__age {
+  margin-left: auto;
+  color: var(--fp-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A reading past its currency says so where it is read. */
+.fp-metar__age--stale {
+  color: var(--fp-error);
+}
+
+.fp-metar__figures {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/*
+ * Two to a row, chunked rather than flowed.
+ *
+ * A flow row packs by measured width, so `WIND 270° 35G50 kt` and `VIS 0.5 SM`
+ * land two-up on one line and one-up on the next, and the labels stop aligning
+ * down an edge — which is the whole argument for the chip.
+ */
+.fp-metar__figure-row {
+  display: flex;
+  gap: 8px;
+}
+
+/*
+ * Equal thirds regardless of content, and a short last row keeps its hole. A
+ * `QNH` chip twice the width of the `CEIL` above it would read as the more
+ * important figure, which is the one thing this grid is arranged to avoid.
+ */
+.fp-metar__chip {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.fp-metar__sky-line {
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-metar__raw {
+  border-top: 1px solid var(--fp-outline-variant);
+  padding-top: 8px;
+}
+
+.fp-metar__raw-text {
+  margin: 0;
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fp-on-surface-variant);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

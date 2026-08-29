@@ -24,6 +24,16 @@ export const ClearDay = () => (
     skyCover={{ kind: 'layers', layers: [{ cover: 'FEW', baseFt: 3500 }] }}
     ceilingFt={null}
     celestial={{ sunElevationDeg: 38, sunAzimuthDeg: 195 }}
+    visibilityStatuteMiles={10}
+    figures={[
+      { label: 'WIND', value: '240° 12 kt' },
+      { label: 'VIS', value: '10+ SM' },
+      { label: 'CEIL', value: 'Unlimited' },
+      { label: 'QNH', value: '1018 hPa' },
+      { label: 'TEMP', value: '18 / 11 °C' },
+    ]}
+    skyLine="Few at 3,500 ft"
+    observed="1025Z · 9 min ago"
     metar="EHAM 291025Z 24012KT 9999 FEW035 18/11 Q1018 NOSIG"
   />
 )
@@ -48,7 +58,17 @@ export const LowIfr = () => (
     visibilityStatuteMiles={0.4}
     ceilingFt={400}
     celestial={{ sunElevationDeg: 9, sunAzimuthDeg: 120 }}
+    figures={[
+      { label: 'WIND', value: '060° 5 kt' },
+      { label: 'VIS', value: '0.4 SM' },
+      { label: 'CEIL', value: '400 ft' },
+      { label: 'QNH', value: '1024 hPa' },
+      { label: 'TEMP', value: '9 / 9 °C' },
+    ]}
+    skyLine="Overcast at 400 ft, fog"
+    observed="0655Z · 21 min ago"
     metar="EHAM 290655Z 06005KT 0800 FG OVC004 09/09 Q1024"
+    rawExpanded
   />
 )
 
@@ -64,5 +84,6 @@ export const NoWeather = () => (
       { ident: '24', lengthFt: 7218, widthFt: 148, trueHeadingDeg: 237, hardSurface: true },
     ]}
     skyCover={{ kind: 'unknown' }}
+    unavailableText="No weather report for EHRD"
   />
 )

@@ -103,6 +103,63 @@
     "RouteDetailPane": {
       "cardMode": "column",
       "viewport": "700x900"
+    },
+    "PickerSheet": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "AddAircraftSheet": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "EditEnvelopeSheet": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "AddFlightSheet": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "FlightDatePickerDialog": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "BottomSheet": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "FleetDetailScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "StartupCheckScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "LicencesScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "TextField": {
+      "cardMode": "column"
+    },
+    "MetarPanel": {
+      "cardMode": "column"
+    },
+    "HeroDistanceCard": {
+      "cardMode": "column"
+    },
+    "MetricGrid": {
+      "cardMode": "column"
+    },
+    "MonthlyActivityCard": {
+      "cardMode": "column"
+    },
+    "RankedListCard": {
+      "cardMode": "column"
+    },
+    "VisitedNetworkCard": {
+      "cardMode": "column"
     }
   },
   "componentSrcMap": {

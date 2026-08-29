@@ -112,6 +112,57 @@ Three things change, and all three are decisions rather than defaults:
 <PlanScreen layout="tablet" routes={routes} detail={<RouteDetailPane … />} />
 ```
 
+## Sheets, fields and dialogs
+
+Every form in this app is a **modal bottom sheet**, and every modal choice is one
+too. There is no dialog-with-fields anywhere; the only true dialogs are
+`ConfirmationDialog` (a destructive yes/no) and `FlightDatePickerDialog` (a
+calendar). Reach for a sheet.
+
+```tsx
+<PhoneFrame>
+  <ScrimOverlay>
+    <AddAircraftSheet manufacturer="Cessna" variant="172S Skyhawk" range="640" />
+  </ScrimOverlay>
+</PhoneFrame>
+```
+
+`BottomSheet` renders **inline rather than in a portal**, so a sheet can be one
+element of a screen concept without a modal layer swallowing the artboard. Wrap it
+in `ScrimOverlay` when the concept is about the modal state; put that inside a
+`PhoneFrame` when it is about the sheet on a screen.
+
+Two heights, and the choice is not cosmetic. `PickerSheet` takes 90% of the window
+because it exists to be typed into and the results *are* the content; the form
+sheets pass `auto` and size to themselves, because a three-field sheet claiming
+most of the window reads as something missing.
+
+`TextField` is the only field. A value typed into one is a figure more often than
+not, so it is set tabular and left to right — a range reordered by the bidirectional
+algorithm under an RTL locale is a wrong number, not an untidy one. Units go in
+`suffix`, never in the label: a reader entering 640 needs to know it is nautical
+miles at the moment they type it. A failing field states its own reason on itself
+rather than under a banner that makes the user hunt for which one.
+
+The four flows are `PickerSheet` (airport or aircraft), `AddAircraftSheet`,
+`EditEnvelopeSheet` and `AddFlightSheet`. Compose a new one from `BottomSheet`
+and `TextField` rather than inventing a modal vocabulary beside them.
+
+## Weather is one panel, not a layout
+
+`MetarPanel` is the whole of a station's weather: the cross-section edge to edge at
+the top, then the station, its category and the report's age on one line, then the
+figures as `ValueChip`s, then the sky in words, then the raw report behind a tap.
+The airport screen shows one; the route screen shows two. **Do not rebuild it out of
+a bare `SkyProfile` and a card title** — the panel is what makes the category read
+as a consequence of the geometry rather than a label pinned beside a picture, and
+the two ends of a route drifting apart is exactly what happens when each gets its
+own markup.
+
+The figures chunk two to a row rather than flowing, so the labels align down an
+edge, and a short last row keeps its hole: a `QNH` chip stretched to twice the width
+of the `CEIL` above it would read as the more important figure.
+
 ## Five rules this app does not bend
 
 1. **Flight-rules colours are semantic and never re-themed.** VFR green, MVFR blue,
@@ -136,15 +187,45 @@ Three things change, and all three are decisions rather than defaults:
    8 % is what makes one unnecessary — and do not draw a sun on an IFR field: in
    this system the category is a consequence of the geometry.
 
+
+## What this mirror deliberately does not carry
+
+Four things in the app are **behaviour**, and a static component library that
+half-implemented them would promise something a concept cannot deliver. They are
+named here so a design does not quietly assume them, and so a concept that wants to
+change one says so in words instead:
+
+1. **Compact height and landscape.** The screens here are portrait phone and
+   landscape tablet. The app also reflows for a short window — a phone on its side,
+   a small freeform window — where the top app bar collapses and the content
+   scrolls in a shorter box. Design portrait; say so if a concept depends on height.
+2. **Chrome that retracts on scroll.** The bottom bar and the app bar hide as you
+   scroll down and return as you scroll up. `PhoneFrame` always draws them. A
+   concept about how much content fits should say which state it assumes.
+3. **Swipe to delete, and the undo that follows.** Logbook rows are dismissed by
+   swiping, which reveals `SwipeActionBackground` and then offers an undo. The
+   background component is here; the gesture and the snackbar are not.
+4. **The search affordances inside `PickerSheet`.** The real sheet takes focus one
+   frame after composing so the keyboard rises *with* it, debounces the query, and
+   scrolls the results back to the top on each new one. What is mirrored is the
+   sheet's shape and its result rows.
+
+The drag handle on `BottomSheet` is drawn and does nothing, for the same reason.
+
 ## Where the truth lives
 
 - `_ds/<folder>/styles.css` and its imports — every token, in one place. Read it
   before inventing a value.
 - `components/<group>/<Name>/<Name>.prompt.md` — per-component usage, with the
   reasoning behind the API.
-- Screens (`PlanScreen`, `FleetScreen`, `LogbookScreen`, `StatsScreen`,
-  `AirportsScreen`, `AirportDetailScreen`, `RouteDetailScreen`, `SettingsScreen`)
-  are the app as it exists. Start a concept from the closest one.
+- Screens (`PlanScreen`, `FleetScreen`, `FleetDetailScreen`, `LogbookScreen`,
+  `StatsScreen`, `AirportsScreen`, `AirportDetailScreen`, `RouteDetailScreen`,
+  `SettingsScreen`, `StartupCheckScreen`, `LicencesScreen`) are the app as it
+  exists. Start a concept from the closest one.
+- The statistics screen is a composition of `HeroDistanceCard`, `MetricGrid`,
+  `VisitedNetworkCard`, `MonthlyActivityCard` and `RankedListCard` rather than
+  markup of its own, so a card redesigned in a concept lands in every arrangement
+  of those figures at once.
 
 ## One idiomatic build
 

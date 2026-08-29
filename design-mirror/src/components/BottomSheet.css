@@ -1,0 +1,159 @@
+.fp-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+  /* The sheet meets the window's bottom edge, so only its top corners round. */
+  border-radius: var(--fp-shape-extra-large) var(--fp-shape-extra-large) 0 0;
+  background: var(--fp-surface-container-low);
+  color: var(--fp-on-surface);
+  overflow: hidden;
+}
+
+.fp-sheet--auto {
+  height: auto;
+}
+
+.fp-sheet__handle {
+  flex: none;
+  width: 32px;
+  height: 4px;
+  margin: 12px auto 0;
+  border-radius: 2px;
+  background: var(--fp-on-surface-variant);
+  opacity: 0.4;
+}
+
+.fp-sheet__title {
+  flex: none;
+  padding: 16px 16px 8px;
+  color: var(--fp-on-surface);
+}
+
+.fp-sheet__content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 16px 24px;
+  overflow-y: auto;
+}
+
+.fp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fp-field__box {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 56px;
+  padding: 8px 16px;
+  box-sizing: border-box;
+  border: 1px solid var(--fp-outline);
+  border-radius: var(--fp-shape-extra-small);
+  background: transparent;
+  position: relative;
+}
+
+.fp-field__box--filled {
+  border-color: var(--fp-outline-variant);
+}
+
+.fp-field__box--error {
+  border-color: var(--fp-error);
+  border-width: 2px;
+}
+
+.fp-field__label {
+  position: absolute;
+  top: -7px;
+  left: 12px;
+  padding: 0 4px;
+  /* The label sits on the outline, so it needs the surface behind it. */
+  background: var(--fp-surface-container-low);
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-field__box--error .fp-field__label {
+  color: var(--fp-error);
+}
+
+.fp-field__value {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  color: var(--fp-on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* A field's value is a figure more often than not in this app. */
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.fp-field__placeholder {
+  color: var(--fp-on-surface-variant);
+  opacity: 0.7;
+}
+
+.fp-field__suffix {
+  align-self: center;
+  color: var(--fp-on-surface-variant);
+  white-space: nowrap;
+}
+
+.fp-field__supporting {
+  padding: 0 16px;
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-field__supporting--error {
+  color: var(--fp-error);
+}
+
+.fp-sheet__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.fp-sheet__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.fp-sheet__result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 8px;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--fp-shape-small);
+}
+
+.fp-sheet__result:hover {
+  background: var(--fp-surface-container-high);
+}
+
+.fp-sheet__result-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
