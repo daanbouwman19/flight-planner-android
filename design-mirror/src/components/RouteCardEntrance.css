@@ -1,0 +1,91 @@
+/*
+ * The route card's entrance, ported from `Modifier.rowEntrance` in PlanScreen.
+ *
+ * A staggered sequence is a chain of *delays*, and 30 ms apart, capped at eight —
+ * past that the rows are simply there. A staggered entrance explains where a new
+ * list came from; it explains nothing about row 63 of an appended batch that the
+ * user is already scrolling towards at speed, where it is only a delay between
+ * arriving at a row and being able to read it.
+ *
+ * **Fade on the effects spring, movement on the spatial one.** That is the design
+ * system's split applied to a single entrance: the alpha must not overshoot, the
+ * movement should. The overshoot is what gives the card its weight — on the rise
+ * it reads as a settle.
+ */
+
+.fp-route-card--entering {
+  animation:
+    fp-card-fade var(--fp-motion-effects-duration) var(--fp-motion-effects-easing) both,
+    fp-card-rise var(--fp-motion-spatial-duration) var(--fp-motion-spatial-easing) both;
+}
+
+/*
+ * A replacement arrives from the end edge instead of rising, because a swipe
+ * carried the card it replaces towards the start edge. It is exempt from the
+ * stagger cap: its index says where it is in the list, not how far it is from the
+ * user's attention.
+ */
+.fp-route-card--replacing {
+  animation:
+    fp-card-fade var(--fp-motion-effects-duration) var(--fp-motion-effects-easing) both,
+    fp-card-slide var(--fp-motion-spatial-duration) var(--fp-motion-spatial-easing) both;
+}
+
+@keyframes fp-card-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fp-card-rise {
+  from {
+    transform: translateY(12px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fp-card-slide {
+  from {
+    /* A fraction of the row's own width rather than a fixed distance, so it reads
+       the same on a phone and on a tablet. */
+    transform: translateX(33%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/*
+ * Reduce motion switches the stagger off rather than shortening it. A staggered
+ * sequence is a chain of delays, and the system animator scale does not scale
+ * delays — so this has to be explicit rather than relying on the engine.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .fp-route-card--entering,
+  .fp-route-card--replacing {
+    animation: none;
+  }
+}
+
+/*
+ * The press state. A card is a button here, and Material signals the press with a
+ * state layer rather than with a scale — a card that shrinks under the finger
+ * reads as a control, and this one is a surface you are opening.
+ */
+.fp-route-card--pressable {
+  transition: background-color var(--fp-motion-effects-fast-duration)
+    var(--fp-motion-effects-fast-easing);
+}
+
+.fp-route-card--pressable:hover {
+  background: color-mix(in srgb, var(--fp-on-surface) 8%, var(--fp-surface-container));
+}
+
+.fp-route-card--pressable:active {
+  background: color-mix(in srgb, var(--fp-on-surface) 12%, var(--fp-surface-container));
+}

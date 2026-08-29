@@ -1,0 +1,50 @@
+.fp-nav-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 88px;
+  flex: none;
+  padding: 44px 0 16px;
+  box-sizing: border-box;
+  background: var(--fp-surface-container);
+  color: var(--fp-on-surface-variant);
+  /* No auto-hide: a rail costs width, and width is what a wide window has spare.
+     Only a horizontal bar gives height back, which is why only that one retracts. */
+  overflow-y: auto;
+}
+
+.fp-nav-rail__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.fp-nav-rail__indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 32px;
+  border-radius: 16px;
+  transition:
+    background-color var(--fp-motion-effects-duration) var(--fp-motion-effects-easing),
+    color var(--fp-motion-effects-duration) var(--fp-motion-effects-easing);
+}
+
+.fp-nav-rail__indicator--active {
+  background: var(--fp-secondary-container);
+  color: var(--fp-on-secondary-container);
+}
+
+.fp-nav-rail__item[aria-current='page'] .fp-nav-rail__label {
+  color: var(--fp-on-surface);
+}

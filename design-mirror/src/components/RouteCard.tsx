@@ -45,9 +45,29 @@ export interface RouteCardProps {
    * squashes the land — at the default 360 × 180 card that is a 2:1 window.
    */
   mapAspect?: number
+  /**
+   * The card's position in the list, which drives its entrance stagger.
+   *
+   * 30 ms per row, **capped at eight**: past that the rows are simply there. A
+   * staggered entrance explains where a new list came from; it explains nothing
+   * about row 63 of an appended batch the user is already scrolling towards at
+   * speed, where it is only a delay between arriving at a row and being able to
+   * read it. Omit it for a card that is not entering.
+   */
+  enterIndex?: number
+  /**
+   * This card replaced a swiped-away one, so it arrives from the end edge instead
+   * of rising — and is exempt from the stagger cap, because its index says where
+   * it is in the list rather than how far it is from the user's attention.
+   */
+  replacing?: boolean
   onClick?: () => void
   className?: string
 }
+
+/** 30 ms apart, capped at eight rows. */
+const ENTER_STAGGER_MS = 30
+const ENTER_STAGGER_CAP = 8
 
 /**
  * One generated route: the app's most-seen surface.
@@ -89,14 +109,30 @@ export function RouteCard({
   flightTime,
   minHeight = 180,
   mapAspect = 2,
+  enterIndex,
+  replacing = false,
   onClick,
   className,
 }: RouteCardProps) {
   const Root = onClick ? 'button' : 'div'
+  // Only the first screenful of a batch animates; a replacement always does.
+  const entering = replacing || (enterIndex != null && enterIndex < ENTER_STAGGER_CAP)
+  const delayMs =
+    replacing || enterIndex == null
+      ? 0
+      : Math.min(Math.max(enterIndex, 0), ENTER_STAGGER_CAP) * ENTER_STAGGER_MS
+
   return (
     <Root
-      className={['fp-route-card', className].filter(Boolean).join(' ')}
-      style={{ minHeight }}
+      className={[
+        'fp-route-card',
+        onClick ? 'fp-route-card--pressable' : null,
+        entering ? (replacing ? 'fp-route-card--replacing' : 'fp-route-card--entering') : null,
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      style={{ minHeight, animationDelay: entering ? `${delayMs}ms` : undefined }}
       onClick={onClick}
       // One description for the whole card. Left to itself it announces eleven
       // separate nodes — two codes, two chips and three labelled figures — which

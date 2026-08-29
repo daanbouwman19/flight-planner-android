@@ -1,4 +1,4 @@
-import { LogbookScreen } from '@flightplanner/design-mirror'
+import { FlightDetailPane, LogbookScreen } from '@flightplanner/design-mirror'
 
 const months = [
   {
@@ -32,3 +32,23 @@ export const Default = () => (
 
 /** A single month, no summary — the shape a new logbook has. */
 export const OneMonth = () => <LogbookScreen months={months.slice(0, 1)} />
+
+/**
+ * The wide window, at the **wider** content cap.
+ *
+ * The logbook's rows are less dense than Plan's cards, so 840px is readable where
+ * 640px would be for the route list. The cap is per-screen for that reason rather
+ * than one global number.
+ */
+export const Tablet = () => (
+  <LogbookScreen
+    layout="tablet"
+    months={months}
+    summary={[
+      { label: 'FLIGHTS', value: '42' },
+      { label: 'NM', value: '48,213' },
+      { label: 'HOURS', value: '63:25' },
+    ]}
+    detail={<FlightDetailPane flight={months[0].flights[0]} />}
+  />
+)

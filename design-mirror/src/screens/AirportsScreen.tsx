@@ -1,4 +1,7 @@
 import { NavigationBar, PhoneFrame } from '../components/AppChrome'
+import { NavigationRail } from '../components/NavigationRail'
+import { TabletFrame } from '../components/TabletFrame'
+import type { ScreenLayout } from './PlanScreen'
 import { FlightRulesBadge, type FlightRules } from '../components/FlightRulesBadge'
 import { ModeSelector } from '../components/ModeSelector'
 
@@ -17,6 +20,8 @@ export interface AirportsScreenProps {
   /** What is typed in the search field. */
   query?: string
   selectedFilter?: number
+  /** Defaults to `phone`. */
+  layout?: ScreenLayout
   className?: string
 }
 
@@ -31,11 +36,11 @@ export function AirportsScreen({
   airports,
   query = '',
   selectedFilter = 0,
+  layout = 'phone',
   className,
 }: AirportsScreenProps) {
-  return (
-    <PhoneFrame className={className} bottomBar={<NavigationBar selected="plan" />}>
-      <div className="fp-screen">
+  const body = (
+    <div className={layout === 'tablet' ? 'fp-screen fp-content-cap' : 'fp-screen'}>
         <div className="fp-screen__header">
           <h1 className="fp-screen__title fp-type-headline-medium">Airports</h1>
         </div>
@@ -68,7 +73,20 @@ export function AirportsScreen({
             </button>
           ))}
         </div>
-      </div>
+    </div>
+  )
+
+  if (layout === 'tablet') {
+    return (
+      <TabletFrame className={className} rail={<NavigationRail selected="plan" />}>
+        {body}
+      </TabletFrame>
+    )
+  }
+
+  return (
+    <PhoneFrame className={className} bottomBar={<NavigationBar selected="plan" />}>
+      {body}
     </PhoneFrame>
   )
 }

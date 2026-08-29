@@ -128,3 +128,17 @@ export { RouteDetailScreen } from './screens/RouteDetailScreen'
 export type { RouteDetailScreenProps, RouteDetailEnd } from './screens/RouteDetailScreen'
 export { SettingsScreen } from './screens/SettingsScreen'
 export type { SettingsScreenProps } from './screens/SettingsScreen'
+
+// Wide-window chrome. The app has one set of screens that adapt, so these are
+// the pieces the wide form swaps in rather than a parallel screen set.
+export { NavigationRail } from './components/NavigationRail'
+export type { NavigationRailProps, RailDestination } from './components/NavigationRail'
+export { TabletFrame, TwoPaneScaffold, MAX_CONTENT_WIDTH, WIDE_MAX_CONTENT_WIDTH } from './components/TabletFrame'
+export type { TabletFrameProps, TwoPaneScaffoldProps } from './components/TabletFrame'
+export { RouteDetailPane } from './screens/RouteDetailScreen'
+export type { RouteDetailPaneProps } from './screens/RouteDetailScreen'
+export { FleetDetailPane } from './screens/FleetScreen'
+export type { FleetDetailPaneProps } from './screens/FleetScreen'
+export { FlightDetailPane } from './screens/LogbookScreen'
+export type { FlightDetailPaneProps } from './screens/LogbookScreen'
+export type { ScreenLayout } from './screens/PlanScreen'

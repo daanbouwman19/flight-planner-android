@@ -68,9 +68,49 @@ anything that moves or resizes; effects for fades, colour and elevation.** Spati
 springs overshoot — that overshoot is the character — and a spatial spring on a
 colour fade reads as a flicker.
 
+A single transition often uses **both**: `RouteCard`'s entrance fades on the
+effects spring while it rises on the spatial one, because the alpha must not
+overshoot and the movement should. Give a card its list position as `enterIndex`
+and it staggers 30 ms per row, **capped at eight** — past that rows are simply
+there, since a stagger explains where a new list came from but explains nothing
+about row 63 of a batch the user is already scrolling towards. `replacing` makes it
+arrive from the end edge instead, because the card it replaced was swiped towards
+the start edge. Anything staged or infinite — stagger, shimmer, flutter — switches
+**off** under `prefers-reduced-motion` rather than shortening.
+
 Ready-made surfaces: `fp-card`, `fp-surface`, `fp-surface-container`,
 `fp-surface-container-high`, `fp-surface-container-low`, `fp-button`,
 `fp-button--tonal`, `fp-button--text`.
+
+## Phone and tablet are one screen, not two
+
+Every screen takes `layout="phone"` (default, 360 × 800) or `layout="tablet"`
+(1280 × 800). It is a width, not a variant — the app has one set of screens that
+reflow, so do not design a parallel tablet screen.
+
+Three things change, and all three are decisions rather than defaults:
+
+1. **The bottom bar becomes a rail, and the rail carries five destinations where
+   the bar carries four.** Settings is somewhere you go once and come back from, so
+   on a phone it lives in the app bar rather than taking a fifth of the bar; a rail
+   has room, so it gets a permanent home. The rail also never auto-hides — the bar
+   retracts on scroll because a horizontal bar is the only form that gives height
+   back, and a rail costs width, which a wide window has spare.
+2. **Plan, Fleet and Logbook become list/detail.** Pass a `detail` — a
+   `RouteDetailPane`, `FleetDetailPane` or `FlightDetailPane` — and the screen puts
+   it beside the list. Selecting a row replaces that pane **in place**, so a pane
+   change is a fade-through and never a slide: a slide would claim a direction the
+   selection does not have.
+3. **Content is width-capped, never stretched.** `fp-content-cap` (640px) and
+   `fp-content-cap--wide` (840px, for the detail screens and the logbook, whose
+   rows are less dense). Past the cap a single column stops helping — a filter
+   field 390px wide to say "Any", a card whose map is mostly ocean — so the extra
+   width becomes margin. **It is deliberately not a grid**; making it one is a real
+   design decision, not a free win.
+
+```tsx
+<PlanScreen layout="tablet" routes={routes} detail={<RouteDetailPane … />} />
+```
 
 ## Five rules this app does not bend
 

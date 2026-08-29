@@ -88,6 +88,14 @@ Recorded so a future sync does not read them as defects:
   scale intends.
 - Interaction-only states are not previewed: the windsock drag, swipe gesture
   tracking, and the FAB's shape-morph on press.
+- **The shared-element transition is not reproduced.** In the app the route card's
+  face travels to the detail screen's hero — one element holding the map *and* the
+  figures printed over it — on a spatial `boundsTransform`, with `sharedEnter`/
+  `sharedExit` deliberately fade-only because an overlay does not inherit the
+  transform of the screen beneath it. A component library has no navigation for
+  that flight to happen across, so the mirror ships the two ends (`RouteCard` and
+  `RouteDetailPane`, one component in both places) and the motion tokens, but not
+  the transition itself. The entrance stagger and the press state **are** ported.
 
 ## A finding about the app itself
 

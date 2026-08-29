@@ -38,7 +38,7 @@ export function SettingsScreen({
   return (
     <PhoneFrame className={className}>
       <TopAppBar title="Settings" onBack={() => {}} />
-      <div className="fp-screen">
+      <div className="fp-screen fp-content-cap">
         <div className="fp-screen__list">
           <Section title="Appearance">
             <ModeSelector

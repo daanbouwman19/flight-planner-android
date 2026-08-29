@@ -49,7 +49,7 @@ export function AirportDetailScreen({
   return (
     <PhoneFrame className={className}>
       <TopAppBar title={icao} onBack={() => {}} />
-      <div className="fp-screen">
+      <div className="fp-screen fp-content-cap fp-content-cap--wide">
         <div className="fp-screen__list">
           <div>
             <div className="fp-screen__row-title fp-type-title-medium">{name}</div>

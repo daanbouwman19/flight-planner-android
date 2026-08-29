@@ -351,3 +351,19 @@
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
+
+/*
+ * The row whose detail is showing in the trailing pane. Only meaningful in the
+ * two-pane layout: on a phone the detail is a separate screen, so there is no
+ * "current" row to mark once you have left the list.
+ */
+.fp-screen__row--selected {
+  background: var(--fp-secondary-container);
+  color: var(--fp-on-secondary-container);
+}
+
+.fp-screen__row--selected .fp-screen__row-title,
+.fp-screen__row--selected .fp-screen__row-detail,
+.fp-screen__row--selected .fp-screen__row-figure {
+  color: inherit;
+}

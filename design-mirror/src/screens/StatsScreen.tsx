@@ -1,4 +1,7 @@
 import { NavigationBar, PhoneFrame } from '../components/AppChrome'
+import { NavigationRail } from '../components/NavigationRail'
+import { TabletFrame } from '../components/TabletFrame'
+import type { ScreenLayout } from './PlanScreen'
 import { ModeSelector } from '../components/ModeSelector'
 
 export interface StatsScreenProps {
@@ -15,6 +18,8 @@ export interface StatsScreenProps {
   /** Airports visited most. */
   topAirports: Array<{ icao: string; name: string; visits: number }>
   selectedRange?: number
+  /** Defaults to `phone`. */
+  layout?: ScreenLayout
   className?: string
 }
 
@@ -34,12 +39,12 @@ export function StatsScreen({
   topAircraft,
   topAirports,
   selectedRange = 0,
+  layout = 'phone',
   className,
 }: StatsScreenProps) {
   const peak = Math.max(1, ...monthly.map((m) => m.value))
-  return (
-    <PhoneFrame className={className} bottomBar={<NavigationBar selected="stats" />}>
-      <div className="fp-screen">
+  const body = (
+    <div className={layout === 'tablet' ? 'fp-screen fp-content-cap' : 'fp-screen'}>
         <div className="fp-screen__header">
           <h1 className="fp-screen__title fp-type-headline-medium">Stats</h1>
         </div>
@@ -105,7 +110,20 @@ export function StatsScreen({
             ))}
           </div>
         </div>
-      </div>
+    </div>
+  )
+
+  if (layout === 'tablet') {
+    return (
+      <TabletFrame className={className} rail={<NavigationRail selected="stats" />}>
+        {body}
+      </TabletFrame>
+    )
+  }
+
+  return (
+    <PhoneFrame className={className} bottomBar={<NavigationBar selected="stats" />}>
+      {body}
     </PhoneFrame>
   )
 }

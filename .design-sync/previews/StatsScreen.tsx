@@ -34,3 +34,6 @@ export const Chart = () => (
     <StatsScreen {...props} selectedRange={1} />
   </FlightPlannerTheme>
 )
+
+/** The wide window: a rail, and the content capped rather than stretched. */
+export const Tablet = () => <StatsScreen {...props} layout="tablet" />

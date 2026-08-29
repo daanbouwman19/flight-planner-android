@@ -1,0 +1,75 @@
+.fp-tablet-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--fp-background);
+  color: var(--fp-on-background);
+}
+
+/* Empty, exactly as on the phone: content runs under the clock and nothing is
+   painted behind it. */
+.fp-tablet-frame__status {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 28px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--fp-on-background);
+}
+
+.fp-tablet-frame__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.fp-tablet-frame__content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.fp-two-pane {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.fp-two-pane__list,
+.fp-two-pane__detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/* The detail pane sits on its own surface so the split is legible without a rule
+   between the two, which would read as a border rather than as two surfaces. */
+.fp-two-pane__detail {
+  background: var(--fp-surface-container-low);
+}
+
+/*
+ * The width cap. Past this a single column stops helping, so the extra width
+ * becomes margin and the column stays a column — deliberately not a grid.
+ */
+.fp-content-cap {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.fp-content-cap--wide {
+  max-width: 840px;
+}

@@ -16,3 +16,6 @@ export const Browse = () => <AirportsScreen airports={airports} />
 export const Searching = () => (
   <AirportsScreen airports={airports.filter((a) => a.icao.startsWith('EH'))} query="EH" />
 )
+
+/** The wide window, with the rail carrying Settings alongside the four sections. */
+export const Tablet = () => <AirportsScreen airports={airports} layout="tablet" />

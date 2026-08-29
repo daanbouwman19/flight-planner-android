@@ -17,23 +17,23 @@
   "overrides": {
     "PlanScreen": {
       "cardMode": "column",
-      "viewport": "420x900"
+      "viewport": "1400x900"
     },
     "FleetScreen": {
       "cardMode": "column",
-      "viewport": "420x900"
+      "viewport": "1400x900"
     },
     "LogbookScreen": {
       "cardMode": "column",
-      "viewport": "420x900"
+      "viewport": "1400x900"
     },
     "StatsScreen": {
       "cardMode": "column",
-      "viewport": "420x900"
+      "viewport": "1400x900"
     },
     "AirportsScreen": {
       "cardMode": "column",
-      "viewport": "420x900"
+      "viewport": "1400x900"
     },
     "AirportDetailScreen": {
       "cardMode": "column",
@@ -88,6 +88,21 @@
     },
     "FlightPlannerTheme": {
       "cardMode": "column"
+    },
+    "TabletFrame": {
+      "cardMode": "column",
+      "viewport": "1400x900"
+    },
+    "NavigationRail": {
+      "cardMode": "column"
+    },
+    "TwoPaneScaffold": {
+      "cardMode": "column",
+      "viewport": "1100x600"
+    },
+    "RouteDetailPane": {
+      "cardMode": "column",
+      "viewport": "700x900"
     }
   },
   "componentSrcMap": {

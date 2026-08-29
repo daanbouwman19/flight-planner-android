@@ -1,4 +1,4 @@
-import { FleetScreen } from '@flightplanner/design-mirror'
+import { FleetDetailPane, FleetScreen } from '@flightplanner/design-mirror'
 
 const fleet = [
   { variant: 'Cessna 172S Skyhawk', category: 'Single Engine Piston', range: '640 NM', requiredRunway: '1,685 ft', flights: 42 },
@@ -16,4 +16,26 @@ export const AllCategories = () => <FleetScreen aircraft={fleet} selectedCategor
 /** Filtered to piston singles — the aircraft most routes are actually generated for. */
 export const PistonOnly = () => (
   <FleetScreen aircraft={fleet.slice(0, 3)} selectedCategory={1} />
+)
+
+/**
+ * The wide window: list and airframe detail side by side.
+ *
+ * The selected row is marked, which is only meaningful here — on a phone the
+ * detail is a separate screen, so once you have left the list there is no current
+ * row to mark.
+ */
+export const Tablet = () => (
+  <FleetScreen
+    layout="tablet"
+    aircraft={fleet}
+    selectedCategory={0}
+    selectedVariant="Pilatus PC-12 NGX"
+    detail={
+      <FleetDetailPane
+        aircraft={fleet[3]}
+        cruiseSpeed="290 kt"
+      />
+    }
+  />
 )
