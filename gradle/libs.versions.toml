@@ -75,7 +75,7 @@ coroutines = "1.11.0"
 serialization = "1.11.0"
 # --- network / images ---
 okhttp = "5.4.0"
-coil = "3.5.0"
+coil = "3.6.0"
 # --- rendering ---
 filament = "1.75.0"
 # graphics-shapes is the library `MaterialShapes` is built on. That catalogue is
