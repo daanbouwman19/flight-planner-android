@@ -77,7 +77,7 @@ serialization = "1.11.0"
 okhttp = "5.4.0"
 coil = "3.5.0"
 # --- rendering ---
-filament = "1.75.0"
+filament = "1.75.1"
 # graphics-shapes is the library `MaterialShapes` is built on. That catalogue is
 # absent from material3 1.4.0 (see docs/API-GROUND-TRUTH.md), but the primitives
 # -- RoundedPolygon, Morph -- are public and stable here, so the design system
