@@ -1,4 +1,5 @@
 {
+  "projectId": "12b37c01-5351-4906-9114-c628e70a92b6",
   "shape": "package",
   "pkg": "@flightplanner/design-mirror",
   "globalName": "FlightPlannerDS",
