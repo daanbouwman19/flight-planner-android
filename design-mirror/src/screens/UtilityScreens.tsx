@@ -36,12 +36,18 @@ const statusGlyph: Record<CheckStatus, string> = {
  */
 export function StartupCheckScreen({ checks, version, className }: StartupCheckScreenProps) {
   const failing = checks.filter((c) => c.status === 'fail').length
+  const warning = checks.filter((c) => c.status === 'warn').length
+  // A warning gets its own headline rather than being folded into "all passed".
+  // A green summary sitting directly above a row marked WARN is the headline
+  // contradicting the list under it, which is worse than no headline.
   const summary =
     failing > 0
       ? `${failing} check${failing === 1 ? '' : 's'} failed`
       : checks.some((c) => c.status === 'running')
         ? 'Running…'
-        : 'All checks passed'
+        : warning > 0
+          ? `${warning} check${warning === 1 ? '' : 's'} with warnings`
+          : 'All checks passed'
 
   return (
     <PhoneFrame className={className}>
@@ -55,7 +61,7 @@ export function StartupCheckScreen({ checks, version, className }: StartupCheckS
               className={[
                 'fp-check__summary',
                 'fp-type-title-medium',
-                failing > 0 ? 'fp-check--fail' : 'fp-check--pass',
+                failing > 0 ? 'fp-check--fail' : warning > 0 ? 'fp-check--warn' : 'fp-check--pass',
               ].join(' ')}
             >
               {summary}

@@ -19,6 +19,12 @@ import kotlin.test.fail
  * the export is regenerated and committed. The failure is the point — it is the
  * only moment at which the drift is cheap to fix.
  *
+ * **A failing run leaves the tree exactly as it found it.** Regenerating is the
+ * explicit `-Dtokens.write=true` below and nothing else. An earlier version wrote
+ * the file *and* failed, which meant a second `./gradlew build` passed against
+ * what the first run had written — so the guard could be walked past by running it
+ * twice, and would then never fire again.
+ *
  * Regenerate with:
  * ```
  * ./gradlew :core:designsystem:testDebugUnitTest --tests "*DesignTokenExportTest*" -Dtokens.write=true
@@ -41,25 +47,59 @@ class DesignTokenExportTest {
             return
         }
 
+        // **The failing run must not repair the tree.** It used to: on a mismatch
+        // it wrote the regenerated JSON and then failed, so a second `./gradlew
+        // build` passed against the file the first run had just written. A
+        // developer who changed a colour, saw the failure, and re-ran would ship
+        // the Kotlin change with a stale `tokens.json` and nothing would ever fail
+        // again — the exact drift this class exists to make impossible.
+        //
+        // So it only reports, and regenerating is the explicit `-Dtokens.write=true`
+        // above. A build that fails twice for the same reason is the point.
         if (!target.exists()) {
-            target.parentFile.mkdirs()
-            target.writeText(expected)
             fail(
-                "design-mirror tokens did not exist and have been written to " +
-                    "${target.path}. Commit them.",
+                "design-mirror tokens are missing at ${target.path}.\n" +
+                    "Generate them with:\n" +
+                    "  ./gradlew :core:designsystem:testDebugUnitTest " +
+                    "--tests '*DesignTokenExportTest*' -Dtokens.write=true\n" +
+                    "then rebuild the mirror and commit both.",
             )
         }
 
         val actual = target.readText()
         if (actual != expected) {
-            target.writeText(expected)
             fail(
-                "design-mirror tokens were stale and have been regenerated at ${target.path}.\n" +
-                    "The design system changed; commit the regenerated file so the React mirror " +
-                    "renders what the app renders.",
+                "design-mirror tokens are stale at ${target.path}.\n" +
+                    firstDifference(actual, expected) + "\n" +
+                    "The design system changed. Regenerate with:\n" +
+                    "  ./gradlew :core:designsystem:testDebugUnitTest " +
+                    "--tests '*DesignTokenExportTest*' -Dtokens.write=true\n" +
+                    "then `cd design-mirror && npm run build` and commit both, so the " +
+                    "React mirror renders what the app renders.",
             )
         }
         actual shouldBe expected
+    }
+
+    /**
+     * The first line that differs, so the failure names what changed.
+     *
+     * A 1,400-line JSON diff in a Gradle log is unreadable, and the one thing a
+     * reader needs is which token moved.
+     */
+    private fun firstDifference(actual: String, expected: String): String {
+        val a = actual.lines()
+        val e = expected.lines()
+        for (i in 0 until maxOf(a.size, e.size)) {
+            val left = a.getOrNull(i)
+            val right = e.getOrNull(i)
+            if (left != right) {
+                return "First difference at line ${i + 1}:\n" +
+                    "  committed: ${left ?: "<end of file>"}\n" +
+                    "  current:   ${right ?: "<end of file>"}"
+            }
+        }
+        return "Files differ in trailing whitespace only."
     }
 
     /**

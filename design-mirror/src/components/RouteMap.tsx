@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useId, useMemo } from 'react'
 import { MapFrame, sampleGeoArc, type ProjectedRings } from '../geo/mapFrame'
 import { worldOutline } from '../geo/worldOutline.gen'
 
@@ -82,6 +82,7 @@ export function RouteMap({
   // changes the window.
   const vbHeight = 1000
   const vbWidth = Math.round(vbHeight * aspect)
+  const clipId = useId()
 
   const scene = useMemo(() => {
     const arc = sampleGeoArc(depLat, depLon, destLat, destLon)
@@ -121,11 +122,17 @@ export function RouteMap({
       aria-hidden="true"
     >
       {/* The map paints past its own bounds by design — see OUTLINE_MARGIN — so
-          it crops itself rather than relying on an ancestor to do it. */}
-      <clipPath id="fp-route-map-clip">
+          it crops itself rather than relying on an ancestor to do it.
+
+          **The id is per instance.** A constant one collides the moment two maps
+          share a page, and duplicate ids resolve to the first in document order —
+          whose rect is sized in `userSpaceOnUse` units from *its* aspect. A route
+          detail (vbWidth 1800) above a list of cards (2000) therefore cropped every
+          card's right tenth, coastline and destination marker included. */}
+      <clipPath id={clipId}>
         <rect x="0" y="0" width={vbWidth} height={vbHeight} />
       </clipPath>
-      <g clipPath="url(#fp-route-map-clip)">
+      <g clipPath={`url(#${clipId})`}>
         {/* Even-odd, so a ring enclosed by another — the Caspian, the Great
             Lakes — is a hole rather than more land. */}
         <path

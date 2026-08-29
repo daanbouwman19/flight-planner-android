@@ -186,6 +186,19 @@ lines.push('')
 // Type scale, as classes. A slot is a class rather than a set of variables
 // because a caller wants "this is titleMedium", not four separate decisions.
 for (const [slot, s] of Object.entries(tokens.typography)) {
+  // `unit()` in the exporter emits null for an unspecified TextUnit — and for any
+  // unit whose toString is not `.sp`-suffixed, `em` included. Interpolated raw
+  // that becomes `font-size: nullpx`, which the browser drops silently: the slot
+  // then inherits and looks *almost* right. Fail here instead, where the cause is
+  // one line away.
+  for (const metric of ['fontSize', 'lineHeight', 'letterSpacing']) {
+    if (typeof s[metric] !== 'number') {
+      throw new Error(
+        `typography.${slot}.${metric} is ${JSON.stringify(s[metric])}, not a number. ` +
+          `DesignTokenExport.unit() could not read it — check the TextUnit's type in FlightTypography.`,
+      )
+    }
+  }
   const decls = [
     `  font-size: ${s.fontSize}px;`,
     `  line-height: ${s.lineHeight}px;`,

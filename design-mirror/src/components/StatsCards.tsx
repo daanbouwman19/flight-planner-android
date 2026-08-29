@@ -181,8 +181,15 @@ export function VisitedNetworkCard({
 
     // The frame is fitted to every visited point at once, which is what makes the
     // card about this logbook rather than about the planet.
+    //
+    // **Unwrapped first.** `MapFrame.forRoute` documents its input as unwrapped
+    // longitudes, and raw ones break the antimeridian: RJTT at 139.8°E and KLAX at
+    // 118.4°W fit a window centred near 10°E spanning 258°, which covers Eurasia
+    // and the Atlantic — while `sampleGeoArc` correctly unwraps that leg to
+    // 139.8 → 241.6 and drew it entirely outside the viewBox. The markers landed;
+    // the leg between them silently vanished.
     const lats = airports.map((a) => a.lat)
-    const lons = airports.map((a) => a.lon)
+    const lons = unwrapLongitudes(airports.map((a) => a.lon))
     const frame = MapFrame.forRoute(lats, lons, aspect)
     const land = frame.projectOutline(worldOutline(), 0.05)
 
@@ -198,9 +205,9 @@ export function VisitedNetworkCard({
       return parts.join('')
     })
 
-    const markers = airports.map((a) => ({
+    const markers = airports.map((a, i) => ({
       icao: a.icao,
-      x: frame.x(a.lon) * vbWidth,
+      x: frame.x(lons[i]) * vbWidth,
       y: frame.y(a.lat) * VB_HEIGHT,
       // Visits scale the radius sub-linearly: a field flown twenty times should
       // read as busier than one flown twice without swamping the map.
@@ -261,6 +268,32 @@ export function VisitedNetworkCard({
       )}
     </div>
   )
+}
+
+/**
+ * One set of longitudes made continuous, so a frame fitted to them is the short
+ * way round.
+ *
+ * Each point is carried to within 180° of the one before it, which is the same
+ * rule `sampleGeoArc` applies along a great circle. Sorting first means the walk
+ * follows the spread of the set rather than the order the logbook happens to be
+ * in — two fields either side of the antimeridian unwrap the same way whichever
+ * was flown first.
+ */
+function unwrapLongitudes(lons: number[]): number[] {
+  if (lons.length === 0) return lons
+  const order = lons.map((_, i) => i).sort((a, b) => lons[a] - lons[b])
+  const out = new Array<number>(lons.length)
+  let previous = lons[order[0]]
+  out[order[0]] = previous
+  for (const i of order.slice(1)) {
+    let lon = lons[i]
+    while (lon - previous > 180) lon -= 360
+    while (lon - previous < -180) lon += 360
+    out[i] = lon
+    previous = lon
+  }
+  return out
 }
 
 function ringsToPath(rings: ProjectedRings, width: number, close: boolean): string {

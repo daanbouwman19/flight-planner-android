@@ -1,5 +1,6 @@
 import { FlightRulesBadge, type FlightRules } from './FlightRulesBadge'
 import { RouteMap } from './RouteMap'
+import { tokens } from '../tokens/tokens.gen'
 import { ValueChip } from './ValueChip'
 
 /** Translucent, so the coastline passes behind the figures rather than under a panel. */
@@ -65,9 +66,11 @@ export interface RouteCardProps {
   className?: string
 }
 
-/** 30 ms apart, capped at eight rows. */
-const ENTER_STAGGER_MS = 30
-const ENTER_STAGGER_CAP = 8
+// Read from the export, never restated. `FlightMotion.EnterStaggerMillis` and
+// its cap are in `tokens.json` precisely so a retune in Kotlin cannot leave the
+// mirror animating at the old figure with no test to notice.
+const ENTER_STAGGER_MS = tokens.constants.enterStaggerMillis
+const ENTER_STAGGER_CAP = tokens.constants.enterStaggerCap
 
 /**
  * One generated route: the app's most-seen surface.

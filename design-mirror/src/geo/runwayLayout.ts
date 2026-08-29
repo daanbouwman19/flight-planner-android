@@ -142,8 +142,18 @@ export function pairPhysicalRunways(runways: Runway[]): PhysicalRunway[] {
     else if (candidates.length > 1) {
       // Once heading and length leave more than one candidate, the real bearing
       // between the two thresholds settles it.
-      let best = Number.MAX_VALUE
-      for (const j of candidates) {
+      //
+      // **Seeded with the first candidate rather than with an empty maximum**, so
+      // that an all-equal field still pairs. `bearingDeviation` returns
+      // `MAX_VALUE` whenever either end lacks a published threshold, which is
+      // exactly the dataset that falls back to the lane schematic — a strict
+      // `<` against an initial `MAX_VALUE` then never fires, leaves `partner`
+      // at -1, and fans 09L/09R/27L/27R into four one-ended lanes instead of two
+      // strips. Kotlin's `minByOrNull` picks the first on a tie and its KDoc says
+      // so deliberately; this is that behaviour.
+      partner = candidates[0]
+      let best = bearingDeviation(runways[i], runways[partner], headingI)
+      for (const j of candidates.slice(1)) {
         const deviation = bearingDeviation(runways[i], runways[j], headingI)
         if (deviation < best) {
           best = deviation

@@ -77,6 +77,17 @@ Recorded so a future sync does not read them as defects:
 - **`MorphingLoadingIndicator` crossfades between the four polygons rather than
   morphing vertex to vertex.** The shapes themselves are the real exported
   `MaterialShapes` paths; CSS cannot tween two `d` values of differing structure.
+- **The sky band is snapped between phases rather than blended across them.**
+  Kotlin mixes two bands continuously where their cloud ink runs the same way round
+  and drives a short `FlightMotion.effects()` traversal across the reversal where
+  it does not — because interpolating across that reversal provably destroys the
+  3:1 guarantee on a deck's underside: both the ink's luminance and the air's are
+  continuous in `t`, so there is a `t` at which they are equal and the edge is a
+  1.0:1 line. A still mirror has no traversal to be continuous with, and its bands
+  are CSS variables whose luminances it cannot compare, so `resolvePhase` takes the
+  band that spring settles on and never enters the middle. The *time of day* is the
+  app's — read from the reported sun's elevation through the ported `skyBlendFor`,
+  with `phase` used only when a report carries no position.
 - **`SkyProfile` draws the scene faithfully but simplifies the motion.** Deck drift,
   per-drop precipitation speeds and the two-bolt coprime lightning envelope are not
   reproduced; a convective deck gets a static bolt. The geometry that carries the
@@ -132,6 +143,50 @@ This is a finding about the Android app, not about the mirror. It was surfaced b
 the export, which reads the real `TextStyle` objects. Worth deciding deliberately —
 either the alpha has not wired emphasis up yet and the scale is correct in
 anticipation, or the slots need explicit weights.
+
+## Fixed after review
+
+Recorded because each was invisible in a green build, and the next port of a
+Compose component can make the same one:
+
+- **The sky band followed a `phase` default instead of the reported sun**, so a
+  report with the sun 18° below the horizon drew a bright daytime sky with a moon
+  in it — the "drawing lying" defect the whole weather phase exists to remove,
+  reintroduced by a prop default. `skyBlendFor` was correctly ported and then never
+  called. **Porting a function is not porting the decision that calls it.**
+- **Celestial bodies were drawn with no rail inset**, so a body near due east or
+  west lost half its disc to the frame edge, and a sun and moon at similar azimuth
+  overlapped. `railXInset` and `separatedMoonX` exist in the Kotlin precisely
+  because both were seen in its own gallery; neither had been ported.
+- **`RouteMap`'s clip path used a constant DOM id.** Two maps on one page share the
+  first one, and the rect is in `userSpaceOnUse` units sized from *that* instance's
+  aspect — so a route detail above a list of cards cropped every card's right tenth.
+  `useId()`. Any `<defs>` id in a component that can appear twice needs this.
+- **Runway pairing failed for a field with no published thresholds.** `let best =
+  Number.MAX_VALUE` with a strict `<` never fires when every candidate returns
+  `MAX_VALUE`, which is exactly the dataset that falls back to the lane schematic.
+  Kotlin's `minByOrNull` picks the first on a tie and its KDoc says so on purpose;
+  **a `minBy` ported to a loop must seed from the first element, not from infinity.**
+- **The visited-network frame was fitted to wrapped longitudes**, so a trans-Pacific
+  leg was projected outside its own window and silently vanished while its markers
+  landed. `MapFrame.forRoute` documents unwrapped input; `unwrapLongitudes` now
+  supplies it.
+- **`useIsDark()` reported light for a `system` theme on a dark viewer.** The CSS
+  resolves `system` through `prefers-color-scheme` and is right from the first
+  paint; the React context was hard-set to `brandLight`, so a component branching
+  on the hook rendered its light branch against dark variables. The media query is
+  now read for the hooks alone, never for a colour.
+- **The drift guard could be walked past by running it twice.** It wrote the
+  regenerated JSON *and* failed, so the second `./gradlew build` passed against
+  what the first had written. It now only reports, names the first differing line,
+  and leaves the tree alone; regenerating is `-Dtokens.write=true` and nothing else.
+  Verified by planting a wrong colour and watching two consecutive runs fail.
+- **`build.mjs` interpolated type metrics raw**, so a null from `unit()` would emit
+  `font-size: nullpx` — which a browser drops silently, leaving the slot inheriting
+  and looking almost right. It throws now.
+- **`RouteCard` restated the enter stagger as literals** in a package whose whole
+  premise is that no design value is hand-written. Read from `tokens.constants`.
+- `StartupCheckScreen` summarised a list containing warnings as "All checks passed".
 
 ## Re-sync risks
 

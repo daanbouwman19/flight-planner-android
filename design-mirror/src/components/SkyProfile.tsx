@@ -15,6 +15,7 @@ import {
   mergeDecks,
   railX,
   railY,
+  skyBlendFor,
   type CloudLayer,
   type SkyCover,
   type SkyPhase,
@@ -120,8 +121,15 @@ export function SkyProfile({
   const airKnown = skyCover.kind !== 'unknown'
   const bodyAlpha = airKnown ? celestialAlpha(skyCover) : 0
 
-  const band = bandFor(phase)
-  const nightWeight = phase === 'NIGHT' ? 1 : 0
+  // **The reported sun decides the time of day; `phase` is only the fallback.**
+  // This was the wrong way round, and it reintroduced the exact defect the whole
+  // weather redesign exists to remove: a report with the sun 18° below the horizon
+  // drew a bright daytime sky with a moon hanging in it. Kotlin does
+  // `celestial?.let { skyBlendFor(it.sun.elevationDeg) } ?: SkyBlend(phase, …)`;
+  // this is that, with the blend snapped (see `resolvePhase`).
+  const resolvedPhase = resolvePhase(celestial, phase)
+  const band = bandFor(resolvedPhase)
+  const nightWeight = resolvedPhase === 'NIGHT' ? 1 : resolvedPhase === 'TWILIGHT' ? 0.5 : 0
 
   // The four air steps, with their edges at the flight-rules thresholds.
   const stepEdges = [0, ...CEILING_THRESHOLDS.map(([ft]) => altitudeToFraction(ft)), 1]
@@ -376,6 +384,30 @@ function Deck({
   )
 }
 
+/** The disc's radius, and the gap two bodies must keep. Both from the Kotlin. */
+const BODY_RADIUS = 7
+const MIN_BODY_GAP = 17
+
+/**
+ * A body's X, held far enough from the edge that its whole disc fits.
+ *
+ * `railX` says where the body *is*, and at an azimuth near due east or west that
+ * is hard against the frame, so half the disc falls outside it. The margin also
+ * clears the ceiling wedge, which occupies the right edge and is drawn over the
+ * bodies — a clear sky puts that wedge at the top of the axis, which is exactly
+ * where a high moon at a westerly azimuth sits.
+ */
+function railXInset(x: number, marginFraction: number): number {
+  return Math.min(Math.max(x, marginFraction), 1 - marginFraction)
+}
+
+/** The moon pushed clear of the sun, away from whichever side it already leans. */
+function separatedMoonX(sunX: number, moonX: number, gap: number, lo: number, hi: number): number {
+  const delta = moonX - sunX
+  if (Math.abs(delta) >= gap) return Math.min(Math.max(moonX, lo), hi)
+  return Math.min(Math.max(sunX + (delta >= 0 ? 1 : -1) * gap, lo), hi)
+}
+
 function CelestialLayer({
   celestial,
   alpha,
@@ -387,19 +419,31 @@ function CelestialLayer({
   yOf: (f: number) => number
   band: Band
 }) {
-  const sunX = railX(celestial.sunAzimuthDeg) * VB_WIDTH
+  // Fractions of the frame, so the inset is the same physical margin the Kotlin
+  // computes from `size.width`.
+  const margin = (BODY_RADIUS + CEILING_WEDGE + HAIRLINE) / VB_WIDTH
+  const gap = MIN_BODY_GAP / VB_WIDTH
+
+  const sunFraction = railXInset(railX(celestial.sunAzimuthDeg), margin)
+  const sunX = sunFraction * VB_WIDTH
   const sunY = yOf(railY(celestial.sunElevationDeg))
   const above = celestial.sunElevationDeg > 0
+
+  const moonRaw = railXInset(railX(celestial.moonAzimuthDeg ?? 0), margin)
+  const moonFraction = above
+    ? separatedMoonX(sunFraction, moonRaw, gap, margin, 1 - margin)
+    : moonRaw
+
   return (
     <g opacity={alpha}>
       {above ? (
         <>
           <circle cx={sunX} cy={sunY} r={11} fill={band.sunGlow} opacity={0.5} />
-          <circle cx={sunX} cy={sunY} r={7} fill={band.sun} />
+          <circle cx={sunX} cy={sunY} r={BODY_RADIUS} fill={band.sun} />
         </>
       ) : celestial.moonElevationDeg != null && celestial.moonElevationDeg > 0 ? (
         <circle
-          cx={railX(celestial.moonAzimuthDeg ?? 0) * VB_WIDTH}
+          cx={moonFraction * VB_WIDTH}
           cy={yOf(railY(celestial.moonElevationDeg))}
           r={6}
           fill={band.moonLit}
@@ -407,6 +451,25 @@ function CelestialLayer({
       ) : null}
     </g>
   )
+}
+
+/**
+ * The time of day the scene is drawn in, from the sun where there is one.
+ *
+ * **The blend is snapped rather than mixed**, which is the mirror's one divergence
+ * here. Kotlin blends two bands continuously where their cloud ink runs the same
+ * way round and drives a short spring across the reversal where it does not,
+ * because interpolating across that reversal provably destroys the 3:1 guarantee
+ * on a deck's underside — there is a `t` at which the ink and the air have equal
+ * luminance and the edge is a 1.0:1 line. A still mirror has no traversal to be
+ * continuous with, and its bands are CSS variables whose luminances it cannot
+ * compare, so it takes the band the spring settles on and never enters the middle
+ * at all. See NOTES.md.
+ */
+function resolvePhase(celestial: CelestialState | null | undefined, fallback: SkyPhase): SkyPhase {
+  if (celestial == null) return fallback
+  const blend = skyBlendFor(celestial.sunElevationDeg)
+  return blend.weight < 0.5 ? blend.from : blend.to
 }
 
 interface Band {

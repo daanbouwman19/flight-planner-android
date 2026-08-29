@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { tokens } from '../tokens/tokens.gen'
 
 /**
@@ -21,6 +21,28 @@ const ThemeContext = createContext<ResolvedTheme>('brandLight')
 /** The scheme in scope. Components that must branch on tone read this. */
 export function useFlightTheme(): ResolvedTheme {
   return useContext(ThemeContext)
+}
+
+/**
+ * Whether the viewer's system is in dark mode.
+ *
+ * Read only to answer {@link useFlightTheme} and {@link useIsDark} for a `system`
+ * theme — never to choose a colour, which the CSS does on its own. It starts at
+ * `false` and corrects in an effect, so a component that branches on `useIsDark`
+ * may render its light branch for one frame; the painted scheme is right from the
+ * first, because it never came from here.
+ */
+function useSystemDark(): boolean {
+  const [dark, setDark] = useState(false)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const query = window.matchMedia('(prefers-color-scheme: dark)')
+    setDark(query.matches)
+    const onChange = (e: MediaQueryListEvent) => setDark(e.matches)
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [])
+  return dark
 }
 
 /** True when the scheme in scope is a dark one — Cockpit counts. */
@@ -61,10 +83,17 @@ export function FlightPlannerTheme({
   style,
   children,
 }: FlightPlannerThemeProps) {
-  // `system` is resolved in CSS rather than by reading matchMedia, so a design
-  // renders correctly on the first paint in whichever mode the viewer is in —
-  // there is no frame where the wrong scheme is showing.
-  const resolved: ResolvedTheme = theme === 'system' ? 'brandLight' : theme
+  // `system` is resolved **in CSS** rather than by reading matchMedia, so a
+  // design renders correctly on the first paint in whichever mode the viewer is in
+  // — there is no frame where the wrong scheme is showing. The colours never wait
+  // on this hook.
+  //
+  // What the context carries is a separate question, and it used to answer it
+  // wrongly: hard-coding `brandLight` made `useIsDark()` report light to a
+  // component branching on it while the CSS around that component was already
+  // dark. So the media query is read here too, once, for the hooks alone.
+  const systemDark = useSystemDark()
+  const resolved: ResolvedTheme = theme === 'system' ? (systemDark ? 'brandDark' : 'brandLight') : theme
   const attr = theme === 'system' ? 'system' : kebab(theme)
 
   return (

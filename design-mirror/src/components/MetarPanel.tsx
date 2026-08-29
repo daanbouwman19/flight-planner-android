@@ -1,5 +1,5 @@
 import { SkyProfile, SkyProfileHeight, type CelestialState } from './SkyProfile'
-import type { SkyCover } from '../geo/skyProfile'
+import type { SkyCover, SkyPhase } from '../geo/skyProfile'
 import { FlightRulesBadge, type FlightRules } from './FlightRulesBadge'
 import { ValueChip } from './ValueChip'
 
@@ -27,6 +27,14 @@ export interface MetarPanelProps {
   visibilityStatuteMiles?: number | null
   /** Resolved by the caller at the **observation instant**, never at now. */
   celestial?: CelestialState | null
+  /**
+   * The time of day, for a report that carries no position.
+   *
+   * Only consulted when {@link celestial} is absent — a report with a sun in it
+   * says what time it is, and the scene follows that rather than this. Defaults to
+   * `DAY`.
+   */
+  phase?: SkyPhase
   /**
    * The figures, in report order, each conditional on its own group.
    *
@@ -101,6 +109,7 @@ export function MetarPanel({
   fogOrMist,
   visibilityStatuteMiles,
   celestial,
+  phase,
   figures = [],
   skyLine,
   observed,
@@ -125,6 +134,7 @@ export function MetarPanel({
         fogOrMist={fogOrMist}
         visibilityStatuteMiles={visibilityStatuteMiles}
         celestial={celestial}
+        phase={phase}
         height={sceneHeight}
       />
 
