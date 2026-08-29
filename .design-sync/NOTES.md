@@ -66,6 +66,28 @@ cd design-mirror && npm run build
 - The converter classified `MapFrame` — a geometry class — as a component. Excluded
   via `componentSrcMap.MapFrame: null`.
 
+- **A scrim inside a phone frame has no height of its own, and a sheet asking for
+  90% of it gets 90% of *itself*.** `.fp-phone-frame__content` is a flex child with
+  `min-height: 0`, so the scrim sized to its content and every sheet floated
+  mid-screen showing four edges — a card with two square corners rather than a
+  bottom sheet. Fixed in `BottomSheet.css` with two rules: the scrim fills the
+  frame's content box, and `.fp-scrim:has(> .fp-sheet)` anchors to `flex-end` with
+  no padding. The `:has()` guard is what keeps `ConfirmationDialog` centred.
+- **`preview-rebuild.mjs` does not re-copy the stylesheet.** It recompiles a
+  preview's `.tsx` into its `.html` and nothing else, so a CSS fix in
+  `design-mirror/src/**/*.css` is invisible to a scoped rebuild — the card renders
+  against the bundle's old `_ds_bundle.css` and looks unchanged, which reads as "the
+  fix didn't work". Any CSS change needs a full `package-build.mjs` run before
+  recapturing. Verify with `grep -c '<the new selector>' ds-bundle/_ds_bundle.css`.
+- **A scoped `package-capture.mjs --components …` prunes every other review sheet.**
+  Fine mid-iteration; before grading a full set, re-run it unscoped.
+- **Playwright must be importable from the repo root**, not just from
+  `design-mirror/node_modules` — `package-validate.mjs` resolves it from `.ds-sync/`.
+  Install the version pinned to the cached chromium build (`ls ~/AppData/Local/ms-playwright`
+  → `chromium-1234` → playwright 1.62.1 here): `(cd .ds-sync && npm i playwright@1.62.1)`.
+  Without it validate exits 1 on `[RENDER_SKIPPED]` and the driver skips capture
+  with `prior_failure`, which looks like a build problem and is not one.
+
 ## Deliberate divergences from the Android original
 
 Recorded so a future sync does not read them as defects:
@@ -217,3 +239,12 @@ Compose component can make the same one:
 - `SwipeActionBackground / AtRest` renders as an empty cell. That is correct: the
   component is fully transparent at rest, which is the property that keeps a
   resting list free of coloured bands under its rows.
+- Nothing else. The 2026-08-29 re-sync ran the full render check over all 53
+  previews and reported no `bad`, no `thin` and no `variantsIdentical` — so any
+  warn line a future run prints is new and should be looked at rather than assumed
+  known.
+- `FleetDetailPane` and `FlightDetailPane` ship the **floor card** by choice: they
+  are the tablet halves of screens that have their own authored previews, and the
+  user scoped this run to what was already authored. Authoring
+  `.design-sync/previews/FleetDetailPane.tsx` and `FlightDetailPane.tsx` is the
+  standing offer on any later re-sync.

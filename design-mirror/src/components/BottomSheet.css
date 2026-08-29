@@ -157,3 +157,30 @@
   flex-direction: column;
   gap: 2px;
 }
+
+/*
+ * A sheet inside a scrim meets the bottom edge, edge to edge.
+ *
+ * `ScrimOverlay` centres its child inside a 24px inset, which is right for a
+ * confirmation dialog and wrong for a sheet: only a sheet's *top* corners round,
+ * because its bottom edge is meant to meet the window. Centred and inset it
+ * floats mid-screen showing four edges, which is not a bottom sheet — it is a
+ * card with two square corners.
+ */
+.fp-scrim:has(> .fp-sheet) {
+  align-items: flex-end;
+  padding: 0;
+}
+
+/*
+ * And the scrim fills the window it covers.
+ *
+ * The phone frame's content box is a flex child with `min-height: 0`, so a scrim
+ * inside it sizes to its own content — and a sheet asking for 90% of *that* gets
+ * 90% of itself. A modal layer covering part of the screen is not a modal layer,
+ * so the scrim takes the whole box and the fraction means what it says.
+ */
+.fp-phone-frame__content > .fp-scrim,
+.fp-tablet-frame__content > .fp-scrim {
+  height: 100%;
+}

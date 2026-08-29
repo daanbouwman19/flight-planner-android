@@ -23,6 +23,15 @@ export const TransAtlantic = () => (
       skyCover: { kind: 'layers', layers: [{ cover: 'SCATTERED', baseFt: 2800 }] },
       ceilingFt: null,
       celestial: { sunElevationDeg: 31, sunAzimuthDeg: 200 },
+      visibilityStatuteMiles: 10,
+      figures: [
+        { label: 'WIND', value: '250° 14 kt' },
+        { label: 'VIS', value: '10+ SM' },
+        { label: 'CEIL', value: 'Unlimited' },
+        { label: 'QNH', value: '1016 hPa' },
+      ],
+      skyLine: 'Scattered at 2,800 ft',
+      observed: '1355Z · 7 min ago',
     }}
     destination={{
       icao: 'KJFK',
@@ -34,6 +43,15 @@ export const TransAtlantic = () => (
       skyCover: { kind: 'layers', layers: [{ cover: 'OVERCAST', baseFt: 800 }] },
       ceilingFt: 800,
       celestial: { sunElevationDeg: 12, sunAzimuthDeg: 110 },
+      visibilityStatuteMiles: 4,
+      figures: [
+        { label: 'WIND', value: '090° 22G31 kt' },
+        { label: 'VIS', value: '4 SM' },
+        { label: 'CEIL', value: '800 ft' },
+        { label: 'QNH', value: '29.74 inHg' },
+      ],
+      skyLine: 'Overcast at 800 ft',
+      observed: '1351Z · 11 min ago',
     }}
   />
 )
@@ -55,6 +73,15 @@ export const ShortHop = () => (
       skyCover: { kind: 'layers', layers: [{ cover: 'FEW', baseFt: 4200 }] },
       ceilingFt: null,
       celestial: { sunElevationDeg: 44, sunAzimuthDeg: 180 },
+      visibilityStatuteMiles: 10,
+      figures: [
+        { label: 'WIND', value: '200° 8 kt' },
+        { label: 'VIS', value: '10+ SM' },
+        { label: 'CEIL', value: 'Unlimited' },
+        { label: 'QNH', value: '1021 hPa' },
+      ],
+      skyLine: 'Few at 4,200 ft',
+      observed: '1420Z · 5 min ago',
     }}
     destination={{
       icao: 'EBBR',
@@ -66,6 +93,14 @@ export const ShortHop = () => (
       skyCover: { kind: 'clear' },
       ceilingFt: null,
       celestial: { sunElevationDeg: 45, sunAzimuthDeg: 178 },
+      visibilityStatuteMiles: 10,
+      figures: [
+        { label: 'WIND', value: '210° 6 kt' },
+        { label: 'VIS', value: '10+ SM' },
+        { label: 'CEIL', value: 'Unlimited' },
+      ],
+      skyLine: 'Clear below 12,000 ft',
+      observed: '1420Z · 5 min ago',
     }}
   />
 )
