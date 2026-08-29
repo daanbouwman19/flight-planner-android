@@ -44,7 +44,7 @@ export function StatsScreen({
 }: StatsScreenProps) {
   const peak = Math.max(1, ...monthly.map((m) => m.value))
   const body = (
-    <div className={layout === 'tablet' ? 'fp-screen fp-content-cap' : 'fp-screen'}>
+    <div className={layout === 'tablet' ? 'fp-screen fp-content-cap fp-content-cap--wide' : 'fp-screen'}>
         <div className="fp-screen__header">
           <h1 className="fp-screen__title fp-type-headline-medium">Stats</h1>
         </div>
