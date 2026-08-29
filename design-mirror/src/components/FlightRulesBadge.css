@@ -1,0 +1,33 @@
+.fp-rules-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: var(--fp-shape-small);
+  white-space: nowrap;
+}
+
+.fp-rules-badge--vfr {
+  background: var(--fp-vfr-container);
+  color: var(--fp-vfr-on-container);
+}
+
+.fp-rules-badge--mvfr {
+  background: var(--fp-mvfr-container);
+  color: var(--fp-mvfr-on-container);
+}
+
+.fp-rules-badge--ifr {
+  background: var(--fp-ifr-container);
+  color: var(--fp-ifr-on-container);
+}
+
+.fp-rules-badge--lifr {
+  background: var(--fp-lifr-container);
+  color: var(--fp-lifr-on-container);
+}
+
+.fp-rules-badge--unknown {
+  background: var(--fp-unknown-container);
+  color: var(--fp-unknown-on-container);
+}

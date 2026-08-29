@@ -1,0 +1,68 @@
+.fp-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 24px 32px;
+  text-align: center;
+}
+
+.fp-state__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--fp-shape-extra-large);
+  background: var(--fp-surface-container-high);
+  color: var(--fp-primary);
+}
+
+.fp-state__icon > svg {
+  width: 36px;
+  height: 36px;
+}
+
+.fp-state__title {
+  color: var(--fp-on-surface);
+}
+
+.fp-state__title--error {
+  color: var(--fp-error);
+}
+
+.fp-state__message {
+  color: var(--fp-on-surface-variant);
+  margin: 0;
+}
+
+.fp-state__action {
+  margin-top: 8px;
+}
+
+.fp-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 20px;
+  background: var(--fp-primary);
+  color: var(--fp-on-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.fp-button--tonal {
+  background: var(--fp-secondary-container);
+  color: var(--fp-on-secondary-container);
+}
+
+.fp-button--text {
+  background: transparent;
+  color: var(--fp-primary);
+  padding: 0 12px;
+}

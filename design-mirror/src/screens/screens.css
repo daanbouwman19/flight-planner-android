@@ -1,0 +1,353 @@
+.fp-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  box-sizing: border-box;
+  /* The gutter every card and control lines up with. */
+  padding: 0 16px 16px;
+}
+
+/* Clears the status bar without painting anything behind it: the clock sits over
+   whatever the app has put there. */
+.fp-screen__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 36px;
+  padding-bottom: 12px;
+}
+
+.fp-screen__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--fp-on-surface);
+}
+
+/* The controls scroll with the list rather than pinning: they are set once and
+   then read, so holding a fifth of a phone's height for them permanently would
+   spend the screen on the wrong thing. */
+.fp-screen__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 16px;
+}
+
+.fp-screen__filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  /* Equal height, so a field with a detail line and one without stay level. */
+  align-items: stretch;
+}
+
+.fp-screen__filters > * {
+  height: 100%;
+}
+
+.fp-screen__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fp-screen__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.fp-screen__section-title {
+  color: var(--fp-on-surface-variant);
+  padding-top: 8px;
+}
+
+.fp-screen__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--fp-shape-large);
+  background: var(--fp-surface-container);
+  color: var(--fp-on-surface);
+  text-align: start;
+  border: none;
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.fp-screen__row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fp-screen__row-title {
+  color: var(--fp-on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-screen__row-detail {
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-screen__row-figure {
+  color: var(--fp-on-surface);
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+  white-space: nowrap;
+}
+
+.fp-screen__card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--fp-shape-large-increased);
+  background: var(--fp-surface-container);
+  color: var(--fp-on-surface);
+}
+
+.fp-screen__card-title {
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-screen__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 24px 16px;
+  border-radius: var(--fp-shape-extra-large);
+  background: var(--fp-primary-container);
+  color: var(--fp-on-primary-container);
+}
+
+.fp-screen__hero-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.fp-screen__fab {
+  position: absolute;
+  right: 16px;
+  bottom: 96px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: var(--fp-shape-large);
+  background: var(--fp-primary-container);
+  color: var(--fp-on-primary-container);
+  cursor: pointer;
+  z-index: 3;
+}
+
+.fp-screen__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 16px;
+  border-radius: 24px;
+  background: var(--fp-surface-container-high);
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-screen__setting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.fp-screen__setting-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fp-screen__switch {
+  width: 52px;
+  height: 32px;
+  flex: none;
+  border-radius: 16px;
+  background: var(--fp-surface-container-highest);
+  border: 2px solid var(--fp-outline);
+  position: relative;
+}
+
+.fp-screen__switch--on {
+  background: var(--fp-primary);
+  border-color: var(--fp-primary);
+}
+
+.fp-screen__switch::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--fp-outline);
+  transform: translateY(-50%);
+  transition: all var(--fp-motion-spatial-fast-duration) var(--fp-motion-spatial-fast-easing);
+}
+
+.fp-screen__switch--on::after {
+  left: 26px;
+  width: 20px;
+  height: 20px;
+  background: var(--fp-on-primary);
+}
+
+.fp-stats-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 18px 20px;
+  border-radius: var(--fp-shape-large);
+  background: var(--fp-surface-container-high);
+}
+
+.fp-stats-hero__label {
+  /* Letter-spaced caps, the same field-name idiom FilterField uses. */
+  letter-spacing: 1.2px;
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-stats-hero__value {
+  color: var(--fp-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.fp-stats-hero__pill {
+  margin-top: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--fp-secondary-container);
+  color: var(--fp-on-secondary-container);
+}
+
+.fp-stats-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.fp-stats-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: var(--fp-shape-large);
+  background: var(--fp-surface-container);
+}
+
+.fp-stats-metric__value {
+  color: var(--fp-on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.fp-stats-metric__label {
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-stats-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 96px;
+}
+
+.fp-stats-bars__column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  height: 100%;
+}
+
+.fp-stats-bars__bar {
+  width: 100%;
+  min-height: 3px;
+  border-radius: var(--fp-shape-extra-small);
+  background: var(--fp-primary);
+}
+
+.fp-stats-bars__label {
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-stats-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fp-stats-line__name {
+  flex: 1;
+  min-width: 0;
+  color: var(--fp-on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-detail-hero {
+  margin: 0 -16px;
+}
+
+.fp-detail-codes {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fp-detail-code {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fp-detail-code--end {
+  align-items: flex-end;
+  text-align: end;
+}
+
+.fp-detail-code__icao {
+  color: var(--fp-on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.fp-detail-code__name {
+  color: var(--fp-on-surface-variant);
+  max-width: 140px;
+}
+
+.fp-detail-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}

@@ -1,0 +1,34 @@
+.fp-mode-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fp-mode-selector__chip {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: var(--fp-shape-small);
+  border: 1px solid var(--fp-outline);
+  background: transparent;
+  color: var(--fp-on-surface-variant);
+  cursor: pointer;
+  white-space: nowrap;
+  font: inherit;
+  transition:
+    background-color var(--fp-motion-effects-duration) var(--fp-motion-effects-easing),
+    color var(--fp-motion-effects-duration) var(--fp-motion-effects-easing),
+    border-color var(--fp-motion-effects-duration) var(--fp-motion-effects-easing);
+}
+
+.fp-mode-selector__chip--selected {
+  background: var(--fp-secondary-container);
+  color: var(--fp-on-secondary-container);
+  border-color: transparent;
+}
+
+.fp-mode-selector__chip:disabled {
+  opacity: 0.38;
+  cursor: default;
+}

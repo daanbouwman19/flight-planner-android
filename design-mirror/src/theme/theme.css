@@ -1,0 +1,106 @@
+.fp-root {
+  background: var(--fp-background);
+  color: var(--fp-on-background);
+  /* Roboto, because Compose's FontFamily.SansSerif resolves to it on Android.
+     It ships with the bundle, so the mirror's text metrics match the app's rather
+     than the viewer's default sans. */
+  font-family: Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.fp-root--full-bleed {
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+/*
+ * The app is edge to edge with genuinely transparent system bars — nothing is
+ * ever painted behind the clock or the gesture handle, and a scrim reads as an
+ * opaque bar the moment a card passes under it. A phone frame in a concept must
+ * therefore show content running under both, which is what this class is for.
+ */
+.fp-phone-frame {
+  position: relative;
+  width: 360px;
+  height: 800px;
+  overflow: hidden;
+  border-radius: 28px;
+  background: var(--fp-background);
+  color: var(--fp-on-background);
+  display: flex;
+  flex-direction: column;
+}
+
+.fp-phone-frame__status,
+.fp-phone-frame__gesture {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  /* No background: the bars are empty by invariant. */
+}
+
+.fp-phone-frame__status {
+  top: 0;
+  height: 28px;
+  padding: 0 16px;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--fp-on-background);
+}
+
+.fp-phone-frame__gesture {
+  bottom: 0;
+  height: 24px;
+  justify-content: center;
+}
+
+.fp-phone-frame__handle {
+  width: 108px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--fp-on-background);
+  opacity: 0.4;
+}
+
+.fp-phone-frame__content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Utility surfaces, named for the role they paint rather than for a shade. */
+.fp-surface {
+  background: var(--fp-surface);
+  color: var(--fp-on-surface);
+}
+
+.fp-surface-container {
+  background: var(--fp-surface-container);
+  color: var(--fp-on-surface);
+}
+
+.fp-surface-container-high {
+  background: var(--fp-surface-container-high);
+  color: var(--fp-on-surface);
+}
+
+.fp-surface-container-low {
+  background: var(--fp-surface-container-low);
+  color: var(--fp-on-surface);
+}
+
+.fp-card {
+  background: var(--fp-surface-container);
+  color: var(--fp-on-surface);
+  border-radius: var(--fp-shape-large-increased);
+  overflow: hidden;
+}

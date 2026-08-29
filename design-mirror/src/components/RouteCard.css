@@ -1,0 +1,132 @@
+.fp-route-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+  border: none;
+  text-align: start;
+  font: inherit;
+  border-radius: var(--fp-shape-large-increased);
+  background: var(--fp-surface-container);
+  color: var(--fp-on-surface);
+  overflow: hidden;
+  cursor: inherit;
+}
+
+button.fp-route-card {
+  cursor: pointer;
+}
+
+/*
+ * The map is the card's background and adopts whatever height the content
+ * settled on — it takes no part in sizing the card, which is what a background is.
+ */
+.fp-route-card__map {
+  position: absolute;
+  inset: 0;
+  color: var(--fp-on-surface);
+}
+
+.fp-route-card__map > svg {
+  width: 100%;
+  height: 100%;
+}
+
+.fp-route-card__content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: inherit;
+  box-sizing: border-box;
+  padding: 16px;
+}
+
+.fp-route-card__aircraft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fp-route-card__aircraft-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fp-on-surface);
+}
+
+.fp-route-card__aircraft-category {
+  color: var(--fp-on-surface-variant);
+  white-space: nowrap;
+}
+
+.fp-route-card__gap {
+  flex: 1;
+  min-height: 8px;
+}
+
+.fp-route-card__ends {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fp-route-card__end {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fp-route-card__end--start {
+  align-items: flex-start;
+  text-align: start;
+}
+
+.fp-route-card__end--end {
+  align-items: flex-end;
+  text-align: end;
+}
+
+.fp-route-card__icao {
+  color: var(--fp-on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.fp-route-card__runway {
+  color: var(--fp-on-surface-variant);
+  white-space: nowrap;
+  /* A runway figure reads left to right whatever the app's language is. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.fp-route-card__runway--short {
+  color: var(--fp-error);
+}
+
+.fp-route-card__facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.fp-route-card__facts > * {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/*
+ * Past a certain size two chips cannot share a phone's width at all: the figure
+ * the card exists to state is the one thing that must stay on one line, so they
+ * stack instead and each gets the whole width.
+ */
+@media (max-width: 320px) {
+  .fp-route-card__facts {
+    grid-template-columns: 1fr;
+  }
+}

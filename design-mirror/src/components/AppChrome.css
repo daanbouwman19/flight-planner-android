@@ -1,0 +1,85 @@
+/*
+ * The navigation bar floats over content that scrolls beneath it. It has a
+ * surface of its own because it is chrome inside the window — unlike the system
+ * bars below it, which stay genuinely empty.
+ */
+.fp-nav-bar {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: 4px;
+  padding: 8px 4px 12px;
+  background: var(--fp-surface-container);
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-nav-bar__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.fp-nav-bar__indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 32px;
+  border-radius: 16px;
+  transition:
+    background-color var(--fp-motion-effects-duration) var(--fp-motion-effects-easing),
+    color var(--fp-motion-effects-duration) var(--fp-motion-effects-easing);
+}
+
+/* The active indicator is what says which destination you are on — which is why
+   there is one icon per entry rather than a filled/outlined pair. */
+.fp-nav-bar__indicator--active {
+  background: var(--fp-secondary-container);
+  color: var(--fp-on-secondary-container);
+}
+
+.fp-nav-bar__item[aria-current='page'] .fp-nav-bar__label {
+  color: var(--fp-on-surface);
+}
+
+.fp-app-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Clears the status bar without painting anything behind it. */
+  padding: 36px 16px 8px;
+  /* No background: content scrolls up under this. */
+  background: transparent;
+  color: var(--fp-on-surface);
+}
+
+.fp-app-bar__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fp-app-bar__back,
+.fp-app-bar__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 20px;
+  background: none;
+  color: var(--fp-on-surface-variant);
+  cursor: pointer;
+}

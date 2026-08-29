@@ -1,0 +1,60 @@
+.fp-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fp-primary);
+}
+
+.fp-loading--contained {
+  border-radius: 50%;
+  background: var(--fp-primary-container);
+  color: var(--fp-on-primary-container);
+}
+
+.fp-loading__shape {
+  animation: fp-loading-spin 1600ms linear infinite;
+  overflow: visible;
+}
+
+.fp-loading__path {
+  opacity: 0;
+  transform-origin: 0.5px 0.5px;
+  animation: fp-loading-cycle 1600ms steps(1, end) infinite;
+}
+
+/*
+ * The resting shape. Without it the indicator is invisible wherever animation is
+ * suspended — a screenshot tool, a print stylesheet, a paused tab — because the
+ * cycle's own base state hides every path and the sequence is what reveals them
+ * in turn. One shape showing is the honest static answer.
+ */
+.fp-loading__path:first-child {
+  opacity: 1;
+}
+
+@keyframes fp-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fp-loading-cycle {
+  0%,
+  25% {
+    opacity: 1;
+  }
+  25.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fp-loading__shape,
+  .fp-loading__path {
+    animation: none;
+  }
+  .fp-loading__path:first-child {
+    opacity: 1;
+  }
+}

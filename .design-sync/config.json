@@ -1,0 +1,98 @@
+{
+  "shape": "package",
+  "pkg": "@flightplanner/design-mirror",
+  "globalName": "FlightPlannerDS",
+  "buildCmd": "npm run build",
+  "srcDir": "src",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": "dist/styles.css",
+  "readmeHeader": ".design-sync/conventions.md",
+  "provider": {
+    "component": "FlightPlannerTheme",
+    "props": {
+      "theme": "brandLight"
+    }
+  },
+  "overrides": {
+    "PlanScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "FleetScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "LogbookScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "StatsScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "AirportsScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "AirportDetailScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "RouteDetailScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "SettingsScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "EmptyState": {
+      "cardMode": "column"
+    },
+    "ErrorState": {
+      "cardMode": "column"
+    },
+    "FilterField": {
+      "cardMode": "column"
+    },
+    "NavigationBar": {
+      "cardMode": "column"
+    },
+    "PhoneFrame": {
+      "cardMode": "column"
+    },
+    "RouteCard": {
+      "cardMode": "column"
+    },
+    "RouteMap": {
+      "cardMode": "column"
+    },
+    "SkeletonBox": {
+      "cardMode": "column"
+    },
+    "SkyProfile": {
+      "cardMode": "column"
+    },
+    "StatSummaryStrip": {
+      "cardMode": "column"
+    },
+    "SwipeActionBackground": {
+      "cardMode": "column"
+    },
+    "TopAppBar": {
+      "cardMode": "column"
+    },
+    "ValueChip": {
+      "cardMode": "column"
+    },
+    "FlightPlannerTheme": {
+      "cardMode": "column"
+    }
+  },
+  "componentSrcMap": {
+    "MapFrame": null
+  },
+  "extraFonts": [
+    "fonts/fonts.css"
+  ]
+}

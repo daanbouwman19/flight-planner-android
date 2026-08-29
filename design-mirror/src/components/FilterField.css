@@ -1,0 +1,53 @@
+.fp-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px 12px;
+  border-radius: var(--fp-shape-medium);
+  border: 1px solid var(--fp-outline-variant);
+  background: transparent;
+  color: var(--fp-on-surface-variant);
+  text-align: start;
+  cursor: pointer;
+  font: inherit;
+  /* Effects springs, never spatial: a colour that overshoots reads as a flicker
+     rather than as momentum. */
+  transition:
+    background-color var(--fp-motion-effects-duration) var(--fp-motion-effects-easing),
+    color var(--fp-motion-effects-duration) var(--fp-motion-effects-easing),
+    border-color var(--fp-motion-effects-duration) var(--fp-motion-effects-easing);
+}
+
+/* Set draws in the full colour and unset recedes: an unset filter is the absence
+   of a constraint, and the field doing something to the list gets the contrast. */
+.fp-filter-field--selected {
+  background: var(--fp-secondary-container);
+  color: var(--fp-on-secondary-container);
+  /* Transparent rather than removed, so setting a filter does not relayout the
+     field by a hairline as it fills. */
+  border-color: transparent;
+}
+
+.fp-filter-field__label {
+  /* Wider than labelSmall ships. Letter-spaced caps is what makes a three-letter
+     word read as a field name rather than as shouting. */
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: currentColor;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-filter-field__value {
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-filter-field__detail {
+  color: currentColor;
+  opacity: 0.85;
+}

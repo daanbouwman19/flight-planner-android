@@ -1,0 +1,36 @@
+.fp-skeleton-box {
+  border-radius: var(--fp-shape-small);
+  background: var(--fp-on-surface);
+  /* A metronome, not a spring: a spring would make the pulse uneven. Deliberately
+     slow — a fast shimmer reads as an error condition rather than as waiting. */
+  animation: fp-skeleton-shimmer 900ms ease-in-out infinite alternate;
+  opacity: 0.08;
+}
+
+@keyframes fp-skeleton-shimmer {
+  from {
+    opacity: 0.08;
+  }
+  to {
+    opacity: 0.2;
+  }
+}
+
+/* Shimmer is infinite, so it switches off rather than shortening. */
+@media (prefers-reduced-motion: reduce) {
+  .fp-skeleton-box {
+    animation: none;
+    opacity: 0.14;
+  }
+}
+
+.fp-skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  border-radius: var(--fp-shape-large);
+  background: var(--fp-surface-container);
+}

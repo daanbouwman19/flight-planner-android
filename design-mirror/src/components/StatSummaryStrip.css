@@ -1,0 +1,22 @@
+.fp-stat-strip {
+  display: flex;
+  width: 100%;
+  justify-content: space-evenly;
+}
+
+.fp-stat-strip__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+}
+
+.fp-stat-strip__value {
+  color: var(--fp-on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.fp-stat-strip__label {
+  color: var(--fp-on-surface-variant);
+}

@@ -1,0 +1,45 @@
+.fp-runway-diagram {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--fp-on-surface);
+}
+
+.fp-runway-diagram__ident {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+  /* A runway ident reads left to right on every aeronautical publication in the
+     world, including in countries that read right to left. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.fp-runway-diagram__note {
+  color: var(--fp-on-surface-variant);
+}
+
+/* A couple of degrees of sway, and only when the sock is actually being held out
+   by something. A sock that waves in a calm is a decoration. Reverse rather than
+   restart: a real sock sways back through where it came from, and a restart would
+   read as a stutter. */
+.fp-windsock--flying {
+  animation: fp-windsock-sway 1100ms ease-in-out infinite alternate;
+}
+
+@keyframes fp-windsock-sway {
+  from {
+    transform: rotate(-4.5deg);
+  }
+  to {
+    transform: rotate(4.5deg);
+  }
+}
+
+/* The wind is told twice over — by the sock's angle and by the halo — so the
+   flutter goes off entirely rather than merely slowing. */
+@media (prefers-reduced-motion: reduce) {
+  .fp-windsock--flying {
+    animation: none;
+  }
+}

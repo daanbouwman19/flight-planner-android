@@ -1,0 +1,26 @@
+.fp-value-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: var(--fp-shape-small);
+  background: color-mix(
+    in srgb,
+    var(--fp-surface-container-high) calc(var(--fp-value-chip-alpha, 1) * 100%),
+    transparent
+  );
+  color: var(--fp-on-surface);
+  white-space: nowrap;
+}
+
+.fp-value-chip__label {
+  padding-inline-end: 8px;
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-value-chip__value {
+  /* A figure reads left to right on every aeronautical publication in the world,
+     including in countries that read right to left. */
+  direction: ltr;
+  unicode-bidi: isolate;
+}

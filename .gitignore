@@ -21,3 +21,16 @@ captures/
 .claude/*
 !.claude/rules/
 
+
+# design-sync: the React mirror's build output and the converter's staging area.
+# The durable set under .design-sync/ (config.json, NOTES.md, conventions.md,
+# previews/) IS committed; verification state is not.
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+design-mirror/node_modules/
+design-mirror/dist/
+design-mirror/src/tokens/tokens.gen.ts
+design-mirror/src/geo/worldOutline.gen.ts

@@ -1,0 +1,13 @@
+.fp-month-header {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  /* Opaque on purpose. The window's system bars stay transparent, but a sticky
+     header inside a list must stay legible over whichever row is passing behind
+     it, which a translucent surface cannot promise for arbitrary row colours. */
+  background: var(--fp-surface);
+  color: var(--fp-on-surface-variant);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
