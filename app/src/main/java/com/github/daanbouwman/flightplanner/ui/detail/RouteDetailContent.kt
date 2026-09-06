@@ -141,11 +141,27 @@ fun RouteDetailContent(
      * start and cannot be tapped.
      */
     alreadyFlown: Boolean = false,
+    /**
+     * What sits at the top of the page.
+     *
+     * A slot, because the two hosts now want genuinely different things there.
+     * The pane keeps the still map in a rounded box — it is a panel beside a
+     * list, and a full-bleed globe running under the status bar of a pane that
+     * does not reach the status bar would be neither. The phone screen draws
+     * its own deep hero outside this content, full width, and passes an empty
+     * slot.
+     *
+     * **Null is the still hero, and an empty lambda is no hero at all** - two
+     * different things a caller needs to be able to say. The route detail screen
+     * switches between them: its globe hero is drawn full bleed outside this
+     * content, so it passes `{}`, and when the reader switches back to the flat
+     * outline it passes null and gets the hero this content has always drawn.
+     */
+    hero: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     // From the arguments rather than from the loaded state: the shared element
     // has to be matchable on the first frame, and the airports arrive a query
     // later. The codes were in the navigation arguments all along.
-    val faceKey = SharedRouteKeys.face(route.departureIcao, route.destinationIcao, route.aircraftId)
     val aircraftKey =
         SharedRouteKeys.aircraft(route.departureIcao, route.destinationIcao, route.aircraftId)
 
@@ -162,50 +178,23 @@ fun RouteDetailContent(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // ### The hero holds its bounds before it has anything to draw
-        //
-        // **A shared element can only travel to something that is already there.**
-        // This screen is entered with two ICAO codes and reads its airports from
-        // the database, so `arc` is null for the first frames of the navigation.
-        // The container is therefore unconditional: it carries the shared key and
-        // reserves the hero's exact bounds from the first frame, and the map fades
-        // into it when the query returns. Gated on `arc`, there would be nothing
-        // for the card's map to fly to, and the hero would appear abruptly at full
-        // width the moment the airports landed.
-        //
-        // Neither this nor the eyebrow is staggered, either. They are the elements
-        // that arrive by *travelling*; fading them in as well animates one thing
-        // twice, and the two animations do not agree. The stagger starts below
-        // them, where nothing has a counterpart on the card.
-        val heroShape = MaterialTheme.shapes.largeIncreased
-        Surface(
-            shape = heroShape,
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            modifier = Modifier
-                .fillMaxWidth()
-                // Shorter when the window is short, for the reason the card is:
-                // in landscape a 220 dp hero plus the app bar is the entire
-                // window, so every fact on the screen sits below the fold behind
-                // a map that is mostly ocean. The compact figure is the card's
-                // own, because it is the same judgement — the map stays a
-                // recognisable place at 132 dp, and nothing else here would
-                // survive being squeezed at all.
-                .height(if (isCompactHeight()) CompactMapHeight else MapHeight)
-                // The shape again, for the overlay a shared element is drawn in:
-                // this `Surface` clips its own content, but the clip is an
-                // ancestor's and an ancestor's clip does not follow the element
-                // into that overlay. Without it the hero flies as a rectangle and
-                // squares off at whichever end of the navigation it is arriving
-                // at.
-                .sharedRouteElement(faceKey, remeasure = false, clipShape = heroShape),
-        ) {
-            state.arc?.let { arc ->
-                RouteMap(
-                    arc = arc,
-                    outline = state.outline,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+        // Neither the hero nor the eyebrow under it is staggered. They are the
+        // elements that arrive by *travelling* — the still hero as a shared
+        // element from the card, the deep one because it is simply already there
+        // — and fading them in as well animates one thing twice, with the two
+        // animations disagreeing. The stagger starts below them, where nothing
+        // has a counterpart on the card.
+        if (hero != null) {
+            hero()
+        } else {
+            StillRouteHero(
+                state = state,
+                faceKey = SharedRouteKeys.face(
+                    route.departureIcao,
+                    route.destinationIcao,
+                    route.aircraftId,
+                ),
+            )
         }
 
         Row(
@@ -282,6 +271,57 @@ fun RouteDetailContent(
             modifier = Modifier.enterStaggered(4, animateEntrance),
             alreadyFlown = alreadyFlown,
         )
+    }
+}
+
+
+/**
+ * The still hero: C3’s map in a rounded box, and the thing a card’s map flies to.
+ *
+ * Extracted from [RouteDetailContent] when the phone screen took a deep,
+ * full-bleed globe hero of its own — the pane still wants this one, and a
+ * preview of the content without a host wants it too.
+ *
+ * ### It holds its bounds before it has anything to draw
+ *
+ * **A shared element can only travel to something that is already there.** The
+ * detail is entered with two ICAO codes and reads its airports from the
+ * database, so the arc is null for the first frames of the navigation. The
+ * container is therefore unconditional: it carries the shared key and reserves
+ * the exact bounds from the first frame, and the map fades into it when the
+ * query returns. Gated on the arc, there would be nothing for the card’s map to
+ * fly to, and the hero would appear abruptly at full width the moment the
+ * airports landed.
+ */
+@Composable
+private fun ColumnScope.StillRouteHero(state: RouteDetailUiState, faceKey: String) {
+    val heroShape = MaterialTheme.shapes.largeIncreased
+    Surface(
+        shape = heroShape,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            // Shorter when the window is short, for the reason the card is: in
+            // landscape a 220 dp hero plus the app bar is the entire window, so
+            // every fact on the screen sits below the fold behind a map that is
+            // mostly ocean. The compact figure is the card’s own, because it is
+            // the same judgement — the map stays a recognisable place at 132 dp,
+            // and nothing else here would survive being squeezed at all.
+            .height(if (isCompactHeight()) CompactMapHeight else MapHeight)
+            // The shape again, for the overlay a shared element is drawn in: this
+            // `Surface` clips its own content, but the clip is an ancestor’s and
+            // an ancestor’s clip does not follow the element into that overlay.
+            // Without it the hero flies as a rectangle and squares off at
+            // whichever end of the navigation it is arriving at.
+            .sharedRouteElement(faceKey, remeasure = false, clipShape = heroShape),
+    ) {
+        state.arc?.let { arc ->
+            RouteMap(
+                arc = arc,
+                outline = state.outline,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 

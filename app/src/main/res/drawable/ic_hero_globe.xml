@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    "Show the globe" in the route detail's app bar. A sphere with a meridian and
+    a parallel on it, which is what the control switches the hero to.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM12,4c1.35,0 2.5,3.13 2.5,8s-1.15,8 -2.5,8 -2.5,-3.13 -2.5,-8S10.65,4 12,4zM7.9,4.9C7.34,6.72 7,9.2 7,12s0.34,5.28 0.9,7.1C5.6,17.7 4,15.04 4,12S5.6,6.3 7.9,4.9zM16.1,4.9C18.4,6.3 20,8.96 20,12s-1.6,5.7 -3.9,7.1C16.66,17.28 17,14.8 17,12S16.66,6.72 16.1,4.9zM4.26,9h15.48c0.17,0.64 0.26,1.31 0.26,2s-0.09,1.36 -0.26,2H4.26C4.09,13.36 4,12.69 4,12S4.09,10.64 4.26,9z" />
+</vector>

@@ -1,0 +1,30 @@
+// The route arc, drawn over the sphere and occluded by it.
+//
+// Depth-tested against the backdrop sphere, so the half of the great circle on
+// the far side simply fails the test — no facing-value cull, no polyline split,
+// no seam where a run ends. Not depth-writing, so the casing and the line can
+// be drawn as two passes of the same geometry the way an aeronautical chart
+// cases a route, without the first pass hiding the second.
+material {
+    name : globeOverlay,
+    shadingModel : unlit,
+    blending : transparent,
+    depthWrite : false,
+    depthCulling : true,
+    // Double-sided: a ribbon offset to screen-right flips its winding wherever
+    // the arc's projected direction reverses, which happens at the point of the
+    // curve nearest the limb. Culled, that shows as the arc vanishing for a few
+    // segments.
+    culling : none,
+    parameters : [
+        { type : float4, name : baseColor }
+    ]
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec4 c = materialParams.baseColor;
+        material.baseColor = vec4(c.rgb * c.a, c.a);
+    }
+}

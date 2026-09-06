@@ -1,0 +1,28 @@
+// The backdrop sphere, drawn just inside the tiles.
+//
+// It does two jobs and both are structural rather than decorative. It hides the
+// hairline cracks where two levels of detail meet, which are unavoidable when
+// adjacent tiles are tessellated at different densities. And it is the only
+// thing in the scene that writes depth, so it is what occludes the far half of
+// the route arc — which is why the arc needs no horizon test of its own.
+//
+// Opaque on purpose: a transparent backdrop would not write depth, and then the
+// arc would be drawn straight through the planet.
+material {
+    name : globeSolid,
+    shadingModel : unlit,
+    blending : opaque,
+    depthWrite : true,
+    depthCulling : true,
+    culling : back,
+    parameters : [
+        { type : float4, name : baseColor }
+    ]
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = materialParams.baseColor;
+    }
+}

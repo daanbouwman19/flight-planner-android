@@ -2,12 +2,19 @@ package com.github.daanbouwman.flightplanner.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
@@ -18,15 +25,23 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -41,13 +56,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
-import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMap
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.SystemBarsOverMedia
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.ui.chrome.SharedRouteKeys
 import com.github.daanbouwman.flightplanner.ui.chrome.sharedRouteElement
+import com.github.daanbouwman.flightplanner.feature.globe.ui.ControlSize
+import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeControlButton
+import com.github.daanbouwman.flightplanner.feature.globe.ui.PlateAlpha
+import com.github.daanbouwman.flightplanner.feature.globe.R as GlobeR
+import com.github.daanbouwman.flightplanner.ui.detail.DeepGlobeHero
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailContent
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailViewModel
 import com.github.daanbouwman.flightplanner.ui.plan.PlanPreviewData
@@ -118,27 +138,137 @@ fun RouteDetailScreen(
      */
     onMarkFlown: () -> Boolean = { false },
     onOpenAirport: (Airport) -> Unit = {},
+    /**
+     * Opens the globe with the window to itself.
+     *
+     * **Null is the whole of 3B's user-facing behaviour.** On a device with no
+     * renderer the action is not disabled or greyed — it is absent, because a
+     * control that opens nothing is worse than no control, and there is nothing
+     * else on this screen to say so. The still map stays and the app is working.
+     */
+    onOpenImmersiveGlobe: (() -> Unit)? = null,
     viewModel: RouteDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+
+    // **Outline first.** The globe is the better picture of a long leg and the
+    // worse one of a short one, it costs a renderer and a network, and it puts a
+    // photograph under the clock. None of that should be the price of opening a
+    // route. The flat hero is what this screen has always shown; the sphere is a
+    // step taken on purpose, and it is one tap away.
+    var heroMode by rememberSaveable { mutableStateOf(HeroMode.Outline) }
+    val showGlobe = heroMode == HeroMode.Globe && onOpenImmersiveGlobe != null
+
+    // True only while the sphere is the thing behind the clock. Once the page has
+    // scrolled up the bar is `surface` and everything on it is over the theme
+    // again, so the glass treatment has to end exactly where the imagery does.
+    // **`derivedStateOf`, because `overlappedFraction` is a function of
+    // `contentOffset`**, which the nested scroll rewrites every frame. Reading
+    // it directly made this screen — the densest one in the app, and the one
+    // hosting a live renderer — recompose wholesale on every scroll frame, to
+    // observe a value that only ever steps between two states.
+    val overImagery by remember(showGlobe) {
+        derivedStateOf { showGlobe && scrollBehavior.state.overlappedFraction < 0.01f }
+    }
+    SystemBarsOverMedia(active = overImagery)
+
     Scaffold(
         modifier = modifier
-            .fillMaxSize(),
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = {
-                    RouteTitle(route = route)
+                    // On a plate over imagery, bare over the page. The plate is
+                    // the same one the globe’s own labels and its credit sit on,
+                    // and it is here for the same reason: a photograph cannot be
+                    // relied on for contrast the way the theme’s surface can, and
+                    // a colour that reads over ocean does not read over ice.
+                    if (overImagery) {
+                        Surface(
+                            // **The same height as the buttons beside it.** A row
+                            // of glass over a photograph reads as one instrument
+                            // only if every plate in it shares a top and a bottom
+                            // edge; a title plate two-thirds the height of the
+                            // back button reads as two systems again, which is
+                            // exactly what putting the chrome on plates was for.
+                            modifier = Modifier.height(ControlSize),
+                            shape = MaterialTheme.shapes.extraSmall,
+                            color = MaterialTheme.colorScheme.surfaceContainer
+                                .copy(alpha = PlateAlpha),
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                            ) {
+                                RouteTitle(route = route)
+                            }
+                        }
+                    } else {
+                        RouteTitle(route = route)
+                    }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_arrow_back),
-                            contentDescription = stringResource(R.string.action_back),
+                    ChromeButton(
+                        iconRes = R.drawable.ic_arrow_back,
+                        contentDescription = stringResource(R.string.action_back),
+                        onClick = onBack,
+                        onGlass = overImagery,
+                    )
+                },
+                actions = {
+                    // The switch is offered only where there is a globe to switch
+                    // to: 3B again, and the same reasoning as the fullscreen
+                    // action it sits next to.
+                    if (onOpenImmersiveGlobe != null) {
+                        ChromeButton(
+                            iconRes = if (showGlobe) {
+                                R.drawable.ic_hero_outline
+                            } else {
+                                R.drawable.ic_hero_globe
+                            },
+                            contentDescription = stringResource(
+                                if (showGlobe) {
+                                    R.string.route_detail_show_outline
+                                } else {
+                                    R.string.route_detail_show_globe
+                                },
+                            ),
+                            onClick = {
+                                heroMode = if (showGlobe) HeroMode.Outline else HeroMode.Globe
+                            },
+                            onGlass = overImagery,
+                        )
+                    }
+                    // Full screen is about the globe, so it appears with it.
+                    // Offering it over the flat hero would be a control that
+                    // opens something the screen is not currently showing.
+                    if (showGlobe) {
+                        ChromeButton(
+                            iconRes = GlobeR.drawable.ic_globe_fullscreen,
+                            contentDescription = stringResource(
+                                R.string.route_detail_open_globe,
+                            ),
+                            onClick = onOpenImmersiveGlobe,
+                            onGlass = overImagery,
                         )
                     }
                 },
+                // Transparent while the globe is under it, `surface` once the page
+                // has scrolled up. Both are what the empty-bars invariant asks
+                // for: over the hero the imagery runs unbroken past the clock,
+                // and over the page the bar is the same colour as the content
+                // behind it, so it is not a bar at all. A scrim in either state
+                // would be the opaque strip Phase B+ removed.
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
+                scrollBehavior = scrollBehavior,
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -147,19 +277,52 @@ fun RouteDetailScreen(
         contentWindowInsets = WindowInsets.safeDrawing
             .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
     ) { contentPadding ->
-        // The column stops widening past `MaxContentWidth` and centres, which is
-        // the same bound the Plan list uses. In landscape the window is 800 dp
-        // wide and an airport's full name would otherwise be set on a single line
-        // running the whole way across — a line length nobody reads comfortably,
-        // and a runway row whose fields end up further apart than they are tall.
-        // Beyond the bound the extra width becomes margin.
-        Box(
+        // **The top inset belongs to whichever of the two is under the app bar.**
+        // In outline mode that is this content, and it takes the Scaffold’s
+        // padding whole. In globe mode the hero is already up there, full bleed,
+        // and taking the top padding here as well leaves a bar’s height of dead
+        // white between the sphere and the first line of the page.
+        val layoutDirection = LocalLayoutDirection.current
+        val bodyPadding = if (showGlobe) {
+            PaddingValues(
+                start = contentPadding.calculateStartPadding(layoutDirection),
+                end = contentPadding.calculateEndPadding(layoutDirection),
+                bottom = contentPadding.calculateBottomPadding(),
+            )
+        } else {
+            contentPadding
+        }
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(contentPadding)
                 .verticalScroll(rememberScrollState()),
-            contentAlignment = Alignment.TopCenter,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // Full bleed, and outside the content padding: the globe takes the
+            // whole width and runs up under the status bar, which is what makes
+            // it read as a body seen from outside rather than as an illustration
+            // in a box.
+            if (showGlobe) {
+                DeepGlobeHero(
+                    departureIcao = route.departureIcao,
+                    destinationIcao = route.destinationIcao,
+                    arc = state.arc,
+                    outline = state.outline,
+                    aircraftId = route.aircraftId,
+                    // The bar sits over the hero, and the Scaffold has already
+                    // worked out how tall it plus the status bar is.
+                    topChromeInset = contentPadding.calculateTopPadding(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            // The column stops widening past `MaxContentWidth` and centres,
+            // which is the same bound the Plan list uses. In landscape the window
+            // is 800 dp wide and an airport's full name would otherwise be set on
+            // a single line running the whole way across — a line length nobody
+            // reads comfortably, and a runway row whose fields end up further
+            // apart than they are tall. Beyond the bound the extra width becomes
+            // margin.
             RouteDetailContent(
                 route = route,
                 state = state,
@@ -168,12 +331,52 @@ fun RouteDetailScreen(
                 snackbarHostState = snackbarHostState,
                 onOpenAirport = onOpenAirport,
                 modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(bodyPadding)
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
                 alreadyFlown = alreadyFlown,
+                // Empty in globe mode: the screen drew its own hero above, full
+                // bleed, and an inline one as well would be two. Null otherwise,
+                // which is the content asking for the flat hero it has always
+                // drawn.
+                hero = if (showGlobe) EmptyHero else null,
             )
         }
     }
 }
+
+/** Which drawing of the leg the hero is showing. */
+private enum class HeroMode { Outline, Globe }
+
+/**
+ * An app-bar control that can find itself over a photograph.
+ *
+ * Over the page it is an ordinary [IconButton]. Over imagery it becomes the same
+ * plate the globe puts its own controls on, because that is the treatment that
+ * works over any pixel underneath it rather than over the light ones.
+ */
+@Composable
+private fun ChromeButton(
+    iconRes: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+    onGlass: Boolean,
+) {
+    if (onGlass) {
+        GlobeControlButton(
+            iconRes = iconRes,
+            contentDescription = contentDescription,
+            onClick = onClick,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+    } else {
+        IconButton(onClick = onClick) {
+            Icon(painter = painterResource(iconRes), contentDescription = contentDescription)
+        }
+    }
+}
+
+/** No hero at all, for the mode where the screen draws its own above the content. */
+private val EmptyHero: @Composable ColumnScope.() -> Unit = {}
 
 /**
  * The two codes and the arrow between them, as three nodes rather than one

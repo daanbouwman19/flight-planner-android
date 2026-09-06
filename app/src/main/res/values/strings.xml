@@ -218,6 +218,15 @@
     <string name="stats_section_activity">ACTIVITY</string>
     <string name="stats_section_network">VISITED NETWORK</string>
     <string name="stats_network_summary_format">%1$d airports · %2$d routes</string>
+    <!--
+        The two ways of drawing the visited network. Nouns rather than verbs
+        because they are the two things the panel can be, not two actions: the
+        chip that is filled is the one you are looking at.
+    -->
+    <string name="stats_network_mode_flat">Flat</string>
+    <string name="stats_network_mode_globe">Globe</string>
+    <string name="stats_network_mode_flat_description">Flat map</string>
+    <string name="stats_network_mode_globe_description">3D globe</string>
 
     <string name="stats_metric_total_flights">TOTAL FLIGHTS</string>
     <string name="stats_metric_avg_distance">AVG LEG DISTANCE</string>
@@ -306,6 +315,16 @@
          distances or lengths, so no unit suffix. -->
     <string name="settings_dataset_counts">%1$s airports · %2$s runway ends</string>
     <string name="settings_dataset_notice">Public-domain data from OurAirports and Natural Earth.</string>
+    <!--
+        The globe’s renderer, in About. The two unavailable cases are the only
+        place the app mentions that a device cannot draw a globe: the route
+        detail simply keeps its still map and says nothing, because that is the
+        app working rather than failing.
+    -->
+    <string name="settings_globe_available">The 3D globe is available on this device.</string>
+    <string name="settings_globe_no_renderer">The 3D globe is unavailable: this device has no supported renderer. Routes are drawn on the flat map instead.</string>
+    <string name="settings_globe_low_memory">The 3D globe is unavailable: this device does not have the memory for it. Routes are drawn on the flat map instead.</string>
+
     <string name="settings_licences_action">Licences</string>
 
     <string name="settings_empty_message">A tile provider for the 3D globe is still to come.</string>
@@ -323,6 +342,25 @@
     <!-- Route detail -->
     <!-- Spoken for the app bar title, which is drawn as two codes and an arrow. -->
     <string name="route_detail_title_spoken">%1$s to %2$s</string>
+
+    <!--
+        Chip labels for the immersive globe's route plate. DIST and ETE are the
+        plan card's own labels, reused rather than re-invented so the same figure
+        is called the same thing wherever it appears; BRG is the initial bearing,
+        which no other surface shows as a chip.
+    -->
+    <string name="route_detail_bearing_label">BRG</string>
+
+    <!-- Opens the globe with the window to itself. -->
+    <!--
+        The route hero has two drawings of the same leg: the flat outline, which
+        is the default, and the globe. Named for what you get, not for what is
+        showing - the chip that is on is the one you are looking at is a rule for
+        a selector, and this is a single action.
+    -->
+    <string name="route_detail_show_globe">Show the globe</string>
+    <string name="route_detail_show_outline">Show the flat map</string>
+    <string name="route_detail_open_globe">Open the globe full screen</string>
     <string name="route_detail_departure">DEPARTURE</string>
     <string name="route_detail_destination">DESTINATION</string>
     <string name="route_detail_loading_airport">Reading the airport…</string>
