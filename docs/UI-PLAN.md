@@ -1615,7 +1615,19 @@ moving it; it now hangs off an overflow item on Plan's own header instead — se
 
 ---
 
-## 9. Phase G — The 3D globe
+## 9. Phase G — The 3D globe ⚠️ BUILT AND REVIEWED, NOT COMPLETE
+
+> **G1–G9 are implemented and `./gradlew build` is green**: seamless NASA
+> imagery, the great circle over it, the labels, the camera stack, the deep
+> hero, the immersive screen. Seven defects were then found by looking at a
+> device and eleven more by `/code-review`, and all eighteen were fixed.
+>
+> **A second, much larger review has since returned about 140 findings, 121 of
+> them verified** — see *What a second, much larger review found* below, which
+> is now the most useful thing in this section. Several are states a user can
+> reach and cannot get out of, and the opening frame is wrong in four ways. The
+> ✅ this section used to carry was premature; nothing here should be treated as
+> finished until that list is worked through.
 
 Strictly ordered. Each step is verifiable before the next begins, because
 debugging a renderer and a camera at the same time is how weeks disappear.
@@ -1635,6 +1647,327 @@ debugging a renderer and a camera at the same time is how weeks disappear.
 **Open risk:** Esri tile licensing for a consumer app is unresolved. `TileProvider`
 stays swappable and NASA GIBS (public domain, keyless, caps around z8–z9) is the
 default until that is settled.
+
+### Where the build diverged from the table above
+
+Each of these is a decision taken against a measured or compile-checked fact,
+not a shortcut. They are recorded here because the table reads as though they
+did not happen.
+
+| Planned | Built | Why |
+| --- | --- | --- |
+| G2: a **translucent** swap chain | An **opaque** one | `SwapChain.CONFIG_TRANSPARENT` does not exist in Filament 1.75.1 — established by compiling a probe, as this project requires. It is also unnecessary: the surface is composited *below* the window, so it has nothing behind it to blend with, and an opaque swap chain is the cheaper path through the compositor. |
+| Materials compiled at runtime | `matc` at **build time**, `.filamat` blobs committed as assets | `filamat-android` is 33 MB of JNI for a compiler that would run four times ever. Committing generated binaries matches what the airport index and the baseline profile already do. |
+| The desktop’s `MAX_LOD` | **8** | GIBS `BlueMarble_ShadedRelief_Bathymetry` has no imagery above z8, so a deeper level is a request that 404s. |
+| The desktop’s 256 visible tiles | **160** | The atlas has 256 slots of which 85 are pinned, leaving 171 evictable. Asking for 256 visible tiles guarantees the selector evicts a tile it is about to draw — a thrash that shows up as flicker, not as a log line. |
+| Vulkan | Vulkan, then **OpenGL** | Engine creation is attempted on Vulkan and falls back. A device that fails both reports `GlobeSupport.NoRenderer` and never sees a globe. |
+
+### What the globe is reachable from
+
+| Where | What |
+| --- | --- |
+| Route detail | A **Flat/Globe switch in the app bar, flat first.** The flat outline hero is what the screen has always drawn and it is what opening a route still gets you; the globe is one tap and takes the **deep hero** — 44% of the window, running under the status bar. |
+| Route detail app bar | A fullscreen action opening `Destination.ImmersiveGlobe`, the globe with the window to itself and the figures on a plate. It appears **with the globe**, since it opens something the screen is otherwise not showing. Both it and the switch are **absent, not disabled, where there is no renderer** (3B). |
+| Stats · visited network | A Flat/Globe toggle in the card header, **Flat first**. Flat is honest about density and is right for a regional logbook; the sphere is honest about distance and is what a logbook spanning hemispheres needs. The toggle is absent where there is no renderer. |
+| Settings · About | The one line in the app that says a device *cannot* draw a globe, plus the GIBS credit in reading order. |
+
+### What the device found
+
+**Every one of these was invisible to the build.** It compiled, the 18 math tests
+passed, lint was clean and `checkInvariants` passed through all seven of them.
+All seven are fixed.
+
+| # | Symptom | Cause | State |
+| --- | --- | --- | --- |
+| 1 | `BufferOverflowException` on the first tile, every launch | `Texture.PixelBufferDescriptor` was built with the default stride of 0. Filament reads 0 as "tightly packed" and resolves it against the **texture** width, not the region width — so a 256-wide tile into a 4096-wide atlas asked for sixteen times the buffer. | Fixed: the stride is named. |
+| 2 | The whole planet invisible, backdrop only | The tile shader took its surface normal from `material.worldPosition`. Filament renders **camera-relative**, so in the vertex stage that is the vertex *minus the camera* — the view ray. Every limb dot came out near -1 and clamped the imagery to zero alpha. | Fixed: `getPosition()`, which is object space, and the mesh is on the unit sphere. |
+| 3 | Imagery froze a second or two after appearing, then never updated again | `rebuildTileMesh` acquired two ring buffers and returned early when there was nothing to draw — without giving them back. Three such frames at startup (before any tile has imagery) emptied a three-deep ring permanently, after which the geometry silently held whatever it last uploaded. | Fixed: both early-outs release. |
+| 4 | The backdrop sphere rendered at first and then disappeared | Its vertex and index `ByteBuffer`s were locals in `init`. Filament keeps the address rather than copying, so the first garbage collection freed geometry the driver still owned. | Fixed: they are fields. |
+| 5 | Most of the sphere drew black, with a scatter of tiles from the wrong place | **Filament flips `v` on UV0 by default.** The atlas rectangles are computed against the texture this code uploads into, so `getUV0()` returning `1 - v` turned a slot in row 3 into a lookup in row 12 — a slot holding another tile, or far more often one nothing had been written to. | Fixed: `flipUV : false`. |
+| 6 | A scatter of grey teeth over the sphere, worst zoomed out | The tile grid *inscribed* the unit sphere, so each quad’s flat face sagged inside it — 0.033 at z0, thirty times the 0.001 the backdrop sits below the surface, so the backdrop poked through. | Fixed: the grid circumscribes (`1 / cos(half the quad diagonal)`), and the coarse levels are tessellated finer. |
+| 7 | A grey ellipse capping each pole | Web Mercator stops at 85.05°, so the top and bottom tile rows leave bare sphere. | Fixed: the outermost row of vertices is pushed to the pole and keeps its own `v`, stretching that tile’s last texel row over the cap. |
+
+Two lessons worth keeping, because both cost hours:
+
+- **Filament does not copy anything.** Not pixel buffers, not vertex buffers, not
+  index buffers. Every direct `ByteBuffer` handed to it must stay reachable from
+  the Java heap until its callback fires, and one that is dropped instead fails
+  *later*, under GC, looking exactly like a driver bug.
+- **A rendering fault has no stack trace.** The only instrument that worked was
+  writing a value into the fragment shader and looking at the colour: solid green
+  to ask whether the geometry rasterises, `fract(uv * 16)` to ask what is in the
+  atlas, `vec4(uv.x, uv.y, 0, 1)` to ask what is being sampled. That last one is
+  what caught defect 5 in a single screenshot after an hour of theories, because
+  it showed `v ≈ 0.81` where the buffer held 0.19.
+- **Read the defaults of anything that transforms your data on the way in.**
+  `flipUV` is a one-line default in a file format nobody re-reads, and it made a
+  correct atlas, correct rectangles and a correct mesh add up to a black planet.
+
+### What a code review then found, and what verifying it found
+
+`/code-review` returned eleven findings against the finished phase. Two of them
+were wrong constants that would have crashed or degraded in the field, and both
+came from changes made *during* Phase G rather than from the original design —
+which is the argument for running it at the end of a phase rather than the
+middle.
+
+| Symptom | Cause |
+| --- | --- |
+| `BufferOverflowException` on the eighth visited leg | `MAX_RIBBON_VERTICES` was `SAMPLES * 2 + 8`, sized for one 256-point arc. When `setArcs` took a list for 1G the visited network began feeding every leg at 32 samples — 66 vertices each — and the ring behind the growing `RibbonBuffer` did not grow with it. The budget is now 16,384 and the buffer **refuses** vertices past its capacity rather than growing, so an unusually large logbook loses its last arcs instead of throwing. |
+| The tile budget silently half of what the mesh could ask for | `MAX_TILE_VERTICES` was derived from substeps of 16/12/8/6 and was not revisited when they were raised to 32/20/14/10/7/5. Recomputed: 18,997 worst case, so 40,000, and 192,000 indices. |
+| A 32 MB atlas outliving the screen | `GlobeSession.acquire` ran in `remember` while its release sat in a `DisposableEffect`, so a composition that was started and thrown away took a reference nothing balanced. Both halves are in the effect now. |
+| Status-bar glyphs flipping back over imagery | Two writers. `FlightPlannerTheme` re-applies the insets controller on every one of its own recompositions, so it won whenever `SystemBarsOverMedia`’s keys had not changed — LIGHT to CHART, for instance. The override is now a flag the theme reads, and the theme is the only writer. |
+| The globe rendering at 60 Hz behind a page | The frame loop re-posted unconditionally. It now stops when hidden and skips the work when settled. **`onVisibilityAggregated` is not enough**: a Compose scroll leaves the `View` VISIBLE in a visible window, so the host measures its own box and tells the surface. |
+| A Filament engine built on the main thread, inside composition | `resolveSupport` created and destroyed a probe engine to answer "is there a renderer" — from `remember`, in the nav host, in Stats and in Settings — and then `acquire` built another. It now reads `reqGlEsVersion`, and `acquire` still caches `NoRenderer` if a device that claims GLES 3.0 fails anyway. |
+| One AVWX request per fullscreen toggle | The immersive screen resolved its own `RouteDetailViewModel` against its own back-stack entry. It borrows the route detail’s entry instead, via `routeDetailEntry`. |
+| The same tile fetched twice after a fast pan | `request`’s overflow path cleared `pending`, which is also the in-flight set. It now drops only the keys still sitting in the stack. |
+| A fling recomposing the whole glass — **this fix did not hold; see the second review below** | Reading `cameraState.camera` at the canvas’s own scope made the limb, the input box and the semantics subscribers. The read moved into the layers that are actually a function of the camera; the limb reads in the draw phase, and the semantics build their sentence inside the `semantics` lambda. |
+| No card morph in globe mode | The key sits on the still `RouteMap` **under** the sphere. The `SurfaceView` is a sibling and never enters the shared-element overlay, so the card’s map grows into the hero and the globe crossfades in over it — which is the crossfade C3 already asked for, now with somewhere to start. |
+
+Two more surfaced only because the frame loop was measured rather than assumed,
+and both had been quietly true all along:
+
+- **`popNewest` dropped stale keys from the stack without removing them from
+  `pending`.** A tile that became resident between being requested and being
+  popped stayed in `pending` for the life of the loader, because `request`
+  returns before the add for a resident key. The loader therefore always claimed
+  work it was never going to do — invisible until something asked it whether it
+  was idle.
+- **`nextFadeExpiry` is `Float.MAX_VALUE` when nothing is fading**, so comparing
+  the clock against it directly is always true. The first version of the settled
+  test did exactly that and looked like the gate being ignored.
+
+Measured on the emulator, route detail in globe mode, process CPU over five
+seconds: **184 jiffies at rest before, 0 after**, and 28 with the hero scrolled
+off. The globe still wakes on a drag, on the zoom controls and on a tile
+arriving.
+
+### The material toolchain is not in the build
+
+`src/main/materials/*.mat` are compiled to the committed `src/main/assets/materials/*.filamat`
+by hand, with:
+
+```
+matc --platform=mobile --api=opengl --api=vulkan -o <out>.filamat <in>.mat
+```
+
+`matc` ships in the Filament release archive (`filament-<version>-windows.tgz`),
+not in the AAR, so it is not on any developer machine by default and there is no
+Gradle task for it. **A change to a `.mat` that is not recompiled by hand ships the
+old shader and nothing says so.** Wiring this into the build is outstanding.
+
+### Chrome over a photograph
+
+Three separate things stopped being readable the moment imagery ran under them,
+and all three now take the same answer the globe already used for its own labels
+and its credit: **a plate**, `surfaceContainer` at 0.82 with an `extraSmall`
+corner. The route title, the back button, the switch and the fullscreen action
+all sit on one while the sphere is behind them, and go bare again the moment the
+page scrolls up and the bar is `surface`.
+
+The system’s own glyphs cannot be plated, so they get the only lever the platform
+offers: `SystemBarsOverMedia` in `:core:designsystem` flips
+`isAppearanceLightStatusBars` to light while imagery is under the clock, and hands
+it back on dispose. **That is not a retreat from the empty-bars invariant** —
+nothing is painted, the imagery still runs unbroken past the clock, and only the
+colour the system draws its own glyphs in changes. The navigation bar is left
+alone: it sits over ordinary page content here, so flipping it would make the
+gesture handle harder to see rather than easier.
+
+**A fourth thing was a real bug rather than a contrast problem.** The label plates
+are placed by a `layout` block at a projected pixel, and Compose lets a child be
+placed outside its parent *and drawn there*: a dot near the bottom of the sphere
+put its plate on the page below the hero, next to text it had nothing to do with,
+and the limb overlay drew its rim across the page for the same reason. The globe
+canvas is now `clipToBounds`.
+
+### Three more the device found, after the imagery was right
+
+| Symptom | Cause |
+| --- | --- |
+| A bar’s height of dead white between the sphere and the first line of the page | The Scaffold’s `contentPadding` includes the app bar’s height, and the full-bleed hero already occupies that space. In globe mode the body now takes the start, end and bottom of that padding and drops the top. |
+| An airport label sitting behind the app-bar chrome | The label may not move off its point, so it fades instead — the same treatment case 2 gives a label at the limb. The host says how tall its chrome is (`topChromeInset`); the globe fades a label that rises into it, and a second fade covers the bottom edge, where a plate has no room to hang below its dot. |
+| Going back from the route detail read as two pages stacked, not as one card | `sharedExit` was the mirror of `sharedEnter`, so both screens sat near half opacity through the middle and the travelling element was lost in a dense page of figures over a list of cards. The exit now runs on the **fast** effects spring while the entrance runs on the default one — the same asymmetry `fadeThrough` already made, for the same reason. |
+
+### Why the flat hero is not the globe drawing an outline
+
+The obvious economy — one renderer, two skins — does not pay. The coastlines could
+reuse `RouteGeometry.ribbonInto` as another set of arcs, which is genuinely close
+to a switch, but **the whole world’s coastline would be re-projected on the CPU
+every frame**. The flat `RouteMap` projects once into a cached `Path` because its
+frame never moves; a globe’s does, every frame, and there is no measurement saying
+that is affordable. Land *fill* is worse: it needs polygon triangulation on a
+sphere, which the flat map gets for free from an even-odd `Path`.
+
+So the two heroes stay two drawings. The flat one is a diagram and the globe is a
+photograph, and each is drawn by the thing that is good at it.
+
+### What a second, much larger review found
+
+The ✅ above was written after seven device defects and eleven code-review
+findings had been fixed. A second pass — fourteen review dimensions with
+adversarial verification, a separate pass on Android's own gesture navigation, a
+completeness critic, and another session on a device — returned **about 140
+findings, 121 of them verified.** The phase is not complete; the tables below are
+what is left.
+
+**Read the calibration note at the end of this section before treating a row as
+settled.** Two verdicts flipped between identical runs, and one whole batch of
+forty confirmed forty out of forty, which is not a number an honest adversarial
+pass usually produces.
+
+#### The opening frame is wrong, in four independent ways
+
+This is the feature's own promise — *"the first frame answers the question the
+screen is about, without the user touching anything"* — and it is the thing every
+user sees first. All four live in `GlobeFit`.
+
+| Symptom | Cause |
+| --- | --- |
+| Both airports off the left and right edges, in the hero and worse in fullscreen | `frameRoute` takes no viewport. The projection's horizontal half-angle is `atan(tan(fovY/2) · w/h)`, so the near-square hero has about 0.7° of margin for a leg spanning ±14.9°, and the portrait immersive window has 6.4°. Moving between them multiplies every on-screen offset by 2.27 and carries the camera over unchanged, because `isNewSubject` is false. **Re-fit does not recover them**: it animates to the same aspect-blind camera. |
+| A long leg opens on a bare planet | `frameRoute` centres on the *degree* midpoint, not the arc midpoint — up to 68° off the great circle it is framing, and the comment excusing that is arithmetically false. Above roughly 12,000 km both airport plates are at zero alpha in the opening frame; at ~138° (KJFK→WSSS) the arc is behind the limb too. The A350-1000 and 777-200LR in the seeded fleet reach that. |
+| A wide visited network framed with its outliers behind the limb | `inverseZoom` is clamped to `[1, 8]`, so the fitted `distance` can never exceed **2.5** — a 66.4° horizon — while `MAX_DISTANCE` is 10, an 84.3° one. Every subject whose furthest point falls in that gap is hidden when a legal camera existed that would have shown it. |
+| Every leg under ~776 NM opens at the same altitude, and cannot be zoomed out of it | The same clamp binds from the other end: `0.9 / sin(θ/2) ≥ 8` whenever θ ≤ 0.2255 rad. A 71 NM leg is ~9% of the hero's height, drawn at the same camera as a 700 NM one. The Rust original has the same constants but `MAX_LOD` **18** against Android's **8**, so on the desktop you zoom in and recover the leg; here the imagery only stretches. The seeded ATR 42-600 has a 703 NM range and `minDistanceNm` defaults to null, so **every route it can fly** sits at or under the clamp. |
+
+A fifth thing follows from the first: `topChromeInset` is the Scaffold's whole top
+padding, ~88–100 dp, and `edgeAlpha` fades anything above it plus 28 dp — which is
+exactly where the fit puts the endpoints. On an ordinary leg the departure plate is
+never drawn, and a plate whose anchor is just off-screen is *sliced* by
+`clipToBounds` rather than dropped, so it renders as a two-letter fragment.
+
+#### One boolean is asked three questions and gets each one wrong somewhere
+
+`overImagery` decides whether the chrome is on glass, whether the app bar is
+transparent, and what colour the system draws its glyphs. Those are three
+different questions.
+
+| Symptom | Cause |
+| --- | --- |
+| The glass chrome drops after a nudge, with 390 dp of photograph still under it | `overlappedFraction < 0.01f`. For a pinned single-row bar `heightOffsetLimit` is minus the bar's own 64 dp content height (~192 px at 3×), so the predicate fails after **~1.9 px, about 0.6 dp** — the first frame past touch slop. The KDoc immediately above claims the treatment ends where the imagery does. |
+| An opaque slab across the status bar and the live imagery | `scrolledContainerColor` wins at the same threshold, and `TopAppBar` paints it with a `drawBehind` on the outer Box while `windowInsetsPadding` is on the inner layout, so the rect covers the status inset as well as the bar. This is how every bar in the app behaves; it is wrong *here*, over a photograph, not everywhere. |
+| White status glyphs on a near-white page | The flag is gated on hero *mode*, not on imagery existing. Before the first tile mesh — every entry into globe mode, again after each 2 s session teardown, and permanently offline — the pixels under the clock are the still map over `background`. Beyond ~8,200 km the top strip is `GlobeInk.space`, which *is* `colorScheme.surface` by design. |
+| Dark glyphs over full-bleed satellite imagery | `SystemBarsOverMedia` has exactly one caller. The immersive globe — the only surface in the app that is edge-to-edge photograph — never raises it, and entering it *lowers* the flag the detail screen had raised. |
+| The plates snap off a frame before the bar arrives | `overImagery` is a step; the bar's container colour crosses the same threshold through `animateColorAsState`. Title and icons sit bare over imagery for the length of a spring. |
+
+#### What only shows up above the globe module
+
+Fourteen dimensions looking inside `:feature:globe` found none of these.
+
+| Symptom | Cause |
+| --- | --- |
+| Every globe-mode scroll recomposes the whole app | `FlightPlannerTheme` now reads `overMedia.value` at its own scope, and its body calls `dynamicLightColorScheme(context)` unremembered. `ColorScheme` has no `equals`, `MaterialTheme.Values` therefore compares it by identity, and `_localMaterialTheme` is a `staticCompositionLocalOf` — so a new identity invalidates every consumer in the subtree, bypassing skipping. Each step of `overImagery` does that, on the densest screen in the app, with a live Filament surface attached. |
+| Five unrelated transitions changed appearance | `sharedExit()` was retuned in `:core:designsystem` for a reason stated entirely in terms of a shared element. It is wired to `Plan`, `RouteDetail` and `ImmersiveGlobe`, and `Plan`'s exit fires on **every** navigation away from Plan — Settings, Fleet, Airports, Logbook, Stats — none of which share an element with it. |
+| Two divergent answers to "is there a renderer" | `FilamentProbe` is still in `src/main` and still builds a real engine for the self-check, while `resolveSupport` was deliberately changed to read `reqGlEsVersion`. A device that claims GLES 3.0 and fails engine creation reports PASS while the globe hides its controls. |
+| The Licences screen credits nobody for the imagery | Its KDoc still explains the omission in the past tense — "Phase G's globe, which does not exist yet". The branch adds the credit to About and to the glass and skips the one screen whose whole job is attribution. Settings' About also still says a tile provider "is still to come", ten lines under the line saying the globe is available. |
+| A toolchain upgrade riding inside a feature branch | The entire diff to `gradle/libs.versions.toml` is `agp` 9.3.2 → 9.4.0. Nothing in the globe requires it; every dependency it uses was already in the catalogue. Reverting the globe now means also deciding on an AGP bump nobody wrote down. |
+
+#### States a user can reach and cannot get out of
+
+| Symptom | Cause |
+| --- | --- |
+| The globe becomes permanently un-pannable | The pan *target* is never clamped to the reachable disc — only the anchor is. One frame of a drag started off the sphere runs Newton at the singular limb ring and sets `centerLon` to about −290,000°. Past ~65,536° the float32 ulp exceeds `2 · PAN_EPS_DEGREES`, the Jacobian determinant goes to zero and `panTo` returns unchanged forever. |
+| Momentum that cannot be stopped, and compounds | `fling` runs its own local `Animatable` in the composable's scope. `GlobeCameraState.stop()` only stops the one `animateTo` uses, so a touch-down does not stop it, a second flick runs a second concurrent decay, and re-fit, zoom and double-tap all write the camera on the same frames. |
+| An aborted back swipe flings the planet | The gesture loop exits on `pressed.isEmpty()` and then unconditionally emits `End(Pan, velocity)`. Compose delivers a system pointer-cancel as a synthetic event with `pressed = false`, indistinguishable from a release unless consumption is checked — so every gesture the system steals ends in momentum the user never released. |
+| A blank full-screen rectangle with no way out | `ImmersiveGlobeScreen`'s `if (globeRoute == null) return@Surface` sits *above* the overlay that carries the collapse button, the controls and the plate, and no navigation suite is shown over this destination. Reachable by process-death restore with the immersive globe on top. |
+| Offline, globe mode is the flat map wearing the globe's chrome | `hasDrawnImagery` needs one resident tile, and no tiles ship in assets. With no network `globeAlpha` stays `0f` forever — but the alpha-0 layer covers the surface, the limb and the markers and **not** the input box or `overlay()`. So the still map is drawn under a full-opacity camera stack and imagery credit, driving a camera nothing renders, with fullscreen still on offer. `TileAtlas.basePinned` — KDoc: *"the globe is then legible offline"* — has zero readers in the repo. |
+
+#### The globe fights the platform, and the page it sits in
+
+| Symptom | Cause |
+| --- | --- |
+| The top 44% of the route detail cannot be scrolled | `globeGestures` consumes every position change unconditionally, from the first MOVE, before the classifier decides anything. Correct for the immersive screen, which owns the window; wrong for the deep hero inside `Column(verticalScroll)` and the 260 dp band inside the Stats `LazyColumn`. |
+| A spin started near either window edge navigates away | ~30 dp of both edges is the system back-gesture strip, full window height — **14.4% of the width**, measured — and nothing in the app calls `systemGestureExclusion`. Taps still reach the window; drags are pilfered. The platform caps any fix at 200 dp of vertical extent. |
+| The hero's controls under the navigation bar and the cutout | `GlobeCameraControls` and `GlobeAttribution` in `DeepGlobeHero` take no window insets at all — only `.align().padding(GlassGutter)` — unlike the immersive screen, which does it correctly. In landscape the credit lands under the back button and the camera stack under the app-bar actions, and the stack is itself taller than the 132 dp hero and is clipped. |
+| TalkBack is told about the globe and can read nothing on it | The full-size input/semantics Box is composed *after* the marker layer and is `fillMaxSize()` with a `contentDescription`, so Compose prunes every label plate and node dot as covered — the things `GlobeSurface`'s own KDoc calls "the only part of the globe TalkBack can read". |
+
+#### Resources, and the "fully offline" claim
+
+| Symptom | Cause |
+| --- | --- |
+| Backgrounding holds 32 MB of atlas, the engine and the tile workers forever | The session is released on the last *detach*. Backgrounding never detaches — it only flips `onVisibilityAggregated` — so the teardown timer never posts and nothing implements `onTrimMemory`. |
+| Scrolling Stats past the card and back rebuilds the engine on the main thread | The card is a `LazyColumn` item, so it is disposed when it leaves the viewport; two seconds later the session is destroyed, and scrolling back re-runs `Filament.init()`, `Engine.Builder().build()` and a 4096² RGB565 allocation from a `DisposableEffect`. |
+| Panning offline fails, and every session re-validates the 85 pinned tiles | Neither interceptor PLAN.md §5.5 specifies exists — no minimum `max-age` rewrite, no `ForceCacheOnFailureInterceptor`. Weigh this against the app's own "fully offline, no server" description. |
+| A second HTTP stack, and a cache that is never closed | `GlobeSession.sharedHttpClient` is a bare `OkHttpClient()` with its own pool, dispatcher and DNS — the KDoc says the opposite, and tile requests lose the User-Agent `:core:network` exists to set. `TileLoader`'s 96 MB `okhttp3.Cache` is `Closeable` and `shutdown()` never closes it, so a second one is opened over the same directory on every session rebuild. |
+| ~4.3 MB of dead native code per ABI | `filament-utils-android` is declared and never referenced; the module uses only `filament-android`. |
+
+#### Rendering and geometry
+
+| Symptom | Cause |
+| --- | --- |
+| The globe arrives as a hard cut, and G8's crossfade does not exist | The fade is `graphicsLayer { alpha = … }` on the `AndroidView` hosting a Z-below `SurfaceView`. `CompositingStrategy.Auto` sets `hasOverlappingRendering`, so alpha < 1 renders the node offscreen and the surface's `PorterDuff.CLEAR` hole punch only zeroes the offscreen. The same mechanism defeats the predictive-back fade. |
+| The rim and its glow break by 160–300 px whenever the view is tilted | `Limb.projectInto` drops points behind the camera plane with `continue` and writes the survivors **compacted**, so the consumer cannot tell the run was broken and draws a straight segment across the gap. |
+| Tile thrash of exactly the kind `MAX_VISIBLE_TILES = 160` was set to prevent | The budget counted leaves, but `request` fires for every visited node and every non-pinned ancestor takes a slot. Counted by porting `collectVisibleTiles`: **227 distinct requested keys** against `SLOTS − PINNED_SLOTS` = 171. |
+| Two surfaces drawing each other's tiles | `GlobeScene` is a process singleton but `lastVisibleSignature`, `lastBuiltGeneration` and the tile buffers are per-scene, not per-view. Every hero↔immersive transition, and every held predictive-back drag, has two attached views selecting different LOD (`focalPixels` is height-dependent) and invalidating each other. |
+| The ribbon re-derived from scratch every frame for every leg | `appendArc` allocates roughly ten short-lived `Vec3` per visible sample and `rebuildRibbon` runs unconditionally, against a KDoc claiming "one pass over 256 points… a few microseconds". |
+| A declined frame recorded as rendered | `renderedCamera` and `renderedViewport` are assigned *before* the `renderer.beginFrame` success check, so a frame the driver declines still satisfies the settle test on the next vsync. |
+
+#### What this section itself got wrong
+
+- **"A fling recomposing the whole glass" is recorded above as fixed. It is not.**
+  Three findings refute it independently: `GlobeControlsHandle`'s `bearingDegrees`
+  and `isRotated` are plain getters dereferencing a `mutableStateOf`, read at the
+  *host's* call site, so the subscription lands on the host's overlay lambda; and
+  the `semantics` lambda's camera read runs inside `observeSemanticsReads`, which
+  subscribes the layout node exactly as a composition read would.
+- **`CompactHeroHeight`'s KDoc says the globe hero and the still hero "agree at
+  that width". They do not.** The still hero is laid out inside the content
+  padding, so all 132 dp is visible; the globe hero is full bleed under an ~88 dp
+  bar, leaving about 44 dp of sphere.
+- The nav host describes the immersive transition as a box growing on a spatial
+  spring. The tokens it names are pure fades whose own KDoc says "no scale".
+- **The three math files with confirmed defects are the three with no tests.**
+  `GlobeCamera`, `CameraMatrices` and `Quadtree` have test files; `GlobeFit`,
+  `RouteGeometry` and `Limb` do not, and every confirmed maths defect is in the
+  untested half. G1 claims the maths was "unit-tested first".
+
+#### What this review did not settle
+
+Recorded because a confirmed count reads as more certain than it is:
+
+- **Two verdicts flipped between identical verification runs** — the stock
+  `public`/`map` glyphs on the hero switch, and the design tokens `:app` now
+  imports from `:feature:globe`. Both are contested, not settled either way.
+- **One batch of forty findings refuted none of them.** Four were downgraded, which
+  is real work, but a pass that refutes nothing has not proved everything. The
+  high-severity rows in it were checked further; the medium tail was not.
+- **Per-finding verification is the wrong shape.** The first run fanned out to
+  about a hundred verifiers and had to be killed. One verifier per dimension,
+  ruling on that dimension's findings together, is cheaper *and* better informed —
+  it can see duplicates between findings, which per-finding verifiers structurally
+  cannot.
+- **The device found things no reviewer did**, and reading found things no device
+  session could. Neither substitutes for the other.
+
+### What is still owed
+
+The review above is the list. In the order the defects actually cost a user
+something:
+
+1. **`GlobeFit`.** Give it the viewport, aim at the arc midpoint, raise the 2.5
+   clamp, and decide what a sub-776 NM leg should look like. One file, and it is
+   the first thing every user sees, wrong in four ways. It has no test file.
+2. **The `overImagery` / `SystemBarsOverMedia` mechanism.** Gate it on imagery
+   rather than on mode, call it from the immersive screen, and take the snapshot
+   read out of the theme root.
+3. **The offline path.** `TileAtlas.basePinned` exists and has no reader.
+4. **The pan clamp and fling cancellation** — the two states a user cannot get out
+   of — and the `ACTION_CANCEL`-as-release bug behind the third.
+5. **`onTrimMemory`**, then the accessibility occlusion.
+6. **The two things that do not belong to this feature at all**: the `sharedExit()`
+   retune, which changed five unrelated transitions, and the AGP bump.
+
+Still outstanding from the first pass, unchanged:
+
+- **The Stats card in Globe mode, on a device with a populated logbook.** It is
+  deliberately full-bleed and square-cornered, because a Compose `clip` is a
+  render-node clip and does not reach a `SurfaceView` composited below the
+  window — that reasoning is written down but has not been seen.
+- **H2's extension of `:macrobenchmark` to the globe**, and a check that nothing
+  in the globe path has moved into `Application.onCreate`.
+- **The Esri question above**, unchanged.
+- **Nothing makes a stale `.filamat` fail a build.** The `.mat` sources are
+  compiled by hand and no hash or manifest exists to catch a source newer than its
+  blob. They are in sync today; nothing keeps them so.
 
 ---
 
