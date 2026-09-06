@@ -18,7 +18,7 @@
 [versions]
 # --- build ---
 agp = "9.4.0"
-kotlin = "2.3.21"
+kotlin = "2.4.10"
 ksp = "2.3.11"
 # --- sdk ---
 compileSdk = "37"
@@ -75,7 +75,7 @@ coroutines = "1.11.0"
 serialization = "1.11.0"
 # --- network / images ---
 okhttp = "5.4.0"
-coil = "3.5.0"
+coil = "3.6.0"
 # --- rendering ---
 filament = "1.75.1"
 # graphics-shapes is the library `MaterialShapes` is built on. That catalogue is
@@ -84,7 +84,7 @@ filament = "1.75.1"
 # defines the few shapes it actually uses instead of importing forty.
 graphicsShapes = "1.1.0"
 # --- etl (jvm tool, never shipped) ---
-sqliteJdbc = "3.53.2.1"
+sqliteJdbc = "3.53.4.0"
 kotlinCsv = "1.10.0"
 # --- test ---
 junit4 = "4.13.2"
