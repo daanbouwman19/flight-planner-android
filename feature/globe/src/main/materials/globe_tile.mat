@@ -1,0 +1,79 @@
+// The sphere's imagery: one atlas texture, one draw call, faded out at the limb
+// and faded in per tile as detail arrives.
+//
+// Both fades are computed here rather than baked into the mesh, and for the same
+// reason: the mesh is a function of *which* tiles are visible and where their
+// imagery sits in the atlas, and rebuilding it every frame to animate an alpha
+// would throw that away. The limb fade depends on the camera, which changes
+// every frame; the sharpen fade depends on the clock.
+//
+// `tint` is what Cockpit's dim rides on. Imagery is never recoloured for a theme
+// — a satellite photograph of the Alps is the same photograph at night — so this
+// multiplies uniformly and is white everywhere else.
+material {
+    name : globeTile,
+    shadingModel : unlit,
+    blending : transparent,
+    // The tiles blend over the backdrop sphere, over each other at level-of-
+    // detail seams, and over their own coarse ancestor while sharpening. They
+    // must not write depth: a transparent fragment that wrote depth would
+    // occlude the layer behind it before blending with it.
+    depthWrite : false,
+    depthCulling : true,
+    culling : back,
+    // **Filament flips v on UV0 by default, and this atlas must not be flipped.**
+    //
+    // The rectangles in [TileAtlas.uvRect] are computed against the texture this
+    // code uploads into, in that texture’s own coordinates. `getUV0()` returning
+    // 1 - v turns a slot in row 3 into a lookup in row 12 - a slot holding some
+    // other tile, or, far more often, one nothing has been written to yet. That is
+    // a black planet with a scatter of tiles from the wrong place on it, and it
+    // looks exactly like a texture upload that is failing.
+    flipUV : false,
+    variables : [ fadeAlpha ],
+    requires : [ uv0, custom0 ],
+    parameters : [
+        { type : sampler2d, name : atlas },
+        { type : float4, name : tint },
+        // xyz: the unit vector from the globe centre toward the camera.
+        // w: the cull threshold below which a point is behind the horizon.
+        { type : float4, name : fade },
+        // x: seconds since the scene started, the clock the sharpen fade reads.
+        // y: how long that fade lasts. Zero switches it off, which is what
+        //    reduce-motion asks for — off, not shortened.
+        { type : float4, name : clock }
+    ]
+}
+
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        // `getPosition()`, not `material.worldPosition`. Filament renders
+        // camera-relative: worldPosition in this stage is the vertex *minus the
+        // camera*, so normalising it gives the view ray rather than the surface
+        // normal, and every dot against the facing vector comes out near -1 —
+        // which clamps the whole planet to zero alpha. Object space is what is
+        // wanted here, and the model matrix is identity with the mesh on the
+        // unit sphere, so the object-space position *is* the outward normal.
+        float facing = dot(normalize(getPosition().xyz), materialParams.fade.xyz);
+        float limb = clamp((facing - materialParams.fade.w) * 5.0, 0.0, 1.0);
+
+        // custom0.x is when this tile's imagery landed; custom0.y is 1 for the
+        // sharp layer and 0 for the coarse ancestor drawn under it.
+        float age = materialParams.clock.x - getCustom0().x;
+        float duration = materialParams.clock.y;
+        float sharpen = duration > 0.0 ? clamp(age / duration, 0.0, 1.0) : 1.0;
+        float layer = mix(1.0, sharpen, getCustom0().y);
+
+        material.fadeAlpha = vec4(limb * layer);
+    }
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        vec3 rgb = texture(materialParams_atlas, getUV0()).rgb * materialParams.tint.rgb;
+        float a = variable_fadeAlpha.x * materialParams.tint.a;
+        // Premultiplied, which is what `blending : transparent` expects.
+        material.baseColor = vec4(rgb * a, a);
+    }
+}

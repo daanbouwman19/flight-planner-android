@@ -75,6 +75,27 @@ sealed interface Destination {
     ) : Destination
 
     /**
+     * The globe with the window to itself, for one route.
+     *
+     * It carries the same arguments as [RouteDetail] rather than a reference to
+     * it, for the same reason [RouteDetail] carries a route rather than an id: a
+     * generated route has no identity to look up, and the arguments have to be
+     * enough to redraw the screen after process death. That the two are
+     * structurally identical is what lets the immersive screen share the detail
+     * screen's ViewModel wholesale.
+     *
+     * Reachable only from [RouteDetail], and only on a device that has a
+     * renderer — see the note on `onOpenImmersiveGlobe`.
+     */
+    @Serializable
+    data class ImmersiveGlobe(
+        val departureIcao: String,
+        val destinationIcao: String,
+        val aircraftId: Int,
+        val distanceNm: Int,
+    ) : Destination
+
+    /**
      * One airframe in the fleet.
      *
      * Flat, like [RouteDetail], rather than wrapped in a graph of its own: its

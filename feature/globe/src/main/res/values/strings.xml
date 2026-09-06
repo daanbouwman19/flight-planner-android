@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The globe's own strings. They live in this module rather than in :app
+        because a SurfaceView is a blank rectangle to TalkBack, so these are not
+        decoration on a control that already announces itself — they are the
+        only thing the globe says.
+    -->
+    <string name="globe_open_fullscreen">Open the globe full screen</string>
+    <string name="globe_collapse">Leave the full-screen globe</string>
+    <string name="globe_reset_north">Face the globe north, level</string>
+    <string name="globe_refit_route">Frame the whole route</string>
+    <string name="globe_zoom_in">Zoom in</string>
+    <string name="globe_zoom_out">Zoom out</string>
+
+    <!--
+        Read when TalkBack lands on the globe itself. It states what is drawn and
+        where the view currently is, because neither is discoverable any other
+        way: the surface has no children and the camera has no text.
+    -->
+    <string name="globe_description">
+        Globe showing the great circle from %1$s to %2$s
+    </string>
+    <string name="globe_camera_state">Facing %1$s, %2$d degrees</string>
+
+    <!--
+        Read when TalkBack lands on the visited-network globe. It states the two
+        counts, because the dots themselves only carry codes and a hundred codes
+        is not a summary.
+    -->
+    <plurals name="globe_network_description">
+        <item quantity="one">Globe showing %1$d airport you have visited, with %2$d flights between them</item>
+        <item quantity="other">Globe showing %1$d airports you have visited, with %2$d flights between them</item>
+    </plurals>
+
+    <!-- Custom accessibility actions on the globe, for a user who cannot drag it. -->
+    <string name="globe_action_refit">Frame the route</string>
+    <string name="globe_action_north">Face north</string>
+    <string name="globe_action_zoom_in">Zoom in one step</string>
+    <string name="globe_action_zoom_out">Zoom out one step</string>
+
+    <string name="globe_compass_north">north</string>
+    <string name="globe_compass_northeast">north-east</string>
+    <string name="globe_compass_east">east</string>
+    <string name="globe_compass_southeast">south-east</string>
+    <string name="globe_compass_south">south</string>
+    <string name="globe_compass_southwest">south-west</string>
+    <string name="globe_compass_west">west</string>
+    <string name="globe_compass_northwest">north-west</string>
+</resources>

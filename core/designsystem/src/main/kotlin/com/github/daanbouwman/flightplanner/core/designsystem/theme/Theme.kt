@@ -16,6 +16,12 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -32,6 +38,25 @@ import com.github.daanbouwman.flightplanner.core.designsystem.motion.rememberRed
  * paper and navy ink, for the same reason and the same exemption.
  */
 enum class ThemeChoice { SYSTEM, LIGHT, DARK, COCKPIT, CHART }
+
+/**
+ * Which theme is in effect, for the few things that cannot be expressed as a
+ * colour role.
+ *
+ * Almost nothing should read this. A component that branches on the theme has
+ * usually failed to find the role it wanted, and the whole design system exists
+ * so that Chart and Cockpit come out right without anyone asking which one is
+ * on.
+ *
+ * The exception it exists for is the globe. Cockpit dims the satellite imagery,
+ * and a dim is not a colour: it is a decision about how much light the panel
+ * throws at a dark-adapted eye, and there is no role in a Material scheme that
+ * means "how bright may a photograph be". Everything else about that sphere —
+ * its backdrop, its limb, its arc — is a role, and 1H's claim that no value in
+ * it is a literal holds because of it.
+ */
+val LocalThemeChoice: ProvidableCompositionLocal<ThemeChoice> =
+    staticCompositionLocalOf { ThemeChoice.SYSTEM }
 
 /**
  * The app's theme. Everything Material 3 Expressive enters the app through here.
@@ -96,6 +121,15 @@ fun FlightPlannerTheme(
     }
 
     val view = LocalView.current
+    // Whether some screen currently has a photograph under the status bar. Held
+    // here, next to the one place that writes the controller.
+    val overMedia = remember { mutableStateOf(false) }
+    // **Read here, in composition, and not inside the `SideEffect`.** A
+    // snapshot read inside an effect is not a composition dependency, so
+    // writing the flag never invalidated this function and the effect never
+    // re-ran — the override was inert and the bars kept whatever glyphs the
+    // theme had last set. Reading it here is what subscribes.
+    val barsOverMedia = overMedia.value
     if (!view.isInEditMode) {
         // A `SideEffect` rather than a `LaunchedEffect`: this is a write to a
         // platform object that must agree with what was just composed, and it is two
@@ -105,7 +139,13 @@ fun FlightPlannerTheme(
         SideEffect {
             val window = view.context.findActivity()?.window ?: return@SideEffect
             WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = !dark
+                // Taking the flag from composition rather than letting a screen
+                // write the controller itself is what makes this the **only**
+                // writer. Two writers meant the theme won whenever it recomposed
+                // for a reason the override did not share — switching LIGHT to
+                // CHART leaves `dark` unchanged, so the bars flipped back to dark
+                // glyphs over a photograph and stayed there.
+                isAppearanceLightStatusBars = if (barsOverMedia) false else !dark
                 isAppearanceLightNavigationBars = !dark
             }
         }
@@ -124,6 +164,8 @@ fun FlightPlannerTheme(
     }
 
     CompositionLocalProvider(
+        LocalThemeChoice provides themeChoice,
+        LocalBarsOverMedia provides overMedia,
         LocalFlightRulesColors provides if (dark) DarkFlightRulesColors else LightFlightRulesColors,
         LocalSkyColors provides skyColors,
         // Resolved once here, for the whole tree. Every component that needs it
@@ -140,6 +182,47 @@ fun FlightPlannerTheme(
         )
     }
 }
+
+/**
+ * Light status-bar glyphs while a photograph is running under the status bar.
+ *
+ * **This is not a scrim, and it is not a retreat from the empty-bars invariant.**
+ * Nothing is painted: the imagery still runs unbroken up past the clock. What
+ * changes is only which of the two colours the *system* draws its own glyphs in,
+ * which is the one lever the platform gives for exactly this case.
+ *
+ * The app’s own chrome over that imagery does not use this. It sits on plates,
+ * the way the globe’s labels and its imagery credit do, because a plate is legible
+ * over ice and over ocean alike and a colour choice is only ever legible over one
+ * of them. The system’s glyphs cannot be plated, so they get the choice; ours do
+ * not need it.
+ *
+ * Only the status bar. The navigation bar sits over ordinary page content on every
+ * screen that uses this, so flipping it would make the gesture handle the harder
+ * of the two to see rather than the easier.
+ *
+ * This does not touch the window. It raises a flag [FlightPlannerTheme] reads,
+ * because the theme writes the insets controller on every one of its own
+ * recompositions and a second writer simply loses the next one it does not share
+ * a key with. The `DisposableEffect` lowers the flag again on the way out.
+ */
+@Composable
+fun SystemBarsOverMedia(active: Boolean) {
+    val overMedia = LocalBarsOverMedia.current
+    DisposableEffect(overMedia, active) {
+        overMedia.value = active
+        onDispose { overMedia.value = false }
+    }
+}
+
+/**
+ * Set while a screen has imagery under the status bar. See [SystemBarsOverMedia].
+ *
+ * A state rather than a call into the window, so that [FlightPlannerTheme] stays
+ * the only thing that writes the insets controller and the two cannot race.
+ */
+private val LocalBarsOverMedia: ProvidableCompositionLocal<MutableState<Boolean>> =
+    staticCompositionLocalOf { mutableStateOf(false) }
 
 /**
  * The [Activity] a view belongs to, if any.

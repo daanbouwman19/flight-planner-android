@@ -12,7 +12,9 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -95,6 +97,37 @@ object FlightMotion {
     @Composable
     fun <T> effectsSlow(): FiniteAnimationSpec<T> = MaterialTheme.motionScheme.slowEffectsSpec()
 
+    /**
+     * Momentum after a fling, and the one motion in this app that is not a
+     * spring.
+     *
+     * It is here anyway, because motion belongs in one file whether or not it
+     * happens to be a spring — a screen that reached for `exponentialDecay`
+     * itself would be picking a friction coefficient, which is the same mistake
+     * as picking a damping ratio.
+     *
+     * **A decay is a different kind of thing from every other member here.** A
+     * spring has a target and arrives at it; a fling has neither. It is a speed
+     * that runs out, so there is nothing to tune toward and no duration to
+     * quote. That is why it is a `DecayAnimationSpec` rather than a
+     * `FiniteAnimationSpec`, and why callers use `animateDecay` rather than
+     * `animateTo`.
+     *
+     * 0.6 is a lighter friction than the platform's default fling, because the
+     * thing being flung is a planet: the same flick should carry further on a
+     * surface that has no edges to run into.
+     *
+     * Under reduce motion, **switch it off rather than shortening it**. Inertia
+     * the user did not ask for is precisely what that setting is about, and this
+     * file's contract for anything that continues after the finger leaves is
+     * that it does not run at all.
+     */
+    fun <T> flingDecay(): DecayAnimationSpec<T> =
+        exponentialDecay(frictionMultiplier = FlingFriction)
+
+    /** See [flingDecay]. Lighter than the platform default, on purpose. */
+    private const val FlingFriction = 0.6f
+
     /** Delay between successive list items entering. */
     const val EnterStaggerMillis: Int = 30
 
@@ -152,9 +185,21 @@ object FlightMotion {
     @Composable
     fun sharedEnter(): EnterTransition = fadeIn(animationSpec = effects())
 
-    /** Screen exit, the mirror of [sharedEnter]. */
+    /**
+     * Screen exit, and **not** the mirror of [sharedEnter].
+     *
+     * The outgoing screen leaves on the *fast* spring while the incoming one
+     * arrives on the default one, which is the same asymmetry [fadeThrough]
+     * makes and for the same reason. Faded at one rate, both screens sit at half
+     * opacity through the middle of the transition, and the route detail is a
+     * dense page of figures over a list of cards: for a third of a second the
+     * reader is looking at two documents at once and the shared element is lost
+     * in them. Clearing the old page early leaves the travelling element alone on
+     * the screen at the moment it is doing the explaining, which is the whole
+     * point of using one.
+     */
     @Composable
-    fun sharedExit(): ExitTransition = fadeOut(animationSpec = effects())
+    fun sharedExit(): ExitTransition = fadeOut(animationSpec = effectsFast())
 
     /**
      * Content replaced **in place** — a detail pane showing a different item than

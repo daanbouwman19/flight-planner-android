@@ -19,7 +19,9 @@ import androidx.compose.animation.SharedTransitionLayout
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.ui.chrome.ProvideSharedRouteScopes
 import com.github.daanbouwman.flightplanner.startup.StartupCheckScreen
+import com.github.daanbouwman.flightplanner.feature.globe.ui.rememberGlobeAvailable
 import com.github.daanbouwman.flightplanner.ui.RouteDetailScreen
+import com.github.daanbouwman.flightplanner.ui.detail.ImmersiveGlobeScreen
 import com.github.daanbouwman.flightplanner.ui.airport.AirportDetailScreen
 import com.github.daanbouwman.flightplanner.ui.airports.AirportsScreen
 import com.github.daanbouwman.flightplanner.ui.fleet.FleetDetailScreen
@@ -126,6 +128,10 @@ fun FlightPlannerNavHost(
                 ) { entry ->
                     val detail = entry.toRoute<Destination.RouteDetail>()
                     val planViewModel: PlanViewModel = hiltViewModel(navController.planGraphEntry(entry))
+                    // 3B: the control is absent rather than disabled on a device
+                    // with no renderer, because a control that opens nothing is
+                    // worse than no control. Nothing else on the screen says so.
+                    val globeAvailable = rememberGlobeAvailable()
                     ProvideSharedRouteScopes(sharedTransitionScope, this) {
                         RouteDetailScreen(
                             route = detail,
@@ -138,6 +144,53 @@ fun FlightPlannerNavHost(
                                 )
                             },
                             onOpenAirport = { airport -> navController.navigateToAirportDetail(airport.id) },
+                            onOpenImmersiveGlobe = if (globeAvailable) {
+                                { navController.navigateToImmersiveGlobe(detail) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+
+                composable<Destination.ImmersiveGlobe>(
+                    // The chrome fades while the box grows, which is the pairing
+                    // the route card’s own entrance uses. The sphere itself does
+                    // not travel: a SurfaceView cannot be a shared element, so
+                    // the camera simply keeps its state across the change and the
+                    // globe holds still while the frame around it changes size.
+                    enterTransition = { sharedEnter },
+                    exitTransition = { sharedExit },
+                    popEnterTransition = { sharedEnter },
+                    popExitTransition = { sharedExit },
+                ) { entry ->
+                    val immersive = entry.toRoute<Destination.ImmersiveGlobe>()
+                    val detailEntry = navController.routeDetailEntry(entry)
+                    val detailRoute = Destination.RouteDetail(
+                        departureIcao = immersive.departureIcao,
+                        destinationIcao = immersive.destinationIcao,
+                        aircraftId = immersive.aircraftId,
+                        distanceNm = immersive.distanceNm,
+                    )
+                    // **The detail screen's own ViewModel, not a second one.**
+                    // Resolved against this entry it would be a fresh instance,
+                    // and its `init` re-runs the whole load — including the METAR
+                    // fetch, which is a network request against a quota'd key, per
+                    // fullscreen toggle, for an arc the screen behind it already
+                    // has. Sharing the instance also means the camera and the
+                    // figures cannot disagree across the transition.
+                    if (detailEntry != null) {
+                        ImmersiveGlobeScreen(
+                            route = detailRoute,
+                            onCollapse = { navController.popBackStack() },
+                            viewModel = hiltViewModel(detailEntry),
+                        )
+                    } else {
+                        // Only reachable if this destination is ever entered
+                        // without the detail below it — a deep link, today.
+                        ImmersiveGlobeScreen(
+                            route = detailRoute,
+                            onCollapse = { navController.popBackStack() },
                         )
                     }
                 }
@@ -248,6 +301,18 @@ private fun NavHostController.navigateToDetail(detail: Destination.RouteDetail) 
     navigate(detail) { launchSingleTop = true }
 }
 
+/** "Show me this on the globe", from the route detail’s app bar. */
+private fun NavHostController.navigateToImmersiveGlobe(detail: Destination.RouteDetail) {
+    navigate(
+        Destination.ImmersiveGlobe(
+            departureIcao = detail.departureIcao,
+            destinationIcao = detail.destinationIcao,
+            aircraftId = detail.aircraftId,
+            distanceNm = detail.distanceNm,
+        ),
+    ) { launchSingleTop = true }
+}
+
 /**
  * "Open this airport", from Airports browse and from an airport code on Route
  * detail (which the Logbook's detail pane reuses).
@@ -300,6 +365,21 @@ private fun NavHostController.flyFromHere(airport: Airport, planViewModel: PlanV
 @Composable
 private fun NavHostController.planGraphEntry(entry: NavBackStackEntry): NavBackStackEntry =
     remember(entry) { getBackStackEntry(Destination.PlanGraph) }
+
+/**
+ * The route detail entry under the immersive globe, if there is one.
+ *
+ * The same trick as [planGraphEntry], scoped one level tighter: it is how the
+ * full-screen globe borrows the detail screen's ViewModel instead of building a
+ * second one that repeats its queries. Nullable rather than assumed, because the
+ * destination could one day be entered from a deep link with nothing beneath it,
+ * and `getBackStackEntry` throws rather than returning null in that case.
+ */
+@Composable
+private fun NavHostController.routeDetailEntry(entry: NavBackStackEntry): NavBackStackEntry? =
+    remember(entry) {
+        runCatching { getBackStackEntry<Destination.RouteDetail>() }.getOrNull()
+    }
 
 /**
  * Whether [destination] is the section currently shown.

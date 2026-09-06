@@ -52,6 +52,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeImagery
+import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeStatus
+import com.github.daanbouwman.flightplanner.feature.globe.ui.rememberGlobeStatus
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.ThemeChoice
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
@@ -232,6 +235,8 @@ fun SettingsScreen(
                 DatasetInfoBlock(info)
             }
 
+            GlobeInfoBlock()
+
             OutlinedButton(
                 onClick = onOpenLicences,
                 modifier = Modifier.padding(top = 8.dp),
@@ -384,6 +389,45 @@ private fun AvwxApiKeyField(stored: String, onCommit: (String) -> Unit, modifier
 }
 
 private const val AvwxSignupUrl = "https://account.avwx.rest/"
+
+/**
+ * The globe, in two lines: which renderer it came up on, and whose imagery it
+ * draws.
+ *
+ * **This is the only place in the app that mentions a device without a
+ * renderer.** The route detail draws the still map and says nothing, which is
+ * the correct behaviour there: the app is working, and an error state over a
+ * map that is doing its job would be a lie about the severity. But somebody who
+ * notices the fullscreen control is missing and goes looking deserves an
+ * answer, and About is where they will look.
+ *
+ * The attribution is here as well as on the globe itself. On the globe it is a
+ * licence condition met in the smallest type that can meet it; here it is in
+ * reading order, next to every other credit this app owes.
+ */
+@Composable
+private fun GlobeInfoBlock() {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier.padding(top = 8.dp),
+    ) {
+        Text(
+            text = stringResource(
+                when (rememberGlobeStatus()) {
+                    GlobeStatus.Available -> R.string.settings_globe_available
+                    GlobeStatus.NoRenderer -> R.string.settings_globe_no_renderer
+                    GlobeStatus.LowMemory -> R.string.settings_globe_low_memory
+                },
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = GlobeImagery.Attribution,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
 
 @Composable
 private fun DatasetInfoBlock(info: DatasetInfo) {
