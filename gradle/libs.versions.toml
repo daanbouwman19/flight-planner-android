@@ -18,7 +18,7 @@
 [versions]
 # --- build ---
 agp = "9.3.2"
-kotlin = "2.3.21"
+kotlin = "2.4.10"
 ksp = "2.3.11"
 # --- sdk ---
 compileSdk = "37"
