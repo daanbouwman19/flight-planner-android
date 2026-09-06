@@ -1,0 +1,33 @@
+/*
+ * Route detail in globe mode. The hero runs full bleed under the status bar and
+ * the app bar; the bar overlays it on glass. `RouteDetailScreen` + `DeepGlobeHero`.
+ */
+.fp-route-detail-globe {
+  position: relative;
+  min-height: 100%;
+}
+
+/* 44 % of the 800 dp window — a sphere needs room to read as a sphere, and a
+   disc in a 220 dp letterbox shows none of the limb or the terminator.
+   `HeroFraction` in the app. */
+.fp-route-detail-globe__hero {
+  height: 340px;
+}
+
+/* Absolute over the hero rather than pinned: the mirror's concept surface is a
+   still frame, so the bar scrolls away with the hero here. In the app the bar is
+   pinned and returns to `surface` once the page has scrolled up. */
+.fp-route-detail-globe__bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+}
+
+/* The body takes the start, end and bottom of the content padding and drops the
+   top — the full-bleed hero already occupies that space, and taking it here too
+   leaves a bar's height of dead white between the sphere and the first line. */
+.fp-route-detail-globe .fp-screen {
+  padding-top: 14px;
+}

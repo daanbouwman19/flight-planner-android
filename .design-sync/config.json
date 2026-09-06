@@ -160,10 +160,37 @@
     },
     "VisitedNetworkCard": {
       "cardMode": "column"
+    },
+    "GlobeHero": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "GlobeRouteScene": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "GlobeView": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "GlobeNetwork": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "GlobeCameraControls": {
+      "cardMode": "column"
+    },
+    "GlobeAttribution": {
+      "cardMode": "column"
+    },
+    "ImmersiveGlobeScreen": {
+      "cardMode": "column",
+      "viewport": "420x900"
     }
   },
   "componentSrcMap": {
-    "MapFrame": null
+    "MapFrame": null,
+    "GlobeCamera": null
   },
   "extraFonts": [
     "fonts/fonts.css"

@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { MapFrame, sampleGeoArc, type ProjectedRings } from '../geo/mapFrame'
 import { worldOutline } from '../geo/worldOutline.gen'
 import { WORLD_MAP_COAST_ALPHA, WORLD_MAP_LAND_ALPHA } from './RouteMap'
+import { ModeSelector } from './ModeSelector'
+import { GlobeNetwork } from './GlobeNetwork'
 
 export interface HeroDistanceCardProps {
   /** Already formatted — `48,213 NM`. */
@@ -145,6 +147,20 @@ export interface VisitedNetworkCardProps {
   /** The legs actually flown, as coordinate pairs. */
   legs?: VisitedLeg[]
   title?: string
+  /**
+   * Whether the device can draw a globe. When true the card grows a Flat/Globe
+   * toggle in its header, **Flat first** — a fitted rectangle is right for a
+   * regional logbook, the sphere for one that has outgrown a rectangle. The
+   * toggle is **absent**, not disabled, where there is no renderer (3B). Default
+   * false, so the card is unchanged unless a concept opts in.
+   */
+  globeAvailable?: boolean
+  /**
+   * Which projection the toggle starts on. `flat` in the app (`rememberSaveable`);
+   * a concept can seed `globe` to show that state. Only meaningful with
+   * `globeAvailable`.
+   */
+  initialView?: 'flat' | 'globe'
   className?: string
 }
 
@@ -171,10 +187,14 @@ export function VisitedNetworkCard({
   airports,
   legs = [],
   title = 'Where you have been',
+  globeAvailable = false,
+  initialView = 'flat',
   className,
 }: VisitedNetworkCardProps) {
   const aspect = 16 / 10
   const vbWidth = Math.round(VB_HEIGHT * aspect)
+  const [view, setView] = useState<0 | 1>(initialView === 'globe' ? 1 : 0)
+  const showGlobe = globeAvailable && view === 1 && airports.length > 0
 
   const scene = useMemo(() => {
     if (airports.length === 0) return null
@@ -223,9 +243,25 @@ export function VisitedNetworkCard({
   }, [airports, legs, aspect, vbWidth])
 
   return (
-    <div className={['fp-screen__card', className].filter(Boolean).join(' ')}>
+    <div className={['fp-screen__card', 'fp-visited-card', className].filter(Boolean).join(' ')}>
       <span className="fp-screen__card-title fp-type-label-large">{title}</span>
-      {scene == null ? (
+
+      {globeAvailable && airports.length > 0 && (
+        <ModeSelector
+          options={[
+            { label: 'Flat', contentDescription: 'Flat map, honest about how dense the network is' },
+            { label: 'Globe', contentDescription: 'Globe, honest about how far apart the airports are' },
+          ]}
+          selectedIndex={view}
+          onSelect={(i) => setView(i === 1 ? 1 : 0)}
+        />
+      )}
+
+      {showGlobe ? (
+        <div className="fp-visited-card__globe">
+          <GlobeNetwork airports={airports} legs={legs} />
+        </div>
+      ) : scene == null ? (
         <span className="fp-screen__row-detail fp-type-body-medium">
           No flights logged yet.
         </span>

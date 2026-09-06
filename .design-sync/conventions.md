@@ -163,6 +163,54 @@ The figures chunk two to a row rather than flowing, so the labels align down an
 edge, and a short last row keeps its hole: a `QNH` chip stretched to twice the width
 of the `CEIL` above it would read as the more important figure.
 
+## The globe is a step taken on purpose, never the default
+
+Phase G puts a 3D globe behind three surfaces. **Flat is first everywhere** — the
+sphere costs a renderer and a network and puts a photograph under the clock, and
+none of that should be the price of opening a route or a statistics card. Where a
+device cannot draw a globe the switch is **absent, not disabled**: a control that
+opens nothing is worse than no control.
+
+| Surface | How the globe is reached |
+| --- | --- |
+| `RouteDetailScreen` | `heroMode="globe"` (default `"outline"`), plus `globeAvailable` and `onOpenImmersiveGlobe`. The Flat/Globe switch and a fullscreen action sit in the app bar; the switch holds its own state. |
+| `ImmersiveGlobeScreen` | The globe with the window to itself — its own screen. The route reduces to one plate of figures because there is no spine here to carry them. |
+| `VisitedNetworkCard` | `globeAvailable` grows a Flat/Globe toggle in the header; `initialView="globe"` seeds it. |
+
+In globe mode the route detail's app bar goes to **glass**: the title and every
+button move onto the translucent `surfaceContainer`-at-`GLOBE_PLATE_ALPHA` (0.82)
+plate with an `extra-small` corner and one `outline-variant` hairline — the same
+plate `GlobeCameraControls` and `GlobeAttribution` draw, and the same one the
+DEP/DEST labels sit on. Nothing is painted across the status bar; the sphere runs
+unbroken past the clock.
+
+```tsx
+<RouteDetailScreen
+  heroMode="globe"
+  globeAvailable
+  onOpenImmersiveGlobe={() => {}}
+  departure={{ icao: 'EHAM', name: 'Amsterdam Schiphol', lat: 52.3086, lon: 4.7639, runway: '12,467 ft', rules: 'VFR' }}
+  destination={{ icao: 'KJFK', name: 'John F. Kennedy Intl', lat: 40.6394, lon: -73.7793, runway: '14,511 ft', rules: 'IFR' }}
+  distance="3,153 NM"
+  flightTime="7:04"
+  bearing="291°"
+/>
+```
+
+Compose a standalone globe from `GlobeHero` (deep hero, with chrome),
+`GlobeRouteScene` (the route on the sphere, no chrome — you place your own), or
+`GlobeView` + a `GlobeCamera` from `frameRoute` / `framePoints`. Every one takes
+`{ icao, lat, lon }` — **real coordinates, never invented ones**; a plausible
+field in the wrong place is a confidently wrong drawing.
+
+**What the mirror's globe is not.** In the app it is NASA satellite imagery on a
+Filament sphere. The runtime here has no GPU, so the mirror draws the same
+`land.outline` the phone reads through the same camera — an outline globe, still
+(no gestures), a recorded divergence like `SkyProfile`'s motion. The framing, the
+arc, the projected plates, the limb and the on-glass chrome are all faithful; only
+the photograph is a stand-in. A concept comes back to the app as intent, and the
+intent here is *which projection, framed how* — not the pixels of the sphere.
+
 ## Five rules this app does not bend
 
 1. **Flight-rules colours are semantic and never re-themed.** VFR green, MVFR blue,
@@ -220,8 +268,8 @@ The drag handle on `BottomSheet` is drawn and does nothing, for the same reason.
   reasoning behind the API.
 - Screens (`PlanScreen`, `FleetScreen`, `FleetDetailScreen`, `LogbookScreen`,
   `StatsScreen`, `AirportsScreen`, `AirportDetailScreen`, `RouteDetailScreen`,
-  `SettingsScreen`, `StartupCheckScreen`, `LicencesScreen`) are the app as it
-  exists. Start a concept from the closest one.
+  `ImmersiveGlobeScreen`, `SettingsScreen`, `StartupCheckScreen`,
+  `LicencesScreen`) are the app as it exists. Start a concept from the closest one.
 - The statistics screen is a composition of `HeroDistanceCard`, `MetricGrid`,
   `VisitedNetworkCard`, `MonthlyActivityCard` and `RankedListCard` rather than
   markup of its own, so a card redesigned in a concept lands in every arrangement

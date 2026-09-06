@@ -1,0 +1,56 @@
+/*
+ * The deep hero and the label plates on its glass. The hero itself has no box
+ * of its own — the screen gives it 44 % of the window, full bleed — so these
+ * rules are only the things drawn *over* the sphere.
+ */
+
+/* One end of the leg on the glass: a dot with its code on a plate hanging below
+   it. The layout anchors the dot to the projected point; the plate grows
+   downward and outward from it and never moves it. `Plate` in GlobeLabels.kt. */
+.fp-globe-label {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  /* Centre the dot on (left, top); the plate then hangs below. */
+  transform: translate(-50%, -5px);
+}
+
+.fp-globe-label__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.fp-globe-label__dots {
+  display: flex;
+  gap: 4px;
+}
+
+.fp-globe-label__code {
+  padding: 1px 6px;
+  border-radius: var(--fp-shape-extra-small);
+  /* The plate: surfaceContainer at PlateAlpha, translucent so the imagery reads
+     through — a layer over a photograph, not a panel bolted onto one. */
+  background: color-mix(in srgb, var(--fp-surface-container) 82%, transparent);
+  color: var(--fp-on-surface);
+  font: 500 12px / 16px Roboto, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* The camera stack bottom-right, the credit bottom-left: the two corners
+   furthest from a reading thumb and the two the arc is least likely to cross. */
+.fp-globe-hero__controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+}
+
+.fp-globe-hero__credit {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+}
