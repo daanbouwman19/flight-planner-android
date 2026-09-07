@@ -239,19 +239,25 @@ class TileLoaderTest {
     }
 
     @Test
-    fun `ready tiles drain newest first`() {
+    fun `ready tiles drain coarsest first, as they were fetched`() {
+        // This asserted a newest-first drain, on the same "the camera has moved
+        // on" reasoning as the request queue. It was the wrong end to borrow it
+        // from: tiles are *fetched* coarsest-first so that every leaf has a
+        // resident ancestor to fall back to, and draining newest-first handed the
+        // atlas the leaves before the ancestors, undoing the ordering the queue
+        // exists to establish. Entries here are at most a frame or two old, so
+        // there is no staleness to trade against.
         server.respondWith()
         val loader = loader(ServerProvider(server, immutable = true), started = false)
         val coarse = TileKey.of(4, 0, 0)
         val fine = TileKey.of(5, 0, 0)
-        // Queued before the worker starts, so the queue's order decides: coarse
-        // is fetched first, and fine is the newest thing in the ready deque.
+        // Queued before the worker starts, so the queue's order decides.
         loader.request(fine)
         loader.request(coarse)
         loader.start()
         awaitUntil("both decodes") { loader.stats().let { it.decoded == 2 && it.pending == 0 } }
-        loader.pollReady().shouldNotBeNull().key shouldBe fine
         loader.pollReady().shouldNotBeNull().key shouldBe coarse
+        loader.pollReady().shouldNotBeNull().key shouldBe fine
     }
 
     @Test

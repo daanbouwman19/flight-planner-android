@@ -415,8 +415,15 @@ internal class GestureRecognizer(private val config: GestureConfig) {
             }
         } else {
             if (zoomBaseline > MIN_SEPARATION_PX && separation > MIN_SEPARATION_PX) {
-                val factor = (separation / zoomBaseline).coerceIn(MIN_EVENT_ZOOM, MAX_EVENT_ZOOM)
-                if (factor != 1f) out += GestureIntent.Zoom(factor, cx, cy)
+                val factor = separation / zoomBaseline
+                // Dropped, not clamped. Clamping a misreported pointer still
+                // applies the bound — a hard 25 % altitude step in one frame,
+                // which is the pop this rejection exists to prevent. The
+                // baseline resyncs either way, so a real pinch that genuinely
+                // moved this far in one event loses that event and nothing more.
+                if (factor in MIN_EVENT_ZOOM..MAX_EVENT_ZOOM && factor != 1f) {
+                    out += GestureIntent.Zoom(factor, cx, cy)
+                }
             }
             zoomBaseline = separation
         }

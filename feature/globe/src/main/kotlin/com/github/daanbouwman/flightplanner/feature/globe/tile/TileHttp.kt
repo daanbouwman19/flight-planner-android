@@ -159,7 +159,14 @@ internal object TileHttp {
             val cached = try {
                 chain.proceed(request.newBuilder().cacheControl(CacheControl.FORCE_CACHE).build())
             } catch (e: IOException) {
-                e.addSuppressed(networkFailure)
+                // On the failure that is actually thrown, so the cache lookup's
+                // own reason reaches a log rather than dying with the exception
+                // that is discarded — and never on itself: OkHttp can report the
+                // same instance for both attempts when the call was cancelled,
+                // and `addSuppressed` throws IllegalArgumentException for that,
+                // out of an interceptor, where the worker would memo it as a
+                // failed tile rather than an offline fallback.
+                if (e !== networkFailure) networkFailure.addSuppressed(e)
                 throw networkFailure
             }
             if (cached.code == HttpURLConnection.HTTP_GATEWAY_TIMEOUT || cached.cacheResponse == null) {

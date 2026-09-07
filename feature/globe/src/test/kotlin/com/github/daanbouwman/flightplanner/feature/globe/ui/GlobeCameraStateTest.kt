@@ -6,6 +6,7 @@ import com.github.daanbouwman.flightplanner.feature.globe.math.MAX_ALTITUDE
 import com.github.daanbouwman.flightplanner.feature.globe.math.MAX_TILT
 import com.github.daanbouwman.flightplanner.feature.globe.math.MIN_ALTITUDE
 import com.github.daanbouwman.flightplanner.feature.globe.math.ScreenPoint
+import com.github.daanbouwman.flightplanner.feature.globe.math.latLonToWorld
 import io.kotest.matchers.floats.shouldBeGreaterThan
 import io.kotest.matchers.floats.shouldBeLessThan
 import io.kotest.matchers.shouldBe
@@ -51,6 +52,54 @@ class GlobeCameraStateTest {
     private fun horizonDegrees(altitude: Float): Float = acos(1f / (1f + altitude)) * RAD_TO_DEG
 
     private fun ScreenPoint.distanceTo(o: ScreenPoint): Float = (this - o).length()
+
+    // --- the disc hold, under tilt ---------------------------------------------------
+
+    @Test
+    fun `a tilted drag follows the finger well past the tilt-zero circle`() {
+        // The hold used to compare the pixel against `ix² + iy² ≤ 1 / (r² − 1)`,
+        // the silhouette *at tilt zero*. Leaning the camera over projects the
+        // horizon circle to an offset ellipse, so the globe covers pixels far
+        // outside that circle — and a drag targeting one of them was clamped back
+        // to the circle, which stopped the globe following the finger. The hold
+        // now asks whether the ray meets the sphere, which is exact at any tilt.
+        val tilted = GlobeCamera(altitude = 2f, tilt = MAX_TILT * 0.9f)
+        val target = below(900f)
+
+        // The premise, asserted rather than assumed: this pixel really is on the
+        // globe, and really is outside the old circle.
+        assertNotNull(tilted.screenToWorld(target, viewport))
+        900f shouldBeGreaterThan discRadiusPx(2f)
+
+        val s = state(tilted)
+        val grabbed = assertNotNull(tilted.screenToWorld(below(200f), viewport))
+        s.panAnchor(grabbed, target)
+
+        val landed = assertNotNull(s.camera.worldToScreen(grabbed, viewport))
+        landed.distanceTo(target) shouldBeLessThan 4f
+    }
+
+    @Test
+    fun `a drag onto the sky still stops at the limb rather than swinging`() {
+        val s = state(GlobeCamera(altitude = 2f))
+        val grabbed = assertNotNull(s.camera.screenToWorld(below(100f), viewport))
+        val before = s.camera
+        // Far outside the disc at this altitude, in the corner of the viewport.
+        s.panAnchor(grabbed, ScreenPoint(20f, 20f))
+
+        // The camera moved — it did not freeze — but by a bounded amount: the
+        // grabbed point is held just inside the limb, not thrown past it.
+        val moved = angularDistanceDegrees(before, s.camera)
+        moved shouldBeGreaterThan 0f
+        moved shouldBeLessThan horizonDegrees(2f)
+    }
+
+    /** Degrees between two cameras' centres, over the sphere. */
+    private fun angularDistanceDegrees(a: GlobeCamera, b: GlobeCamera): Float {
+        val u = latLonToWorld(a.centerLat, a.centerLon)
+        val v = latLonToWorld(b.centerLat, b.centerLon)
+        return acos((u dot v).coerceIn(-1f, 1f)) * RAD_TO_DEG
+    }
 
     // --- the floor ------------------------------------------------------------------
 

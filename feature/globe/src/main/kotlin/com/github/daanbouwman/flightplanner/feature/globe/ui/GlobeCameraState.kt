@@ -302,22 +302,42 @@ internal class GlobeCameraState(
     }
 
     /**
-     * [point] pulled to [DISC_HOLD] of this camera's disc radius when it lies
-     * outside that, unchanged when inside — the same image-plane clamp
-     * `screenToWorldClamped` applies, for the pixel rather than the ray.
+     * [point] pulled to [DISC_HOLD] of the way to the globe's silhouette when it
+     * lies off the globe, and returned unchanged when it is on it.
+     *
+     * The pixel-space counterpart of `screenToWorldClamped`, and unlike that one
+     * it is exact under tilt.
      */
     private fun GlobeCamera.heldOnDisc(point: ScreenPoint, box: GlobeViewport): ScreenPoint {
-        val f = focalPixels(box.height)
-        val ix = (point.x - box.centerX) / f
-        val iy = (point.y - box.centerY) / f
-        // Limb boundary at tilt 0: ix² + iy² ≤ 1 / (r² − 1).
-        val limbR2 = 1f / max(1e-6f, distance * distance - 1f)
-        val hold2 = limbR2 * DISC_HOLD * DISC_HOLD
-        val r2 = ix * ix + iy * iy
-        if (r2 <= hold2) return point
-        val s = sqrt(hold2 / r2)
-        return ScreenPoint(box.centerX + ix * s * f, box.centerY + iy * s * f)
+        // The exact question, asked exactly: does a ray through this pixel meet
+        // the sphere? This used to compare the pixel against the circle
+        // `ix² + iy² ≤ 1 / (r² − 1)`, which is the silhouette only at tilt zero —
+        // at tilt the horizon circle projects to an offset ellipse and the globe
+        // covers pixels far outside that circle. Held against it, a tilted drag
+        // stopped following the finger past the circle's edge, and a tilted pinch
+        // asked the solve to move a point that was genuinely on the globe to a
+        // pixel several hundred away, which is a swing rather than a pinned zoom.
+        if (screenToWorld(point, box) != null) return point
+
+        // Off the globe. The image centre is the nadir, which is on it at every
+        // tilt, so bisecting between the two finds the silhouette crossing along
+        // this direction whatever shape it is — no conic to derive, and correct
+        // under tilt by construction.
+        val centre = ScreenPoint(box.centerX, box.centerY)
+        var inside = 0f
+        var outside = 1f
+        repeat(DISC_BISECTIONS) {
+            val mid = (inside + outside) * 0.5f
+            if (screenToWorld(centre.lerp(point, mid), box) != null) inside = mid else outside = mid
+        }
+        return centre.lerp(point, inside * DISC_HOLD)
     }
+
+    /** [this] moved [fraction] of the way toward [other]. */
+    private fun ScreenPoint.lerp(other: ScreenPoint, fraction: Float): ScreenPoint = ScreenPoint(
+        x + (other.x - x) * fraction,
+        y + (other.y - y) * fraction,
+    )
 
     fun rotateBy(radians: Float) {
         set(camera.copy(bearing = camera.bearing + radians))
@@ -372,6 +392,16 @@ internal class GlobeCameraState(
          * Newton step there is unbounded. See [zoomedBy].
          */
         private const val DISC_HOLD = 0.98f
+
+        /**
+         * Bisection steps used to find the silhouette along one direction.
+         *
+         * Twelve halvings resolve the crossing to 1/4096 of the distance from the
+         * nadir to the pixel — well under a pixel on any viewport this runs on —
+         * and cost twelve ray-sphere tests on a pointer event, which is nothing
+         * beside the traversal the same frame runs.
+         */
+        private const val DISC_BISECTIONS = 12
 
         /** How close the pinned point must land for the solve to be believed. A pinch is not a sub-pixel gesture. */
         private const val PIN_TOLERANCE_PX = 2f

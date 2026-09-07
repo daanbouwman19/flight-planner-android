@@ -165,14 +165,22 @@ class GestureRecognizerTest {
     }
 
     @Test
-    fun `the per-event ratio is clamped as noise rejection`() {
+    fun `an out-of-range per-event ratio is dropped, not clamped`() {
+        // This test asserted the clamp — that a glitch frame produced a factor of
+        // exactly MAX_EVENT_ZOOM. That is what the code did and it was wrong:
+        // clamping a misreported pointer still applies the bound, so a single bad
+        // sample became a hard 25 % altitude step, which is the pop the rejection
+        // exists to prevent. The KDoc always said "dropped rather than applied";
+        // the code now matches it, and the expectation is corrected to suit.
         val s = Script(config())
         s.frame(*pair(500f, 1000f, 200f))
         s.frame(*pair(500f, 1000f, 260f)) // past the span slop: latched, absorbed
         s.frame(*pair(500f, 1000f, 270f)).filterIsInstance<GestureIntent.Zoom>().single().factor shouldBe 270f / 260f
-        // A finger reported hundreds of pixels away for one frame.
-        val jump = s.frame(*pair(500f, 1000f, 900f)).filterIsInstance<GestureIntent.Zoom>().single()
-        jump.factor shouldBe GestureRecognizer.MAX_EVENT_ZOOM
+        // A finger reported hundreds of pixels away for one frame: no zoom at all.
+        s.frame(*pair(500f, 1000f, 900f)).filterIsInstance<GestureIntent.Zoom>().shouldBeEmpty()
+        // And the baseline resynced, so the pinch carries on from where the
+        // fingers actually are rather than replaying the glitch.
+        s.frame(*pair(500f, 1000f, 930f)).filterIsInstance<GestureIntent.Zoom>().single().factor shouldBe 930f / 900f
     }
 
     // --- two-finger drags, twist and tilt -----------------------------------------

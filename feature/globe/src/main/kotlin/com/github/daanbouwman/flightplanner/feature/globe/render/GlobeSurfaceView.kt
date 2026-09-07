@@ -129,6 +129,10 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
     private var renderedCamera: GlobeCamera? = null
     private var renderedViewport = GlobeViewport(0f, 0f)
     private var renderedMeshGeneration = -1
+    private var renderedArcsGeneration = -1
+
+    /** This surface's route line. See [RouteRibbon] for why it is not the scene's. */
+    private var ribbon: RouteRibbon? = null
 
     init {
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
@@ -175,9 +179,15 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
         }
         cameraEntity = EntityManager.get().create()
         filamentCamera = acquired.engine.createCamera(cameraEntity)
+        // This surface's own route line. The mesh is shared because it does not
+        // depend on the camera; the ribbon does, so every surface builds its own
+        // and renders only its own — see RouteRibbon.
+        val ownRibbon = acquired.scene.createRibbon()
+        ribbon = ownRibbon
         filamentView = acquired.engine.createView().apply {
             camera = filamentCamera
             acquired.scene.configureView(this)
+            setVisibleLayers(LAYER_MASK_ALL, LAYER_SHARED or ownRibbon.layerBit)
         }
         uiHelper.attachTo(this)
         attached = true
@@ -230,6 +240,11 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
         running = false
         Choreographer.getInstance().removeFrameCallback(frameCallback)
         uiHelper.detach()
+
+        // Before the view goes: the ribbon's entities are in the shared scene,
+        // and its layer bit has to come back for the next surface.
+        ribbon?.let { session?.scene?.destroyRibbon(it) }
+        ribbon = null
 
         val engine = engineOrNull()
         if (engine != null) {
@@ -285,6 +300,8 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
         if (camera == renderedCamera &&
             viewport == renderedViewport &&
             scene.meshGeneration == renderedMeshGeneration &&
+            scene.arcsGeneration == renderedArcsGeneration &&
+            ribbon?.isDirty != true &&
             !spaceChanged &&
             !scene.wantsFrame
         ) {
@@ -292,7 +309,6 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
         }
 
         if (spaceChanged) {
-            appliedSpaceGeneration = scene.spaceGeneration
             renderer.clearOptions = Renderer.ClearOptions().apply {
                 clear = true
                 clearColor = scene.spaceColor
@@ -308,6 +324,10 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
         } else {
             scene.visibleTiles
         }
+        // Built from *this* surface's camera, driver or not: the width, the lift
+        // and the samples it keeps are all functions of the viewpoint, so the
+        // driver's ribbon would be the wrong geometry for the other surface.
+        ribbon?.update(scene.routeArcs, scene.arcsGeneration, camera, basis, viewport)
         filamentCamera?.let { scene.applyCamera(it, camera, viewport) }
 
         // `beginFrame` returning false is the driver saying it would rather this
@@ -321,6 +341,14 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
             renderedCamera = camera
             renderedViewport = viewport
             renderedMeshGeneration = scene.meshGeneration
+            renderedArcsGeneration = scene.arcsGeneration
+            // The clear colour is *set* above, because the renderer has to carry
+            // it into the frame, but it is only *recorded as applied* here. Ticking
+            // the generation before the driver had accepted the frame lost a theme
+            // change outright on a still globe: the settled test then saw no change
+            // pending and returned early on every following vsync, so the colour
+            // sat on the renderer and was never drawn.
+            appliedSpaceGeneration = scene.spaceGeneration
         }
 
         onFrame(tiles)

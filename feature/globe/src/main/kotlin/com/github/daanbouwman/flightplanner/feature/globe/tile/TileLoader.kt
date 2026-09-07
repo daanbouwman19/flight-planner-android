@@ -278,7 +278,7 @@ internal class TileLoader(
      * ago is for where the camera is, and one from the start of a pan may be
      * for a place that has scrolled off.
      */
-    fun pollReady(): DecodedTile? = synchronized(readyLock) { ready.pollLast() }
+    fun pollReady(): DecodedTile? = synchronized(readyLock) { ready.pollFirst() }
 
     /** Returns a buffer to the pool once the driver has finished reading it. */
     fun recycleBuffer(buffer: ByteBuffer) {
@@ -415,11 +415,22 @@ internal class TileLoader(
         offerReady(DecodedTile(key, buffer))
     }
 
+    /**
+     * Queues a decoded tile, dropping the **deepest** when the queue is full.
+     *
+     * The same rule the request queue drops by, and for the same reason. Tiles
+     * are fetched coarsest-first, so they arrive here in that order and the tail
+     * is the finest: a leaf whose own tile is dropped still draws, from the
+     * ancestor under it, whereas an ancestor that is dropped takes every leaf
+     * that was relying on it back to the pinned floor. Draining is
+     * correspondingly first-in-first-out — see [pollReady] — so the atlas gains
+     * a level's ancestors before the level itself.
+     */
     private fun offerReady(tile: DecodedTile) {
         val dropped = synchronized(readyLock) {
-            val oldest = if (ready.size >= READY_CAP) ready.pollFirst() else null
+            val deepest = if (ready.size >= READY_CAP) ready.pollLast() else null
             ready.addLast(tile)
-            oldest
+            deepest
         }
         if (dropped != null) {
             held.remove(dropped.key)
