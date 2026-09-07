@@ -86,6 +86,19 @@ internal class GlobeSession private constructor(
     /** The route currently loaded, so a re-attach does not re-upload the same arc. */
     var routeKey: String? = null
 
+    /**
+     * The height, in pixels, of the surface [camera] was last driven in.
+     *
+     * A camera is not a view. The projection's focal length is half the surface
+     * height over `tan(fovY / 2)`, so the same [camera] carried from the 44%
+     * hero into the full-height immersive screen magnifies everything by the
+     * height ratio — about 2.3× — and puts both airports off the sides. Holding
+     * the *picture* still across the change, which is what the design asks for,
+     * means scaling the altitude by that ratio when the next surface adopts the
+     * camera; this is the number it scales from. Zero until a surface has said.
+     */
+    var cameraViewportHeight: Float = 0f
+
     /** The credit the live provider requires — see [ImageryAttribution]. */
     val imagery: ImageryAttribution get() = provider.attribution
 

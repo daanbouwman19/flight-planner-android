@@ -408,16 +408,20 @@ private fun GlobeCanvas(
     // The camera starts from the session, not from the fit: moving from the hero
     // to the immersive screen must not re-frame a view the user had already
     // moved. A route the session has not seen is the case where the fit applies.
+    val adopted = session.routeKey == key
     val cameraState = remember(session) {
         GlobeCameraState(
-            initial = if (session.routeKey == key) session.camera else fitted,
+            initial = if (adopted) session.camera else fitted,
             scope = scope,
             // The session knows how deep its imagery goes; the floor is the
             // altitude at which the finest tile is one texel per pixel, one
             // octave lower. A pinch stops there instead of ten doublings later
             // in magnified mush. See the class note on GlobeCameraState.
             zoomFloor = { box -> session.zoomFloor(box) },
-            onChange = { session.camera = it },
+            onChange = {
+                session.camera = it
+                session.cameraViewportHeight = viewport.height
+            },
         )
     }
 
@@ -425,6 +429,26 @@ private fun GlobeCanvas(
     // zoom's focus. Written after composition so the pointer handler never
     // observes a viewport newer than the frame it is handling.
     SideEffect { cameraState.viewport = viewport }
+
+    // **A carried camera is rescaled to the box that adopts it.** The focal
+    // length is proportional to the surface height, so the hero's camera shown
+    // in the immersive screen — 2.3× taller — is the same view magnified 2.3×,
+    // with both airports off the sides. The design says the frame grows while
+    // the globe holds still; holding the picture still under a taller focal
+    // length means the camera has to be that much further out. Once, when the
+    // adopting surface first learns its height, and through the zoom path so the
+    // imagery floor still binds.
+    var carriedFromHeight by remember(session) {
+        mutableStateOf(if (adopted) session.cameraViewportHeight else 0f)
+    }
+    LaunchedEffect(viewport) {
+        val fromHeight = carriedFromHeight
+        if (viewport.height <= 1f) return@LaunchedEffect
+        if (fromHeight > 1f && fromHeight != viewport.height) {
+            cameraState.zoomBy(factor = viewport.height / fromHeight, focus = null)
+        }
+        carriedFromHeight = 0f
+    }
 
     // The fit the camera is currently parked at, or null if it arrived already
     // moved. This is what tells a re-fit apart from a reader's own framing
@@ -616,6 +640,18 @@ class GlobeControlsHandle internal constructor(
 
     /** Degrees the view is turned from north, for the compass needle. */
     val bearingDegrees: Float get() = state?.camera?.bearingDegrees() ?: 0f
+
+    /**
+     * Where the camera is, for the module's own instrumented tests.
+     *
+     * The gesture pump is the one layer of the globe a JVM test cannot reach —
+     * it lives inside `awaitPointerEventScope` — so the pinch and the drag are
+     * proved on a device by driving the surface with synthetic pointers and
+     * reading the camera back here. Internal, and not a UI affordance.
+     */
+    internal val altitude: Float get() = state?.camera?.altitude ?: Float.NaN
+    internal val centerLon: Float get() = state?.camera?.centerLon ?: Float.NaN
+    internal val centerLat: Float get() = state?.camera?.centerLat ?: Float.NaN
 
     /** Whether the view has been turned or leaned, so the reset control is worth offering. */
     val isRotated: Boolean get() = state?.camera?.isRotated() == true

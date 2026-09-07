@@ -58,6 +58,17 @@ dependencies {
     // through a variant that maps to JUnit 4, where `kotlin.test.Test` is simply
     // absent. See the note in libs.versions.toml.
     testImplementation(libs.kotlin.test.junit5)
+
+    // The gesture pump lives inside `awaitPointerEventScope` and cannot be driven
+    // from a JVM test; the pinch and the drag are proved on a device instead,
+    // against a real surface. See GlobePinchTest.
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    // Pinned above what ui-test-junit4 pulls in transitively: the older Espresso
+    // idles through reflection on `InputManager.getInstance`, which Android 16
+    // removed, and every test fails in `onIdle` before it touches the globe.
+    androidTestImplementation(libs.androidx.test.espresso)
+    debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.kotest.property)
     // A real HTTP stack under the tile loader's tests: the cache policy and the
