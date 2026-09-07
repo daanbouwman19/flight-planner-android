@@ -125,6 +125,12 @@ fun DeepGlobeHero(
             route = globeRoute,
             controls = controls,
             topChromeInset = topChromeInset,
+            // The hero sits inside the detail screen's own vertical scroll. A
+            // one-finger drag that starts out vertical belongs to the page — the
+            // reader is scrolling past a globe, not spinning it — while a
+            // sideways drag, and anything with two fingers, is the globe's. The
+            // immersive screen owns its window and does not make this trade.
+            nestedVerticalScroll = true,
             modifier = Modifier.fillMaxSize(),
             content = {
                 // C3's still map, and the frame the globe crossfades in over. On
@@ -165,7 +171,7 @@ fun DeepGlobeHero(
                         .padding(GlassGutter),
                 )
                 GlobeAttribution(
-                    text = GlobeImagery.Attribution,
+                    attribution = GlobeImagery.attribution,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(GlassGutter),

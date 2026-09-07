@@ -327,7 +327,6 @@
 
     <string name="settings_licences_action">Licences</string>
 
-    <string name="settings_empty_message">A tile provider for the 3D globe is still to come.</string>
     <!-- Opens the Sky Profile gallery: every weather state the scene can draw, one per tap. -->
     <string name="settings_self_check_action">Run on-device self-check</string>
 
@@ -338,6 +337,11 @@
     <string name="licences_data_title">DATA</string>
     <string name="licences_data_ourairports">OurAirports airport and runway data — public domain.</string>
     <string name="licences_data_naturalearth">Natural Earth coastline data (ne_110m_land) — public domain.</string>
+    <!--
+        The globe's imagery. The body text comes from the provider the build
+        selected (see GlobeImagery), so only the heading is a resource.
+    -->
+    <string name="licences_imagery_title">GLOBE IMAGERY</string>
 
     <!-- Route detail -->
     <!-- Spoken for the app bar title, which is drawn as two codes and an arrow. -->

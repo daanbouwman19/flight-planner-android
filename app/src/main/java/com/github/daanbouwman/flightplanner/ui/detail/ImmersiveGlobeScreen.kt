@@ -146,7 +146,7 @@ fun ImmersiveGlobeScreen(
                         .padding(bottom = PlateBottomGutter),
                     verticalArrangement = Arrangement.spacedBy(GlassGutter),
                 ) {
-                    GlobeAttribution(text = GlobeImagery.Attribution)
+                    GlobeAttribution(attribution = GlobeImagery.attribution)
                     RoutePlate(route = route, state = state)
                 }
             },
