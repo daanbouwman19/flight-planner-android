@@ -2,7 +2,6 @@ package com.github.daanbouwman.flightplanner.feature.globe.render
 
 import com.github.daanbouwman.flightplanner.feature.globe.math.Quadtree
 import com.github.daanbouwman.flightplanner.feature.globe.math.VisibleTile
-import com.github.daanbouwman.flightplanner.feature.globe.math.latLonToWorld
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileAtlas
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileKey
 import java.nio.ByteBuffer
@@ -10,6 +9,7 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -30,10 +30,22 @@ import kotlin.math.sqrt
  *
  * A leaf whose own tile has not arrived is drawn from the deepest ancestor that
  * has, with the UV rect cropped to the leaf's quadrant of it. That is why the
- * traversal requests every node it visits and why levels 0–3 are pinned: the
+ * traversal requests every node it visits and why levels 0–2 are pinned: the
  * walk up terminates at a tile that is always resident, so a leaf is never
  * simply missing. It is the difference between a globe that sharpens and one
  * that shows holes.
+ *
+ * ### The trigonometry is per row and per column
+ *
+ * A tile's grid is separable: a vertex is `(cosLat · sinLon, sinLat, cosLat · cosLon)`
+ * scaled by the bulge, so the sines and cosines are computed once per row and
+ * once per column into scratch arrays and the inner loop is three multiplies.
+ * It used to call `latLonToWorld` per vertex — four transcendentals — and solve
+ * the row latitudes through `atan(sinh())` twice over, once for the bulge and
+ * once for the vertices. A tile's two layers share the same grid and differ only
+ * in their UV rect, so the scratch is filled once per tile and both layers write
+ * from it. The index pattern of a grid is likewise the same for every tile at a
+ * level, so there is one per tessellation density, built once.
  */
 internal object GlobeMesh {
 
@@ -42,8 +54,8 @@ internal object GlobeMesh {
      * when this tile's imagery arrived and whether this is the sharp layer.
      *
      * The last pair is what the material's sharpen fade reads. It is per vertex
-     * rather than a uniform because a single draw call covers a hundred and
-     * sixty tiles that all arrived at different moments.
+     * rather than a uniform because a single draw call covers a couple of
+     * hundred tiles that all arrived at different moments.
      */
     const val TILE_VERTEX_BYTES: Int = 28
 
@@ -53,24 +65,28 @@ internal object GlobeMesh {
     /**
      * Vertex ceiling for one rebuild of the tile mesh.
      *
-     * **Recomputed from [substepsFor], and it has to be recomputed whenever that
-     * changes.** The first version of this bound was derived from substeps of
-     * 16/12/8/6, and when those were raised to 32/20/14/10/7/5 to keep the
-     * circumscribing bulge small at the coarse end, the bound stayed — leaving a
-     * ceiling roughly half of what the mesh can now ask for.
+     * **Measured, not enumerated.** The first version of this bound was an
+     * enumeration — one z0 leaf at 33², four z1 at 21², sixteen z2, sixty-four
+     * z3 and the rest at z4 — that is not a legal quadtree partition: a z0 leaf
+     * covers the whole planet, so nothing else is a leaf beside it, and the same
+     * holds one level down. What the traversal can actually produce is what
+     * `GlobeMeshBudgetTest` re-derives from the live constants: over a sweep of
+     * latitude, longitude, tilt and altitude at 1440×3120 and the two phone
+     * viewports, the reachable maximum is 13,230 vertices with every tile
+     * carrying a coarse layer under its sharp one, which is the worst a sharpen
+     * can do. Forty thousand is that three times over, and it stays well inside
+     * a `ushort` index, which is the reason the bound is worth stating rather
+     * than growing the buffer on demand.
      *
-     * The worst case is [Quadtree.MAX_VISIBLE_TILES] leaves taking the most
-     * expensive levels that have enough tiles to fill them: one z0 at 33², four
-     * z1 at 21², sixteen z2 at 15², sixty-four z3 at 11² and the remaining
-     * seventy-five at z4’s 8², which is 18,997 — **doubled**, because during a
-     * sharpen every one of those tiles can be carrying a coarse layer under it.
-     * Forty thousand is that with room, and it stays well inside a `ushort`
-     * index, which is the reason the bound is worth stating rather than growing
-     * the buffer on demand.
+     * It has to be re-measured whenever [substepsFor], the leaf cap or the
+     * atlas's budget changes, and the test is what makes sure it is.
      */
     const val MAX_TILE_VERTICES: Int = 40_000
 
-    /** The matching index ceiling, by the same enumeration: 95,010 doubled. */
+    /**
+     * The matching index ceiling: six per grid cell, by the same measurement
+     * (59,676 at the vertex maximum).
+     */
     const val MAX_TILE_INDICES: Int = 192_000
 
     /**
@@ -89,6 +105,33 @@ internal object GlobeMesh {
         4 -> 7
         else -> 5
     }
+
+    /** The densest tessellation's row length, and so the size of every scratch row. */
+    private const val MAX_STRIDE = 32 + 1
+
+    /** Levels with a tessellation of their own; everything deeper shares the last. */
+    private const val TESSELLATED_LEVELS = 5
+
+    /**
+     * One index pattern per tessellation density, relative to the grid's first
+     * vertex. Built once: the pattern is the same for every tile at a level, and
+     * a frame writes it a couple of hundred times.
+     */
+    private val indexPatterns = Array(TESSELLATED_LEVELS + 1) { buildIndexPattern(substepsFor(it)) }
+
+    private fun indexPatternFor(z: Int): ShortArray = indexPatterns[min(z, TESSELLATED_LEVELS)]
+
+    // Per-tile scratch, filled by `prepareTile` and read by `writeGrid` for both
+    // of a tile's layers. The latitudes are Doubles for the reason given on
+    // `Quadtree.tileYToLat`'s Double overload; everything derived is a Float.
+    private val rowLat = DoubleArray(MAX_STRIDE)
+    private val rowSinLat = FloatArray(MAX_STRIDE)
+    private val rowCosLat = FloatArray(MAX_STRIDE)
+    private val colSinLon = FloatArray(MAX_STRIDE)
+    private val colCosLon = FloatArray(MAX_STRIDE)
+
+    /** `i / substeps` for row and column `i` — the grid is square, so one array serves both. */
+    private val fraction = FloatArray(MAX_STRIDE)
 
     private val sharpUv = FloatArray(4)
     private val coarseUv = FloatArray(4)
@@ -150,30 +193,38 @@ internal object GlobeMesh {
 
             val substeps = substepsFor(tile.z)
             val stride = substeps + 1
+            val pattern = indexPatternFor(tile.z)
             val layers = (if (stillFading && hasCoarse) 1 else 0) + (if (hasOwn) 1 else 0) +
                 (if (!hasOwn && hasCoarse) 1 else 0)
             if (layers == 0) continue
-            if (vertexCount + layers * stride * stride > MAX_TILE_VERTICES) break
-            if (indexCount + layers * substeps * substeps * 6 > MAX_TILE_INDICES) break
+            // `continue`, not `break`. The list is coarse first and fine last, so
+            // stopping at the first tile that does not fit would drop every
+            // finer tile behind it — the ones nearest the camera. Skipping only
+            // the tile that overflowed lets a smaller one behind it still land.
+            // The cap is a backstop; see MAX_TILE_VERTICES for why it is not met.
+            if (vertexCount + layers * stride * stride > MAX_TILE_VERTICES) continue
+            if (indexCount + layers * pattern.size > MAX_TILE_INDICES) continue
+
+            val bulge = prepareTile(tile, substeps)
 
             if (stillFading && hasCoarse) {
                 // The picture that is already there, held at full strength.
-                vertexCount = writeGrid(tile, coarseUv, 0f, 0f, substeps, vertexCount, vertices)
-                indexCount = writeIndices(vertexCount - stride * stride, substeps, indexCount, indices)
+                vertexCount = writeGrid(coarseUv, 0f, 0f, substeps, bulge, vertexCount, vertices)
+                indexCount = writeIndices(vertexCount - stride * stride, pattern, indexCount, indices)
                 nextExpiry = minOf(nextExpiry, arrival + fadeDurationSeconds)
             }
             when {
                 hasOwn -> {
                     val layerFlag = if (stillFading && hasCoarse) 1f else 0f
                     vertexCount =
-                        writeGrid(tile, sharpUv, arrival, layerFlag, substeps, vertexCount, vertices)
+                        writeGrid(sharpUv, arrival, layerFlag, substeps, bulge, vertexCount, vertices)
                     indexCount =
-                        writeIndices(vertexCount - stride * stride, substeps, indexCount, indices)
+                        writeIndices(vertexCount - stride * stride, pattern, indexCount, indices)
                 }
                 hasCoarse -> {
-                    vertexCount = writeGrid(tile, coarseUv, 0f, 0f, substeps, vertexCount, vertices)
+                    vertexCount = writeGrid(coarseUv, 0f, 0f, substeps, bulge, vertexCount, vertices)
                     indexCount =
-                        writeIndices(vertexCount - stride * stride, substeps, indexCount, indices)
+                        writeIndices(vertexCount - stride * stride, pattern, indexCount, indices)
                 }
             }
         }
@@ -183,18 +234,21 @@ internal object GlobeMesh {
         return TileMeshResult(vertexCount, indexCount, nextExpiry)
     }
 
-    /** Writes one tessellated tile quad and returns the new vertex count. */
-    private fun writeGrid(
-        tile: VisibleTile,
-        uv: FloatArray,
-        arrival: Float,
-        layerFlag: Float,
-        substeps: Int,
-        vertexCount: Int,
-        vertices: ByteBuffer,
-    ): Int {
-        var count = vertexCount
+    /**
+     * Fills the per-tile scratch — the rows' latitudes with their sines and
+     * cosines, the columns' longitudes with theirs, and the grid fractions —
+     * and returns the bulge factor for this tile's grid.
+     */
+    private fun prepareTile(tile: VisibleTile, substeps: Int): Float {
         val numTiles = (1 shl tile.z).toFloat()
+        for (i in 0..substeps) {
+            fraction[i] = i.toFloat() / substeps
+            // In Double, in and out: see the Double overload for why a Float
+            // row is up to a third of a grid step off at z18 near the poles.
+            rowLat[i] = Quadtree.tileYToLat(tile.y.toDouble() + fraction[i], numTiles)
+            rowCosLat[i] = cos(rowLat[i] * DEG_TO_RAD_D).toFloat()
+        }
+
         // **Circumscribe, do not inscribe.**
         //
         // A grid of points *on* the unit sphere gives quads whose flat faces
@@ -207,82 +261,104 @@ internal object GlobeMesh {
         // actually is.
         val lonStep = ((tile.lonMax - tile.lonMin) / substeps) * DEG_TO_RAD
         var maxHalfDiagonal = 0f
-        var previousLat = Quadtree.tileYToLat(tile.y.toFloat(), numTiles)
         for (sy in 1..substeps) {
-            val lat = Quadtree.tileYToLat(tile.y + sy.toFloat() / substeps, numTiles)
-            val nsStep = abs(previousLat - lat) * DEG_TO_RAD
-            // A quad’s east-west arc shrinks with latitude, so its widest end
+            val nsStep = (abs(rowLat[sy - 1] - rowLat[sy]) * DEG_TO_RAD_D).toFloat()
+            // A quad's east-west arc shrinks with latitude, so its widest end
             // is the one nearer the equator. Mercator rows are not evenly spaced
             // in latitude either, which is why this is measured rather than
             // divided out: at z0 the row against the pole is twice the one at
             // the equator.
-            val ewStep = lonStep * max(
-                cos(previousLat * DEG_TO_RAD),
-                cos(lat * DEG_TO_RAD),
-            )
+            val ewStep = lonStep * max(rowCosLat[sy - 1], rowCosLat[sy])
             maxHalfDiagonal = max(
                 maxHalfDiagonal,
                 0.5f * sqrt(ewStep * ewStep + nsStep * nsStep),
             )
-            previousLat = lat
         }
         val bulge = 1f / cos(maxHalfDiagonal)
+
         // Web Mercator stops at 85.05 deg, so the top and bottom rows of tiles
         // leave a cap of bare sphere at each pole - a grey ellipse sitting on
         // the globe where the ice should be. The outermost row of vertices is
         // pushed to the pole itself and keeps its own v, which stretches that
-        // tile’s last row of texels over the cap. It is the standard answer and
+        // tile's last row of texels over the cap. It is the standard answer and
         // it is honest at this scale: the imagery it repeats is ice either way.
-        val topRow = tile.y == 0
-        val bottomRow = tile.y == (1 shl tile.z) - 1
+        // Applied after the bulge, which is about the grid's real spacing.
+        if (tile.y == 0) rowLat[0] = POLE_LATITUDE
+        if (tile.y == (1 shl tile.z) - 1) rowLat[substeps] = -POLE_LATITUDE
         for (sy in 0..substeps) {
-            val fy = sy.toFloat() / substeps
-            val lat = when {
-                topRow && sy == 0 -> POLE_LATITUDE
-                bottomRow && sy == substeps -> -POLE_LATITUDE
-                else -> Quadtree.tileYToLat(tile.y + fy, numTiles)
-            }
-            val v = uv[1] + fy * (uv[3] - uv[1])
+            val lat = rowLat[sy] * DEG_TO_RAD_D
+            rowSinLat[sy] = sin(lat).toFloat()
+            rowCosLat[sy] = cos(lat).toFloat()
+        }
+        val lonSpan = tile.lonMax - tile.lonMin
+        for (sx in 0..substeps) {
+            val lon = (tile.lonMin + fraction[sx] * lonSpan) * DEG_TO_RAD
+            colSinLon[sx] = sin(lon)
+            colCosLon[sx] = cos(lon)
+        }
+        return bulge
+    }
+
+    /** Writes one tessellated tile quad from the prepared scratch and returns the new vertex count. */
+    private fun writeGrid(
+        uv: FloatArray,
+        arrival: Float,
+        layerFlag: Float,
+        substeps: Int,
+        bulge: Float,
+        vertexCount: Int,
+        vertices: ByteBuffer,
+    ): Int {
+        val u0 = uv[0]
+        val v0 = uv[1]
+        val du = uv[2] - u0
+        val dv = uv[3] - v0
+        for (sy in 0..substeps) {
+            val v = v0 + fraction[sy] * dv
+            val y = rowSinLat[sy] * bulge
+            val ring = rowCosLat[sy] * bulge
             for (sx in 0..substeps) {
-                val fx = sx.toFloat() / substeps
-                val lon = tile.lonMin + fx * (tile.lonMax - tile.lonMin)
-                val w = latLonToWorld(lat, lon)
-                vertices.putFloat(w.x * bulge)
-                vertices.putFloat(w.y * bulge)
-                vertices.putFloat(w.z * bulge)
-                vertices.putFloat(uv[0] + fx * (uv[2] - uv[0]))
+                vertices.putFloat(ring * colSinLon[sx])
+                vertices.putFloat(y)
+                vertices.putFloat(ring * colCosLon[sx])
+                vertices.putFloat(u0 + fraction[sx] * du)
                 vertices.putFloat(v)
                 vertices.putFloat(arrival)
                 vertices.putFloat(layerFlag)
-                count++
             }
         }
-        return count
+        return vertexCount + (substeps + 1) * (substeps + 1)
+    }
+
+    /** The triangle indices of one `substeps × substeps` grid, relative to its first vertex. */
+    private fun buildIndexPattern(substeps: Int): ShortArray {
+        val stride = substeps + 1
+        val pattern = ShortArray(substeps * substeps * 6)
+        var n = 0
+        for (sy in 0 until substeps) {
+            for (sx in 0 until substeps) {
+                val i = sy * stride + sx
+                // Wound counter-clockwise as seen from outside the sphere, which
+                // is what `culling : back` in the material expects.
+                pattern[n++] = i.toShort()
+                pattern[n++] = (i + stride).toShort()
+                pattern[n++] = (i + 1).toShort()
+                pattern[n++] = (i + 1).toShort()
+                pattern[n++] = (i + stride).toShort()
+                pattern[n++] = (i + stride + 1).toShort()
+            }
+        }
+        return pattern
     }
 
     private fun writeIndices(
         base: Int,
-        substeps: Int,
+        pattern: ShortArray,
         indexCount: Int,
         indices: ByteBuffer,
     ): Int {
-        val stride = substeps + 1
-        var count = indexCount
-        for (sy in 0 until substeps) {
-            for (sx in 0 until substeps) {
-                val i = base + sy * stride + sx
-                // Wound counter-clockwise as seen from outside the sphere, which
-                // is what `culling : back` in the material expects.
-                indices.putShort(i.toShort())
-                indices.putShort((i + stride).toShort())
-                indices.putShort((i + 1).toShort())
-                indices.putShort((i + 1).toShort())
-                indices.putShort((i + stride).toShort())
-                indices.putShort((i + stride + 1).toShort())
-                count += 6
-            }
-        }
-        return count
+        for (offset in pattern) indices.putShort((base + offset).toShort())
+        return indexCount + pattern.size
     }
 
     /**
@@ -318,6 +394,12 @@ internal object GlobeMesh {
         return false
     }
 
+    /** Where the sphere ends and Web Mercator does not reach. */
+    private const val POLE_LATITUDE = 90.0
+
+    private const val DEG_TO_RAD_D = Math.PI / 180.0
+    private const val DEG_TO_RAD = DEG_TO_RAD_D.toFloat()
+
     /**
      * A UV sphere for the backdrop, written into [vertices] and [indices].
      *
@@ -328,11 +410,6 @@ internal object GlobeMesh {
      *
      * @return `vertexCount to indexCount`
      */
-    /** Where the sphere ends and Web Mercator does not reach. */
-    private const val POLE_LATITUDE = 90f
-
-    private const val DEG_TO_RAD = (Math.PI / 180.0).toFloat()
-
     fun buildBackdrop(
         radius: Float,
         rings: Int,

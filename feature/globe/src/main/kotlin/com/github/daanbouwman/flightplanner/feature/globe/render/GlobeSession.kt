@@ -6,12 +6,21 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
+import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeFit
+import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
+import com.github.daanbouwman.flightplanner.feature.globe.math.MIN_ALTITUDE
+import com.github.daanbouwman.flightplanner.feature.globe.tile.ImageryAttribution
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileAtlas
+import com.github.daanbouwman.flightplanner.feature.globe.tile.TileHttp
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileKey
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileLoader
+import com.github.daanbouwman.flightplanner.feature.globe.tile.TileProvider
+import com.github.daanbouwman.flightplanner.feature.globe.tile.TileProviders
 import com.google.android.filament.Engine
 import com.google.android.filament.Filament
 import okhttp3.OkHttpClient
+import java.io.File
+import kotlin.math.max
 
 private const val TAG = "GlobeSession"
 
@@ -59,7 +68,9 @@ internal class GlobeSession private constructor(
     val engine: Engine,
 ) {
 
-    val loader = TileLoader(cacheDir = context.cacheDir, baseClient = sharedHttpClient)
+    private val provider: TileProvider = TileProviders.active
+
+    val loader = TileLoader(provider = provider, client = tileClient(context))
     val scene = GlobeScene(context.applicationContext, engine, loader)
 
     /**
@@ -75,14 +86,42 @@ internal class GlobeSession private constructor(
     /** The route currently loaded, so a re-attach does not re-upload the same arc. */
     var routeKey: String? = null
 
-    val attribution: String get() = loader.attribution
+    /** The credit the live provider requires — see [ImageryAttribution]. */
+    val imagery: ImageryAttribution get() = provider.attribution
+
+    /** The deepest level the live imagery publishes: 8 keyless, 18 with an ArcGIS key. */
+    val maxLevel: Int get() = provider.maxLevel
+
+    /**
+     * The closest the camera may be pinched to, in [viewport].
+     *
+     * Half of [GlobeFit.sharpestAltitude] — one octave of deliberate over-zoom
+     * past the point where the imagery is one texel per pixel. The fit itself
+     * stops at that point, because a route should not *open* on an upsampled
+     * photograph; a reader pinching in is asking for the last of the detail, and
+     * one doubling shows them what there is before the picture turns to blur.
+     *
+     * This is a divergence from `camera.rs`, which clamps to plain `MIN_DISTANCE`
+     * and needs no such floor: at its `MAX_LOD` of 18 the halved floor is at or
+     * under `MIN_ALTITUDE` on a phone-sized viewport (0.95 × 10⁻⁴ at 2340 px
+     * tall), so the two coincide. The keyless fallback publishes to z8, where the
+     * sharpest altitude is a thousand times higher, and without this a pinch
+     * would carry the camera 637 m above a tile drawn at a texel per fifty
+     * pixels. The `max` keeps the keyed case where the reference has it.
+     */
+    fun zoomFloor(viewport: GlobeViewport): Float =
+        max(MIN_ALTITUDE, GlobeFit.sharpestAltitude(viewport, provider.maxLevel) / 2f)
 
     init {
         loader.start()
         // Warm the permanent base levels immediately, so a coarse planet exists
         // from the first frames on and every leaf has an ancestor to fall back
-        // to. 85 tiles, and after the first run they come from the disk cache.
-        for (z in 0..TileAtlas.PINNED_MAX_LEVEL) {
+        // to. Deepest level first: the queue is newest-first within a level and
+        // coarse-first across them, so this order says what is wanted — z0/0/0
+        // out of the socket before anything else — rather than relying on the
+        // buckets to correct it. 21 tiles, and after the first run they come
+        // from the disk cache.
+        for (z in TileAtlas.PINNED_MAX_LEVEL downTo 0) {
             val span = 1 shl z
             for (x in 0 until span) {
                 for (y in 0 until span) {
@@ -108,12 +147,23 @@ internal class GlobeSession private constructor(
          */
         private const val TEARDOWN_DELAY_MS = 2_000L
 
+        /** The tiles' own disk cache, apart from the app's METAR cache. */
+        private const val TILE_CACHE_DIR = "globe-tiles"
+
         /**
-         * Shared by the tile loader so the connection pool and the DNS cache are
-         * the app's, not a second set. The disk cache is still the globe's own —
-         * see [TileLoader].
+         * The one tile HTTP client for the process.
+         *
+         * Built on the first [acquire] — never at application start, because
+         * opening a disk cache is a directory scan — and kept for the life of
+         * the process, because OkHttp requires exclusive access to a cache
+         * directory and the sessions come and go. See [TileHttp].
          */
-        private val sharedHttpClient by lazy { OkHttpClient() }
+        private var tileClient: OkHttpClient? = null
+
+        private fun tileClient(context: Context): OkHttpClient =
+            tileClient ?: TileHttp.build(File(context.cacheDir, TILE_CACHE_DIR)).also {
+                tileClient = it
+            }
 
         private val handler = Handler(Looper.getMainLooper())
 

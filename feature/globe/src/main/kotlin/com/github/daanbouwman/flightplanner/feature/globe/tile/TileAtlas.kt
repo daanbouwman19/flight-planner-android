@@ -23,11 +23,21 @@ import java.nio.ByteBuffer
  *
  * ### The pinned floor
  *
- * Levels 0 through 3 — 1 + 4 + 16 + 64 = [PINNED_SLOTS] tiles — are loaded once
- * and **never evicted**. That is what makes the globe legible offline and what
- * guarantees every leaf has an ancestor to fall back on while its own tile is in
- * flight, which is the difference between a globe that sharpens and one that
- * shows holes. The rest of the atlas is a least-recently-used pool.
+ * Levels 0 through [PINNED_MAX_LEVEL] — 1 + 4 + 16 = [PINNED_SLOTS] tiles — are
+ * loaded once and **never evicted**. That is what makes the globe legible
+ * offline and what guarantees every leaf has an ancestor to fall back on while
+ * its own tile is in flight, which is the difference between a globe that
+ * sharpens and one that shows holes. The rest of the atlas is a
+ * least-recently-used pool of [EVICTABLE_SLOTS].
+ *
+ * The floor used to be z0–z3, 85 slots. It is z0–z2 now, the trade the Rust
+ * reference makes (`tile_manager.rs`: `BASE_LOD = 3`, an exclusive bound): a
+ * leaf with nothing closer resident falls back to a z2 crop instead of a z3 one
+ * — twice as blurry, for the few frames until its own tile lands — and in
+ * exchange 64 more slots are evictable and the session's warm-up is 21 tiles
+ * rather than 85. The evictable count is what bounds how much detail a frame may
+ * ask for at all, and 171 was too few for a phone-sized viewport: see
+ * `Quadtree`'s note on the structural budget.
  *
  * ### Threading
  *
@@ -50,11 +60,19 @@ internal class TileAtlas(private val engine: Engine) {
         /** Total slots: 16 × 16. */
         const val SLOTS: Int = SLOTS_PER_EDGE * SLOTS_PER_EDGE
 
-        /** Levels 0..3 inclusive: 1 + 4 + 16 + 64. */
-        const val PINNED_SLOTS: Int = 85
-
         /** The deepest level held permanently. */
-        const val PINNED_MAX_LEVEL: Int = 3
+        const val PINNED_MAX_LEVEL: Int = 2
+
+        /**
+         * Tiles in levels 0..[PINNED_MAX_LEVEL]: the geometric sum `(4^(n+1) - 1) / 3`.
+         *
+         * Derived, not written down, so the two constants cannot drift apart —
+         * they used to be two hand-written numbers.
+         */
+        const val PINNED_SLOTS: Int = ((1 shl (2 * (PINNED_MAX_LEVEL + 1))) - 1) / 3
+
+        /** Slots the LRU pool may reclaim. */
+        const val EVICTABLE_SLOTS: Int = SLOTS - PINNED_SLOTS
 
         /** Bytes in one RGB565 tile. */
         const val TILE_BYTES: Int = TILE_PX * TILE_PX * 2
@@ -69,7 +87,14 @@ internal class TileAtlas(private val engine: Engine) {
          * the tile's outermost row, which is invisible; the seam is not.
          */
         const val HALF_TEXEL: Float = 0.5f / ATLAS_PX
+
+        /** "No slot" in the recency list's link arrays. */
+        private const val NONE = -1
     }
+
+    /** For the scene to hand to the quadtree, so the two cannot disagree. */
+    val evictableSlots: Int get() = EVICTABLE_SLOTS
+    val pinnedMaxLevel: Int get() = PINNED_MAX_LEVEL
 
     /**
      * The atlas texture.
@@ -99,23 +124,21 @@ internal class TileAtlas(private val engine: Engine) {
     private val keyToSlot = HashMap<TileKey, Int>(SLOTS)
 
     /**
-     * Recency order over the evictable slots, oldest first.
+     * Recency order over the evictable slots, as an intrusive doubly-linked list.
      *
-     * An `ArrayDeque` of slot indices rather than a `LinkedHashMap`: the working
-     * set is 171 entries and touched a few hundred times a frame, and a linear
-     * remove over 171 ints is cheaper than the node allocation a linked map does
-     * per touch. Measured behaviour, not an assumption about constant factors —
-     * this loop is the one that runs per visible tile per frame.
+     * [lruPrev] and [lruNext] are indexed by slot; [lruHead] is the least
+     * recently used slot and [lruTail] the most. Touching a slot is unlink and
+     * append, evicting is read the head — both O(1), no allocation, no boxing,
+     * in two kilobytes. It replaced an `ArrayDeque<Int>` whose `remove(slot)`
+     * was a linear scan over boxed integers per visible tile per frame, under a
+     * comment that called it measured; it was not.
      */
-    private val recency = ArrayDeque<Int>(SLOTS)
+    private val lruPrev = IntArray(SLOTS) { NONE }
+    private val lruNext = IntArray(SLOTS) { NONE }
+    private var lruHead = NONE
+    private var lruTail = NONE
 
     private var nextFreeSlot = 0
-
-    /** Slots taken by pinned levels, which are never returned to the pool. */
-    private var pinnedCount = 0
-
-    /** True once every pinned tile has landed — the globe is then legible offline. */
-    val basePinned: Boolean get() = pinnedCount >= PINNED_SLOTS
 
     /** Whether [key] currently has a slot. */
     fun contains(key: TileKey): Boolean = keyToSlot.containsKey(key)
@@ -217,7 +240,7 @@ internal class TileAtlas(private val engine: Engine) {
      */
     private val callbackHandler = Handler(Looper.myLooper() ?: Looper.getMainLooper())
 
-    /** Told when a slot is reclaimed, so the loader can stop calling the key resident. */
+    /** Told when a slot is reclaimed, so the loader can stop calling the key held. */
     var onEvicted: (TileKey) -> Unit = {}
 
     private fun allocate(key: TileKey): Int? {
@@ -230,9 +253,11 @@ internal class TileAtlas(private val engine: Engine) {
         }
 
         // Evict the least recently used evictable slot. Pinned slots are never
-        // in `recency`, so this can only ever reclaim something the base layer
-        // does not depend on.
-        val victim = recency.removeFirstOrNull() ?: return null
+        // in the recency list, so this can only ever reclaim something the base
+        // layer does not depend on.
+        val victim = lruHead
+        if (victim == NONE) return null
+        unlink(victim)
         slotKeys[victim]?.let {
             keyToSlot.remove(it)
             arrivalSeconds.remove(it)
@@ -245,27 +270,43 @@ internal class TileAtlas(private val engine: Engine) {
     private fun occupy(key: TileKey, slot: Int, pinned: Boolean) {
         slotKeys[slot] = key
         keyToSlot[key] = slot
-        if (pinned) {
-            pinnedCount++
-        } else {
-            recency.addLast(slot)
-        }
+        if (!pinned) append(slot)
     }
 
     private fun touch(key: TileKey, slot: Int) {
         if (key.z <= PINNED_MAX_LEVEL) return
-        if (recency.lastOrNull() == slot) return
-        recency.remove(slot)
-        recency.addLast(slot)
+        if (lruTail == slot) return
+        unlink(slot)
+        append(slot)
+    }
+
+    /** Appends [slot] at the most-recently-used end. */
+    private fun append(slot: Int) {
+        lruPrev[slot] = lruTail
+        lruNext[slot] = NONE
+        if (lruTail != NONE) lruNext[lruTail] = slot else lruHead = slot
+        lruTail = slot
+    }
+
+    /** Removes [slot] from the list, wherever it is. */
+    private fun unlink(slot: Int) {
+        val prev = lruPrev[slot]
+        val next = lruNext[slot]
+        if (prev != NONE) lruNext[prev] = next else lruHead = next
+        if (next != NONE) lruPrev[next] = prev else lruTail = prev
+        lruPrev[slot] = NONE
+        lruNext[slot] = NONE
     }
 
     fun destroy() {
         engine.destroyTexture(texture)
         keyToSlot.clear()
         arrivalSeconds.clear()
-        recency.clear()
+        lruPrev.fill(NONE)
+        lruNext.fill(NONE)
+        lruHead = NONE
+        lruTail = NONE
         slotKeys.fill(null)
         nextFreeSlot = 0
-        pinnedCount = 0
     }
 }
