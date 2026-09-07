@@ -1,7 +1,9 @@
 package com.github.daanbouwman.flightplanner.feature.globe.math
 
 import kotlin.math.acos
+import kotlin.math.max
 import kotlin.math.sin
+import kotlin.math.ulp
 
 /**
  * The great circle as points on the unit sphere, and the ribbon drawn along it.
@@ -23,16 +25,52 @@ internal object RouteGeometry {
 
 
     /**
-     * How far above the surface the arc floats, as a fraction of the radius.
+     * How far above the surface the arc floats, **in pixels**.
      *
-     * Small enough to read as lying on the sphere and large enough to clear the
-     * depth buffer's resolution at every altitude the camera reaches. Without it
-     * the arc z-fights the backdrop it is drawn against and stipples.
+     * It was a constant `1.0015` — a fixed 1.5e-3 of the radius, or **9.5 km**.
+     * That read as lying on the sphere while the imagery floored the camera 640
+     * km up, and broke in two ways the moment a keyed provider let the camera
+     * reach the deck:
+     *
+     * - **Parallax.** Something 9.5 km above the ground drifts against the ground
+     *   as the camera pans, by a fraction of the altitude. At 100 km up that is a
+     *   tenth of the frame — the route visibly sliding over the terrain.
+     * - **Below 9.5 km the camera is *under* the shell the arc lives on**, so
+     *   every sample fails the `cam.z` test in [appendArc] and the whole ribbon
+     *   is culled. The route simply vanished at full zoom.
+     *
+     * A lift in pixels has neither failure by construction: half a pixel is half
+     * a pixel at every altitude, so the arc can never separate from the terrain
+     * by something a reader can see, and it is always far below the camera —
+     * `0.5 / focal` of the altitude, about a five-thousandth of it.
+     *
+     * The lift is not what keeps the arc off the backdrop, which is the thing it
+     * is depth-tested against: that sphere sits at 0.999, a clear 1e-3 of radius
+     * below the surface, which is four orders of magnitude more separation than
+     * the depth buffer can resolve at any altitude in range.
      */
-    const val ARC_RADIUS: Float = 1.0015f
+    private const val ARC_LIFT_PIXELS: Float = 0.5f
 
-    /** Where the DEP and DEST markers sit, just above the arc so they cap it. */
-    const val MARKER_RADIUS: Float = 1.002f
+    /**
+     * The narrowest the ribbon may be offset, in radii, so it stays a ribbon.
+     *
+     * The offset is a screen width converted to world units, `halfWidthPx ×
+     * depth / focal`, and at the bottom of the zoom range that is **7.6e-8** of
+     * a radius for a 1.6-pixel arc — smaller than one ulp of the coordinate it is
+     * added to, since a float32 near 1.0 steps by `1.19e-7`. Both edges then
+     * round to the same point and every quad in the strip is degenerate, which
+     * draws nothing at all.
+     *
+     * Two ulps is the least that is guaranteed to separate them whichever way
+     * the rounding falls. It binds only below about 2 km of altitude, and there
+     * it makes the line wider than its nominal weight rather than absent — the
+     * honest trade, because the alternative is a route that disappears exactly
+     * when a reader has zoomed in to look at it.
+     *
+     * Going below this needs the ribbon built relative to a nearby origin rather
+     * than in absolute unit-sphere coordinates; see the note on [ribbonInto].
+     */
+    private val MIN_OFFSET_RADII: Float = 2f * 1f.ulp
 
     /** Converts a sampled arc in degrees into unit-sphere points. */
     fun toWorldPoints(lats: DoubleArray, lons: DoubleArray): Array<Vec3> =
@@ -87,6 +125,19 @@ internal object RouteGeometry {
      * strip into runs; [ribbonInto] writes a degenerate-triangle bridge between
      * runs so the whole arc is still one draw call.
      *
+     * ### The float32 floor, stated once
+     *
+     * Vertices are **absolute unit-sphere positions in float32**, so the finest
+     * they can be placed is one ulp of 1.0 — `1.19e-7` of a radius, about 76 cm.
+     * At the bottom of the zoom range that is larger than the ribbon's own
+     * width, which is what [MIN_OFFSET_RADII] exists to survive. Removing that
+     * floor rather than living with it means writing the strip relative to a
+     * per-frame origin and putting the origin in the renderable's transform, so
+     * both the vertices and the translation stay small; the overlay material
+     * reads nothing but its own `baseColor`, so it would need no shader change.
+     * That is worth doing the day sub-metre registration against the imagery
+     * matters, and is not worth it for a route line.
+     *
      * @return the number of vertices written into [out]
      */
     fun ribbonInto(
@@ -98,15 +149,37 @@ internal object RouteGeometry {
         out: RibbonBuffer,
     ): Int {
         out.reset()
-        val threshold = camera.cullThreshold()
         val focal = camera.focalPixels(viewport.height)
+        val frame = RibbonFrame(
+            basis = basis,
+            threshold = camera.cullThreshold(),
+            focal = focal,
+            arcRadius = 1f + ARC_LIFT_PIXELS * camera.altitude / focal,
+            halfWidthPx = halfWidthPx,
+        )
 
         for (points in arcs) {
             if (points.size < 2) continue
-            appendArc(points, camera, basis, viewport, halfWidthPx, threshold, focal, out)
+            appendArc(points, frame, out)
         }
         return out.vertexCount
     }
+
+    /**
+     * What one call to [ribbonInto] holds constant across every sample.
+     *
+     * A holder rather than six more parameters, which is what the function used
+     * to take — two of them, the camera and the viewport, no longer read by the
+     * time it had them. It also retires the module's only `@Suppress`, which was
+     * sitting on [appendArc] to quiet the parameter count.
+     */
+    private class RibbonFrame(
+        val basis: CameraBasis,
+        val threshold: Float,
+        val focal: Float,
+        val arcRadius: Float,
+        val halfWidthPx: Float,
+    )
 
     /**
      * Appends one arc to the strip, starting a fresh run.
@@ -117,25 +190,19 @@ internal object RouteGeometry {
      * draw call would put a logbook with two hundred flights at two hundred
      * draw calls a frame.
      */
-    @Suppress("LongParameterList")
     private fun appendArc(
         points: Array<Vec3>,
-        camera: GlobeCamera,
-        basis: CameraBasis,
-        viewport: GlobeViewport,
-        halfWidthPx: Float,
-        threshold: Float,
-        focal: Float,
+        frame: RibbonFrame,
         out: RibbonBuffer,
     ) {
         var previousVisible = false
         for (i in points.indices) {
             val p = points[i]
-            if (facingValueFast(basis, p) <= threshold) {
+            if (facingValueFast(frame.basis, p) <= frame.threshold) {
                 previousVisible = false
                 continue
             }
-            val cam = rotateFast(basis, p)
+            val cam = rotateFast(frame.basis, p)
             if (cam.z <= 1e-6f) {
                 previousVisible = false
                 continue
@@ -151,11 +218,13 @@ internal object RouteGeometry {
             val side = (tangent cross p).normalize()
 
             // World units per pixel at this point's depth, so the ribbon is the
-            // same weight near the limb as at the nadir.
-            val worldPerPixel = cam.z / focal
-            val offset = side * (halfWidthPx * worldPerPixel)
+            // same weight near the limb as at the nadir — held above the width
+            // at which float32 would collapse the two edges onto each other.
+            val worldPerPixel = cam.z / frame.focal
+            val halfWidth = max(frame.halfWidthPx * worldPerPixel, MIN_OFFSET_RADII)
+            val offset = side * halfWidth
 
-            val onArc = p * ARC_RADIUS
+            val onArc = p * frame.arcRadius
             if (!previousVisible && out.vertexCount > 0) {
                 // Bridge the gap with degenerate triangles: repeat the last
                 // vertex and the first of the new run, so the strip stays one
