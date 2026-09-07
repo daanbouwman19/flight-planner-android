@@ -524,25 +524,39 @@ reason the globe never shows holes.
 
 ### 5.5 Fetch pipeline and disk cache
 
-`TileLoader`: a LIFO `ArrayDeque<Long>` plus an in-flight set, drained by **4** coroutines on
-`Dispatchers.IO.limitedParallelism(4)` — not the desktop's 8; OkHttp defaults to 5 connections per
-host and mobile radios punish concurrency. LIFO so the current camera beats stale requests, with
-the same "clear the queue past `PENDING_CAP`" pressure valve.
+`TileLoader`: a queue bucketed by zoom level — coarsest level first, LIFO within a level — plus an
+in-flight set, drained by **8** blocking workers on `Dispatchers.IO`, the desktop's figure.
+
+> **Superseded reasoning, kept so it is not re-derived.** The first build used a single LIFO stack
+> and 4 workers, justified as "OkHttp defaults to 5 connections per host and mobile radios punish
+> concurrency". Both halves were wrong. `Dispatcher.maxRequestsPerHost` applies only to `enqueue()`;
+> the loader uses blocking `execute()`, so the worker count *is* the concurrency. And a single stack
+> inverted the quadtree's breadth-first walk — the deepest leaves were fetched first and the
+> ancestors they fall back on last, so a zoom showed the pinned floor, then a pop, and nothing in
+> between. Measured against GIBS (HTTP/1.1 only, ~230 ms a tile): 24 tiles took 2.08 s at 4 workers
+> and 1.07 s at 12. The pressure valve past `PENDING_CAP` survives, dropping the deepest buckets first
+> and never an in-flight key.
 
 Decode with `BitmapFactory.Options { inPreferredConfig = RGB_565; inBitmap = pool.acquire() }` so
 decode allocates nothing, then hand the buffer to Filament on the render thread.
 
-**Disk cache: OkHttp's own `Cache`** (`256 MB` under `cacheDir/tiles`). ArcGIS tiles carry sane
-`Cache-Control`/`ETag`, so conditional revalidation, LRU eviction, journal integrity and crash
-safety all come free; a hand-rolled `DiskLruCache` reimplements it worse. Two interceptors: one
-rewriting a minimum `max-age` (tiles are effectively immutable), and a
-`ForceCacheOnFailureInterceptor` retrying with `FORCE_CACHE` on `IOException` so panning works
-offline. **Do not use Coil for tiles** — the pipeline is bytes → pooled RGB565 bitmap → atlas
-sub-image, not a Compose image loader.
+**Disk cache: OkHttp's own `Cache`** (`96 MB` under `cacheDir/globe-tiles`), on **one
+process-scoped tile client** created on first use — never in `Application.onCreate`. OkHttp requires
+exclusive access to a cache directory, and the first build opened a fresh `Cache` over the same
+directory every time the globe session was rebuilt and never closed one. Conditional revalidation,
+LRU eviction, journal integrity and crash safety all come free; a hand-rolled `DiskLruCache`
+reimplements it worse. Two interceptors: a *network* interceptor rewriting `Cache-Control` to a
+year for providers that declare their tiles immutable (GIBS sends `max-age=259200` — three days —
+on a layer with no date in its path), and an *application* interceptor retrying with `FORCE_CACHE`
+on `IOException` so panning works offline, returning the cached response only on a genuine hit.
+Esri's tiles keep their own `Cache-Control` (a day); see §11. **Do not use Coil for tiles** — the
+pipeline is bytes → pooled RGB565 bitmap → atlas sub-image, not a Compose image loader.
 
-`TileProvider` mirrors `providers.rs`, with `EsriWorldImageryProvider` using the same `{z}/{y}/{x}`
-URL and the same required `ATTRIBUTION = "Imagery © Esri"`, rendered as an always-visible,
-non-dismissible Compose `Text`. See §11 for the licensing caveat and the swap plan.
+`TileProvider` mirrors `providers.rs`. `EsriWorldImagery` uses the same `{z}/{y}/{x}` pyramid to
+**z18** through the licensed ArcGIS Location Platform endpoint with an API key; `NasaGibsBlueMarble`
+(public domain, keyless, **z8**) is what a build without a key gets. Attribution is a structured
+value — label, on-glass credit, full notice, URL — rendered as an always-visible, non-dismissible
+plate, because Esri's terms want both "Powered by Esri" and the data providers' names on the map.
 
 Offline: "Download tiles for this route" walks the quadtree along the great circle at z ≤ 8 and
 warms the OkHttp cache from a `CoroutineWorker`.
@@ -828,12 +842,19 @@ every later milestone replaces a stub rather than adding a missing layer.
 
 ## 11. Risks and open questions
 
-1. **Esri tile terms — highest-severity non-technical risk.** The anonymous ArcGIS
-   `World_Imagery` endpoint is not obviously licensed for a consumer mobile app at scale.
-   Attribution is necessary but almost certainly not sufficient. Resolve before Play release; keep
-   `TileProvider` swappable and have a fallback ready (an ArcGIS developer key, or **NASA GIBS**,
-   which is public domain and keyless but caps around z8–z9 — ample for a route-overview globe,
-   insufficient for close inspection).
+1. **Esri tile terms — resolved, with one clause still to confirm.** The anonymous
+   `server.arcgisonline.com` endpoint the desktop uses is **not** licensed for this app: the World
+   Imagery item's own licence text binds it to the Esri Master License Agreement and says outright
+   that the layer "is not intended to be used to export tiles for offline". The app therefore uses
+   the licensed form — ArcGIS Location Platform, `ibasemaps-api.arcgis.com`, with an API key read at
+   build time from `arcgis.apiKey` in `local.properties` (2 M tiles a month free, then $0.15 per
+   thousand) — and falls back to **NASA GIBS** Blue Marble (public domain, keyless, z8) when no key
+   is present, so a clone still builds and still shows a globe. GIBS was the shipped default until
+   the z8 ceiling turned out to be the whole of "zooming does not sharpen": eleven doublings of
+   camera travel below the point where its imagery stops carrying detail. **Still open:** whether the
+   96 MB HTTP disk cache is the "offline export" that clause forbids or the transient performance
+   cache every browser keeps (Esri's own billing page says browser-cached tiles are not metered).
+   Esri's tiles keep their own 24-hour `Cache-Control` until that is answered in writing.
 2. **Room prepackaged-asset identity hash** — highest-severity *technical* risk. Drift between the
    ETL's DDL and Room's expectation crashes at first open on every device. The schema-JSON-driven
    ETL plus `verifyAirportAsset` mitigates it, but **both must exist at M1**.

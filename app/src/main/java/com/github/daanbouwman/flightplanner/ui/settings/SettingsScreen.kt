@@ -246,12 +246,6 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-            Text(
-                text = stringResource(R.string.settings_empty_message),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
             OutlinedButton(
                 onClick = onOpenSelfCheck,
                 modifier = Modifier.padding(top = 8.dp),
@@ -421,8 +415,10 @@ private fun GlobeInfoBlock() {
             ),
             style = MaterialTheme.typography.bodyMedium,
         )
+        // The full notice, not the plate's abbreviation: this is the reading-order
+        // copy of a credit the glass can only hint at.
         Text(
-            text = GlobeImagery.Attribution,
+            text = GlobeImagery.attribution.notice,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

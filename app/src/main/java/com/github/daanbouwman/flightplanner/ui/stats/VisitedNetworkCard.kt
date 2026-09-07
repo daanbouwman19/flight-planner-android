@@ -208,6 +208,10 @@ private fun GlobeNetworkBand(
     GlobeNetworkSurface(
         network = network,
         controls = controls,
+        // A band inside the Stats list. A vertical one-finger drag over it
+        // scrolls the list, as it does over every other card; sideways and
+        // two-finger gestures still turn the globe.
+        nestedVerticalScroll = true,
         modifier = Modifier
             .fillMaxWidth()
             .height(GlobeBandHeight),
@@ -234,7 +238,7 @@ private fun GlobeNetworkBand(
                     .padding(GlassGutter),
             )
             GlobeAttribution(
-                text = GlobeImagery.Attribution,
+                attribution = GlobeImagery.attribution,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(GlassGutter),

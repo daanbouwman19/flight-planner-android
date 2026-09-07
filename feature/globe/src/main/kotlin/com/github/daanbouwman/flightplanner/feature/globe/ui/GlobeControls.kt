@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +34,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.feature.globe.R
+import com.github.daanbouwman.flightplanner.feature.globe.tile.ImageryAttribution
+import com.github.daanbouwman.flightplanner.feature.globe.tile.TileProviders
 import kotlin.math.roundToInt
 
 /**
@@ -256,24 +259,51 @@ private fun CellRule() {
  * Drawn in every layout because the provider requires it, not because it was
  * chosen — and hidden from accessibility, because it is a licence notice rather
  * than something a user navigating by TalkBack is looking for. It appears in
- * Settings' About section as well, where somebody actually going looking for it
- * will find it in reading order.
+ * Settings' About section and on the Licences screen as well, where somebody
+ * actually going looking for it will find it in reading order.
+ *
+ * Two lines when the provider has two things to say. Esri's terms want both
+ * "Powered by Esri" *and* the data providers' names on the map itself, and the
+ * second is a list of four organisations, so the plate wraps it under the label
+ * inside a bounded width rather than running a single line across the whole
+ * hero. NASA's acknowledgement is a sentence and belongs on the Licences screen;
+ * on the glass its [ImageryAttribution.credit] is null and the plate is one line.
  */
 @Composable
-fun GlobeAttribution(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall.asChartFigure(),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+fun GlobeAttribution(attribution: ImageryAttribution, modifier: Modifier = Modifier) {
+    Column(
         modifier = modifier
             .clearAndSetSemantics { }
             .background(
                 color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = PlateAlpha),
                 shape = MaterialTheme.shapes.extraSmall,
             )
-            .padding(horizontal = 7.dp, vertical = 2.dp),
-    )
+            .padding(horizontal = 7.dp, vertical = 2.dp)
+            .widthIn(max = AttributionMaxWidth),
+    ) {
+        Text(
+            text = attribution.label,
+            style = MaterialTheme.typography.labelSmall.asChartFigure(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        attribution.credit?.let { credit ->
+            Text(
+                text = credit,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
+
+/**
+ * How wide the credit plate may grow before its second line wraps.
+ *
+ * Wide enough for "Esri, Vantor, Earthstar Geographics, and the GIS User
+ * Community" to take two lines at `labelSmall`, narrow enough that on a compact
+ * hero it stops well short of the camera stack in the opposite corner.
+ */
+private val AttributionMaxWidth = 232.dp
 
 /** A plus, or its horizontal bar alone. Two strokes at the app's hairline weight. */
 private fun DrawScope.drawZoomMark(tint: Color, withVertical: Boolean) {
@@ -410,13 +440,15 @@ private const val NeedleWaist = 0.16f
 /**
  * The credit the imagery provider requires, as something a host can draw.
  *
- * Public, and a value rather than a lookup into the tile layer, because a host
- * needs it to place the credit in its own layout — and making the whole provider
- * public to say one sentence would open the tile pipeline to `:app` for no other
- * reason. It is the same string
- * [com.github.daanbouwman.flightplanner.feature.globe.tile.TileProvider] carries,
- * and it moves when the provider does.
+ * Public, and the one thing about the provider that is, because a host needs it
+ * to place the credit in its own layout — and making the whole provider public to
+ * say one sentence would open the tile pipeline to `:app` for no other reason. It
+ * reads the provider the build actually selected, so it changes when the provider
+ * does: with an ArcGIS key in `local.properties` this is Esri's credit, without
+ * one it is NASA's. It used to be a `const val` naming one provider, which is how
+ * the credit stayed on NASA while the tiles could have come from anywhere.
  */
 object GlobeImagery {
-    const val Attribution: String = "Imagery © NASA GIBS"
+    /** What the active provider requires drawn over its imagery. */
+    val attribution: ImageryAttribution get() = TileProviders.active.attribution
 }

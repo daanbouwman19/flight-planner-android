@@ -3,14 +3,13 @@ package com.github.daanbouwman.flightplanner.feature.globe.ui
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.DecayAnimationSpec
-import androidx.compose.animation.core.VectorConverter
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,13 +36,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
 import com.github.daanbouwman.flightplanner.feature.globe.R
-import com.github.daanbouwman.flightplanner.feature.globe.math.CameraBasis
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeFit
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
@@ -55,8 +52,6 @@ import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeInk
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSession
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSupport
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSurfaceView
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
@@ -165,9 +160,13 @@ fun rememberGlobeStatus(): GlobeStatus {
  *
  * ### The crossfade in (G8)
  *
- * [content] — the still `RouteMap` from C3 — stays composed underneath, and the
- * globe fades in over it on an effects spring once the first tile mesh has been
- * built. **Alpha only: nothing moves, so nothing may overshoot**, and the still
+ * [content] — the still `RouteMap` from C3 — is composed **on top of** the
+ * surface and fades out on an effects spring once the first tile mesh has been
+ * built, which reads as the globe fading in. It is drawn on top rather than
+ * underneath because the surface is a `SurfaceView` below the window: a Compose
+ * alpha on the node hosting it never reaches the SurfaceControl, so the first
+ * build of this — the still map underneath, the surface fading in — was a hard
+ * cut. **Alpha only: nothing moves, so nothing may overshoot**, and the still
  * map holds the frame throughout. There is deliberately no geometric morph
  * between the two; a `SurfaceView` cannot be a shared element, and pretending
  * otherwise would mean animating a screenshot of one.
@@ -200,9 +199,21 @@ fun GlobeSurface(
      * only thing that knows how tall its chrome is, so it says.
      */
     topChromeInset: Dp = 0.dp,
+    /**
+     * Whether touch moves the camera at all. False for a globe that is looked
+     * at rather than handled; the controls and the accessibility actions still
+     * work, because they never went through the pointer handler.
+     */
+    interactive: Boolean = true,
+    /**
+     * True when this globe sits inside a vertically scrolling page. A one-finger
+     * drag that is near-vertical is then given to the page — see
+     * [globeGestures] for the compromise and its cone.
+     */
+    nestedVerticalScroll: Boolean = false,
     /** Placed over the globe, inside the same box — controls, a title, chips. */
     overlay: @Composable BoxScope.() -> Unit = {},
-    /** Drawn under the globe: the still map it fades in over, and the fallback. */
+    /** The still map: drawn over the globe until the first tiles land, then faded out; the whole picture where there is no renderer. */
     content: @Composable () -> Unit = {},
 ) {
     val depWorld = remember(route) {
@@ -221,17 +232,20 @@ fun GlobeSurface(
         key = route.key,
         arcs = remember(route) { listOf(route.arcLats to route.arcLons) },
         fit = remember(route) {
-            { viewport: GlobeViewport ->
+            { viewport: GlobeViewport, maxLod: Int ->
                 GlobeFit.frameRoute(
                     route.arcLats.first(), route.arcLons.first(),
                     route.arcLats.last(), route.arcLons.last(),
                     viewport,
+                    maxLod = maxLod,
                 )
             }
         },
         description = description,
         modifier = modifier,
         controls = controls,
+        interactive = interactive,
+        nestedVerticalScroll = nestedVerticalScroll,
         markers = { cameraState, viewport, primary, tertiary ->
             GlobeLabels(
                 departure = GlobeLabel(route.departureIcao, depWorld, primary),
@@ -265,6 +279,10 @@ fun GlobeNetworkSurface(
     network: GlobeNetwork,
     modifier: Modifier = Modifier,
     controls: GlobeControlsHandle? = null,
+    /** See [GlobeSurface]. */
+    interactive: Boolean = true,
+    /** See [GlobeSurface]. The Stats band sits in a `LazyColumn`, which is what this is for. */
+    nestedVerticalScroll: Boolean = false,
     overlay: @Composable BoxScope.() -> Unit = {},
     content: @Composable () -> Unit = {},
 ) {
@@ -283,13 +301,15 @@ fun GlobeNetworkSurface(
             val lons = network.nodes.map { it.longitude }.toDoubleArray()
             // Named rather than returned as a trailing lambda: after a `val`, the
             // parser reads a bare `{ … }` as an argument to the line above it.
-            val solve: (GlobeViewport) -> GlobeCamera =
-                { viewport -> GlobeFit.framePoints(lats, lons, viewport) }
+            val solve: (GlobeViewport, Int) -> GlobeCamera =
+                { viewport, maxLod -> GlobeFit.framePoints(lats, lons, viewport, maxLod = maxLod) }
             solve
         },
         description = description,
         modifier = modifier,
         controls = controls,
+        interactive = interactive,
+        nestedVerticalScroll = nestedVerticalScroll,
         markers = { cameraState, viewport, primary, _ ->
             GlobeNodes(
                 nodes = network.nodes,
@@ -324,11 +344,18 @@ private fun GlobeCanvas(
      * `atan(tan(fovY / 2) · width / height)`, so the same leg needs a different
      * distance in the deep hero and in the immersive screen. Passing the fit
      * already solved meant solving it against a viewport nobody had measured yet.
+     *
+     * The second argument is the imagery's deepest level, from the session: the
+     * fit will not park the camera closer than the point where that level is one
+     * texel per pixel, and with a keyed provider that point is far lower than
+     * with the keyless fallback.
      */
-    fit: (GlobeViewport) -> GlobeCamera,
+    fit: (GlobeViewport, Int) -> GlobeCamera,
     description: String,
     modifier: Modifier,
     controls: GlobeControlsHandle?,
+    interactive: Boolean,
+    nestedVerticalScroll: Boolean,
     markers: @Composable (GlobeCameraState, GlobeViewport, Color, Color) -> Unit,
     overlay: @Composable BoxScope.() -> Unit,
     content: @Composable () -> Unit,
@@ -342,7 +369,7 @@ private fun GlobeCanvas(
     // process. Both halves belong to the same effect.
     //
     // The first frame therefore has no session and draws [content], which is the
-    // still map it was always going to fade in over.
+    // still map that stays on top until the globe has something to show.
     var held by remember(context) { mutableStateOf<GlobeSession?>(null) }
     DisposableEffect(context) {
         held = GlobeSession.acquire(context)
@@ -376,16 +403,51 @@ private fun GlobeCanvas(
     // is a placeholder too; the effect below is what corrects both.
     var viewport by remember { mutableStateOf(GlobeViewport(1f, 1f)) }
 
-    val fitted = remember(fit, viewport) { fit(viewport) }
+    val fitted = remember(fit, viewport, session) { fit(viewport, session.maxLevel) }
 
     // The camera starts from the session, not from the fit: moving from the hero
     // to the immersive screen must not re-frame a view the user had already
     // moved. A route the session has not seen is the case where the fit applies.
+    val adopted = session.routeKey == key
     val cameraState = remember(session) {
         GlobeCameraState(
-            initial = if (session.routeKey == key) session.camera else fitted,
-            onChange = { session.camera = it },
+            initial = if (adopted) session.camera else fitted,
+            scope = scope,
+            // The session knows how deep its imagery goes; the floor is the
+            // altitude at which the finest tile is one texel per pixel, one
+            // octave lower. A pinch stops there instead of ten doublings later
+            // in magnified mush. See the class note on GlobeCameraState.
+            zoomFloor = { box -> session.zoomFloor(box) },
+            onChange = {
+                session.camera = it
+                session.cameraViewportHeight = viewport.height
+            },
         )
+    }
+
+    // The state's copy of the box, for the fling's per-frame anchor and the
+    // zoom's focus. Written after composition so the pointer handler never
+    // observes a viewport newer than the frame it is handling.
+    SideEffect { cameraState.viewport = viewport }
+
+    // **A carried camera is rescaled to the box that adopts it.** The focal
+    // length is proportional to the surface height, so the hero's camera shown
+    // in the immersive screen — 2.3× taller — is the same view magnified 2.3×,
+    // with both airports off the sides. The design says the frame grows while
+    // the globe holds still; holding the picture still under a taller focal
+    // length means the camera has to be that much further out. Once, when the
+    // adopting surface first learns its height, and through the zoom path so the
+    // imagery floor still binds.
+    var carriedFromHeight by remember(session) {
+        mutableStateOf(if (adopted) session.cameraViewportHeight else 0f)
+    }
+    LaunchedEffect(viewport) {
+        val fromHeight = carriedFromHeight
+        if (viewport.height <= 1f) return@LaunchedEffect
+        if (fromHeight > 1f && fromHeight != viewport.height) {
+            cameraState.zoomBy(factor = viewport.height / fromHeight, focus = null)
+        }
+        carriedFromHeight = 0f
     }
 
     // The fit the camera is currently parked at, or null if it arrived already
@@ -424,6 +486,9 @@ private fun GlobeCanvas(
     LaunchedEffect(session, reduceMotion) {
         session.scene.sharpenSeconds = if (reduceMotion) 0f else DefaultSharpenSeconds
     }
+    // A fling or a spring already in flight when the setting flips is exactly
+    // the motion the setting asks not to see. Stopped, not finished quickly.
+    LaunchedEffect(cameraState, reduceMotion) { cameraState.cancelMotion() }
 
     // Whether the composition still has the surface inside the window. See the
     // note on the modifier below, and on GlobeSurfaceView.onScreen.
@@ -444,7 +509,6 @@ private fun GlobeCanvas(
     // happen before the first control can be tapped.
     controls?.bind(cameraState, fitted)
 
-
     // **`clipToBounds`, and it is load-bearing.** The label plates are placed by
     // a `layout` block at a projected pixel, and Compose lets a child be placed
     // outside its parent and drawn there. A dot near the bottom of the sphere
@@ -452,10 +516,6 @@ private fun GlobeCanvas(
     // nothing to do with; the limb overlay drew its rim across the page for the
     // same reason. The globe owns its box and nothing it draws leaves it.
     Box(modifier = modifier.clipToBounds()) {
-        // Never removed: it is what the globe fades in over, and on a device
-        // without a renderer it is the whole feature.
-        content()
-
         AndroidView(
             factory = { ctx ->
                 GlobeSurfaceView(ctx).apply {
@@ -475,9 +535,28 @@ private fun GlobeCanvas(
                 .onGloballyPositioned { coordinates ->
                     val bounds = coordinates.boundsInWindow()
                     onScreen = bounds.width > 0f && bounds.height > 0f
-                }
-                .graphicsLayer { alpha = globeAlpha.value },
+                },
         )
+
+        // **The still map fades *out*, over the surface, rather than the surface
+        // fading in.** The surface is a `SurfaceView` composited below the window
+        // through a hole punched in it; a Compose `graphicsLayer { alpha }` on the
+        // node hosting it never reaches the SurfaceControl, so the globe used to
+        // arrive as a hard cut at the moment the first mesh landed — and with the
+        // node rendered offscreen for the alpha, the hole punch could fail
+        // outright. Drawing the still map on top and taking *it* to zero is the
+        // same crossfade with the alpha on something Compose actually owns.
+        //
+        // Never removed: before the first tile it is the whole picture, and on a
+        // device without a renderer this branch is never reached and it is the
+        // whole feature.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = 1f - globeAlpha.value },
+        ) {
+            content()
+        }
 
         LimbOverlay(
             cameraState = cameraState,
@@ -497,12 +576,27 @@ private fun GlobeCanvas(
         }
 
         // The input layer sits over the labels so the whole box is grabbable,
-        // including the parts of it a plate happens to cover.
+        // including the parts of it a plate happens to cover. Without
+        // `interactive` there is no pointer handler at all — not a handler that
+        // ignores what it is given — so a touch falls straight through to the
+        // page underneath.
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .globeInput(cameraState, viewport, scope, reduceMotion, flingDecay, spatialFast)
-                .globeSemantics(description, cameraState, fitted, scope, spatial, spatialFast),
+                .then(
+                    if (interactive) {
+                        Modifier.globeInput(
+                            cameraState,
+                            reduceMotion,
+                            nestedVerticalScroll,
+                            flingDecay,
+                            spatialFast,
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
+                .globeSemantics(description, cameraState, fitted, spatial, spatialFast),
         )
 
         overlay()
@@ -518,17 +612,21 @@ private fun GlobeCanvas(
  */
 @Composable
 fun rememberGlobeControls(): GlobeControlsHandle {
-    val scope = rememberCoroutineScope()
     val spatial = FlightMotion.spatial<Float>()
     val spatialFast = FlightMotion.spatialFast<Float>()
-    return remember(scope, spatial, spatialFast) {
-        GlobeControlsHandle(scope, spatial, spatialFast)
+    return remember(spatial, spatialFast) {
+        GlobeControlsHandle(spatial, spatialFast)
     }
 }
 
-/** What the glass controls can ask the camera to do. See [GlobeCameraControls]. */
+/**
+ * What the glass controls can ask the camera to do. See [GlobeCameraControls].
+ *
+ * It holds no coroutine scope of its own: every move it asks for is launched by
+ * the camera state, which is the one place that can also cancel the fling a
+ * tap on ± has to interrupt.
+ */
 class GlobeControlsHandle internal constructor(
-    private val scope: CoroutineScope,
     private val spatial: AnimationSpec<Float>,
     private val spatialFast: AnimationSpec<Float>,
 ) {
@@ -543,6 +641,18 @@ class GlobeControlsHandle internal constructor(
     /** Degrees the view is turned from north, for the compass needle. */
     val bearingDegrees: Float get() = state?.camera?.bearingDegrees() ?: 0f
 
+    /**
+     * Where the camera is, for the module's own instrumented tests.
+     *
+     * The gesture pump is the one layer of the globe a JVM test cannot reach —
+     * it lives inside `awaitPointerEventScope` — so the pinch and the drag are
+     * proved on a device by driving the surface with synthetic pointers and
+     * reading the camera back here. Internal, and not a UI affordance.
+     */
+    internal val altitude: Float get() = state?.camera?.altitude ?: Float.NaN
+    internal val centerLon: Float get() = state?.camera?.centerLon ?: Float.NaN
+    internal val centerLat: Float get() = state?.camera?.centerLat ?: Float.NaN
+
     /** Whether the view has been turned or leaned, so the reset control is worth offering. */
     val isRotated: Boolean get() = state?.camera?.isRotated() == true
 
@@ -554,131 +664,98 @@ class GlobeControlsHandle internal constructor(
     fun refit() {
         val target = fitted ?: return
         val current = state ?: return
-        scope.launch { current.animateTo(target, spatial) }
+        current.animateTo(target, spatial)
     }
 
     /** North up and level, keeping position and zoom. */
     fun resetNorth() {
         val current = state ?: return
-        scope.launch { current.animateTo(current.uprightCamera(), spatial) }
+        current.animateTo(current.uprightCamera(), spatial)
     }
 
     private fun step(notches: Int) {
         val current = state ?: return
-        scope.launch { current.animateTo(current.steppedZoom(notches), spatialFast) }
+        current.animateTo(current.steppedZoom(notches), spatialFast)
     }
 }
 
 /**
- * Pan, pinch, rotate, tilt, double-tap, and the fling that follows a pan.
+ * Pan, pinch, twist, tilt, double-tap, quick-scale, and the fling that follows
+ * a pan — [globeGestures] wired to the camera.
  *
- * Two `pointerInput` blocks rather than one: taps and drags are recognised by
- * different loops in Compose, and a single block trying to do both would have to
- * re-implement one of them. They coexist because [detectTapGestures] only claims
- * an event once it has decided it is a tap.
+ * One `pointerInput` block, where there were two. The second held a
+ * `detectTapGestures` for the double-tap, and it never reliably fired: the first
+ * block consumed every position change from the first move, and the tap detector
+ * saw the consumed change on its final pass and gave up. The recogniser now
+ * decides taps itself, from the same stream.
+ *
+ * Keyed on the state rather than on the viewport, because the state carries the
+ * viewport now: a resize during a gesture no longer restarts the handler under
+ * the fingers.
  */
 private fun Modifier.globeInput(
     state: GlobeCameraState,
-    viewport: GlobeViewport,
-    scope: CoroutineScope,
     reduceMotion: Boolean,
+    nestedVerticalScroll: Boolean,
     flingDecay: DecayAnimationSpec<Offset>,
     zoomSpec: AnimationSpec<Float>,
-): Modifier = this
-    .pointerInput(viewport, reduceMotion) {
-        var anchor: Vec3? = null
-        var anchorStart: Offset? = null
+): Modifier = pointerInput(state, reduceMotion, nestedVerticalScroll) {
+    var anchor: Vec3? = null
+    var anchorStart: Offset? = null
 
-        globeGestures { event ->
-            when (event) {
-                // A touch always wins over a running camera animation: a re-fit
-                // that kept going under the finger would be fighting it.
-                is GlobeGestureEvent.Down -> scope.launch { state.stop() }
+    globeGestures(nestedVerticalScroll) { event ->
+        when (event) {
+            // A touch always wins over a running camera motion: a re-fit or a
+            // fling that kept going under the finger would be fighting it.
+            GlobeGestureEvent.Down -> state.cancelMotion()
 
-                is GlobeGestureEvent.Pan -> {
-                    if (anchorStart != event.start) {
-                        anchorStart = event.start
-                        anchor = state.camera.screenToWorldClamped(
-                            ScreenPoint(event.start.x, event.start.y),
-                            viewport,
-                        )
-                    }
-                    anchor?.let {
-                        state.panAnchor(
-                            it,
-                            ScreenPoint(event.position.x, event.position.y),
-                            viewport,
-                        )
-                    }
+            is GlobeGestureEvent.Pan -> {
+                // The anchor is re-taken whenever the start moves, which is at
+                // every reseed: a finger landing or lifting changes what the
+                // centroid is, and the world point under the new one is what
+                // should stay under it from here.
+                if (anchorStart != event.start) {
+                    anchorStart = event.start
+                    anchor = state.camera.screenToWorldClamped(
+                        ScreenPoint(event.start.x, event.start.y),
+                        state.viewport,
+                    )
                 }
+                anchor?.let { state.panAnchor(it, ScreenPoint(event.position.x, event.position.y)) }
+            }
 
-                is GlobeGestureEvent.Zoom -> state.zoomBy(
-                    // Spreading the fingers means "closer", which is a *smaller*
-                    // altitude — hence the reciprocal.
-                    factor = 1f / event.factor.coerceIn(0.25f, 4f),
-                    focus = ScreenPoint(event.focus.x, event.focus.y),
-                    viewport = viewport,
-                )
+            // Spreading the fingers means "closer", which is a *smaller*
+            // altitude — hence the reciprocal. No clamp here: the recogniser has
+            // already rejected implausible per-event ratios, and the altitude
+            // range is the state's to enforce. The old `coerceIn(0.25f, 4f)` was
+            // dead for a per-event factor and silently distorted the catch-up one.
+            is GlobeGestureEvent.Zoom -> state.zoomBy(
+                factor = 1f / event.factor,
+                focus = ScreenPoint(event.focus.x, event.focus.y),
+            )
 
-                is GlobeGestureEvent.Rotate -> state.rotateBy(event.radians)
+            is GlobeGestureEvent.Rotate -> state.twistBy(event.radians)
 
-                // Dragging down leans the view toward the horizon, which is the
-                // direction the horizon itself moves under the finger.
-                is GlobeGestureEvent.Tilt -> state.tiltBy(
-                    event.dy * tiltRadiansPerPixel(viewport),
-                )
+            // Dragging down leans the view toward the horizon, which is the
+            // direction the horizon itself moves under the fingers.
+            is GlobeGestureEvent.Tilt -> state.tiltBy(event.dy * tiltRadiansPerPixel(state.viewport))
 
-                is GlobeGestureEvent.End -> {
-                    anchor = null
-                    anchorStart = null
-                    if (event.gesture == GlobeGesture.Pan && !reduceMotion) {
-                        scope.launch { state.fling(event.velocity, viewport, flingDecay) }
-                    }
-                }
+            // One notch in, about the tapped point, on the same spring as the ±
+            // controls — it is the same move made a different way. The focus
+            // is resolved the way a pinch's is, so a double-tap on the sky
+            // zooms about the nearest edge of the globe and a double-tap near
+            // the edge does not swing the camera; see GlobeCameraState.zoomedBy.
+            is GlobeGestureEvent.DoubleTap -> state.animateTo(
+                state.steppedZoom(-1, ScreenPoint(event.position.x, event.position.y)),
+                zoomSpec,
+            )
+
+            is GlobeGestureEvent.End -> {
+                anchor = null
+                anchorStart = null
+                if (event.flingEligible && !reduceMotion) state.fling(event.velocity, flingDecay)
             }
         }
-    }
-    .pointerInput(viewport, zoomSpec) {
-        detectTapGestures(
-            onDoubleTap = { position ->
-                val point = ScreenPoint(position.x, position.y)
-                scope.launch {
-                    val stepped = state.steppedZoom(-1)
-                    val target = state.camera.screenToWorld(point, viewport)
-                        ?.let { stepped.panTo(it, point, viewport) }
-                        ?: stepped
-                    state.animateTo(target, zoomSpec)
-                }
-            },
-        )
-    }
-
-/**
- * Momentum after a pan.
- *
- * The anchor is re-taken at the viewport centre every frame rather than kept
- * from the release. A fixed anchor works while it is on screen and then lies:
- * once it passes behind the limb, solving for it sends the camera somewhere it
- * was never asked to go.
- */
-private suspend fun GlobeCameraState.fling(
-    velocity: Velocity,
-    viewport: GlobeViewport,
-    decay: DecayAnimationSpec<Offset>,
-) {
-    if (velocity.x == 0f && velocity.y == 0f) return
-    val center = ScreenPoint(viewport.centerX, viewport.centerY)
-    val travel = Animatable(Offset.Zero, Offset.VectorConverter)
-    var last = Offset.Zero
-    travel.animateDecay(
-        initialVelocity = Offset(velocity.x, velocity.y),
-        animationSpec = decay,
-    ) {
-        val delta = value - last
-        last = value
-        if (delta == Offset.Zero) return@animateDecay
-        val anchor = camera.screenToWorldClamped(center, viewport)
-        panAnchor(anchor, ScreenPoint(center.x + delta.x, center.y + delta.y), viewport)
     }
 }
 
@@ -753,7 +830,6 @@ private fun Modifier.globeSemantics(
     description: String,
     state: GlobeCameraState,
     fitted: GlobeCamera,
-    scope: CoroutineScope,
     spatial: AnimationSpec<Float>,
     spatialFast: AnimationSpec<Float>,
 ): Modifier {
@@ -775,19 +851,19 @@ private fun Modifier.globeSemantics(
         contentDescription = "$description. $heading"
         customActions = listOf(
             CustomAccessibilityAction(refit) {
-                scope.launch { state.animateTo(fitted, spatial) }
+                state.animateTo(fitted, spatial)
                 true
             },
             CustomAccessibilityAction(north) {
-                scope.launch { state.animateTo(state.uprightCamera(), spatial) }
+                state.animateTo(state.uprightCamera(), spatial)
                 true
             },
             CustomAccessibilityAction(zoomIn) {
-                scope.launch { state.animateTo(state.steppedZoom(-1), spatialFast) }
+                state.animateTo(state.steppedZoom(-1), spatialFast)
                 true
             },
             CustomAccessibilityAction(zoomOut) {
-                scope.launch { state.animateTo(state.steppedZoom(1), spatialFast) }
+                state.animateTo(state.steppedZoom(1), spatialFast)
                 true
             },
         )

@@ -48,8 +48,25 @@ internal object CameraMatrices {
      */
     private const val NEAR_FRACTION = 0.5
 
-    /** Floor for the near plane, for the case where the camera is on the deck. */
-    private const val MIN_NEAR = 1e-4
+    /**
+     * Guard against a degenerate near plane, and **nothing else**.
+     *
+     * It was `1e-4`, which is the same order as [MIN_ALTITUDE] itself
+     * (`1.00017e-4`, about 638 m). At the zoom floor the guard therefore beat
+     * the `0.5 × altitude` rule and put the near plane **1.7e-8 radii — 0.11 mm
+     * — in front of the surface**, while a float32 position on the unit sphere
+     * quantises at one ulp of 1.0, or `1.19e-7` radii ≈ 0.76 m. Every vertex was
+     * a coin flip against the plane, so the imagery came apart into scattered
+     * slivers with the backdrop sphere showing through the holes. It only
+     * appeared at the very bottom of the zoom range, which is why it survived a
+     * keyless build: NASA GIBS floors the camera at 0.10 radii, six hundred
+     * kilometres up, where the guard never binds.
+     *
+     * Nine orders of magnitude below the working minimum of
+     * `0.5 × MIN_ALTITUDE ≈ 5e-5`, so it cannot bind again; it exists only so a
+     * future altitude of exactly zero could not produce a singular matrix.
+     */
+    private const val MIN_NEAR = 1e-9
 
     /**
      * How far past the camera's own distance the far plane sits.

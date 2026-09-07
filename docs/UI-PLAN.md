@@ -1615,19 +1615,20 @@ moving it; it now hangs off an overflow item on Plan's own header instead — se
 
 ---
 
-## 9. Phase G — The 3D globe ⚠️ BUILT AND REVIEWED, NOT COMPLETE
+## 9. Phase G — The 3D globe ✅ OVERHAULED 2026-09-07 (branch `globe-overhaul`)
 
-> **G1–G9 are implemented and `./gradlew build` is green**: seamless NASA
-> imagery, the great circle over it, the labels, the camera stack, the deep
-> hero, the immersive screen. Seven defects were then found by looking at a
-> device and eleven more by `/code-review`, and all eighteen were fixed.
+> **G1–G9 shipped, were reviewed twice, and were then overhauled** after the
+> first use on a device came back as "no pinch to zoom, no zoom layers, slow
+> tiles, tiles not loading in with zooming". A 14-agent diagnosis with one
+> adversarial verifier per dimension confirmed 60-odd defects behind those four
+> sentences; *The overhaul* below records what was rebuilt, what was measured
+> and what is still owed. The tables that follow it are the history that led
+> there and are kept as such — where a row is now fixed it says so.
 >
-> **A second, much larger review has since returned about 140 findings, 121 of
-> them verified** — see *What a second, much larger review found* below, which
-> is now the most useful thing in this section. Several are states a user can
-> reach and cannot get out of, and the opening frame is wrong in four ways. The
-> ✅ this section used to carry was premature; nothing here should be treated as
-> finished until that list is worked through.
+> **Verified on the emulator, not yet on the SM-S942B, and only on the keyless
+> imagery path**: this checkout has no ArcGIS key, so every screenshot so far is
+> NASA GIBS at z8. Put `arcgis.apiKey=…` in `local.properties` and the same build
+> sharpens to z18.
 
 Strictly ordered. Each step is verifiable before the next begins, because
 debugging a renderer and a camera at the same time is how weeks disappear.
@@ -1637,16 +1638,51 @@ debugging a renderer and a camera at the same time is how weeks disappear.
 | **G1** | `Camera` and `Quadtree`, no rendering at all | Pure math ported from Rust and unit-tested first. Includes `CameraMatrixConsistencyTest`: CPU `project()` and the matrices handed to Filament must agree to sub-pixel accuracy |
 | **G2** | Filament host | `SurfaceView` + `UiHelper` + `SwapChain` + `Choreographer`. Translucent, below the window, so Compose chrome draws on top |
 | **G3** | Solid-colour sphere | Proves the pipeline before textures exist |
-| **G4** | Tile atlas | One 4096² RGB565 atlas, 256 slots, 32 MB. z0–z3 pinned (85 tiles) and never evicted, so the globe is never blank offline. **The desktop's 512-texture LRU is 128 MB and would OOM immediately** |
-| **G5** | Tile pipeline | LIFO queue, 4 coroutines, OkHttp disk cache, `inBitmap` pooling |
+| **G4** | Tile atlas | One 4096² RGB565 atlas, 256 slots, 32 MB. **Now z0–z2 pinned (21 tiles, the reference's `BASE_LOD`), 235 evictable.** z0–z3 (85) was a third of the atlas spent on a floor the traversal rarely draws, and it left 171 slots for a frame that requests up to 238 — see *The overhaul*. **The desktop's 512-texture LRU is 128 MB and would OOM immediately** |
+| **G5** | Tile pipeline | **Now a z-bucketed queue — coarsest level first, newest first within a level — 8 workers, one process-scoped OkHttp client with a 96 MB cache and two interceptors.** Was one LIFO stack and 4 workers, which fetched the deepest leaves first and their ancestors last |
 | **G6** | Arc and markers | Triangle-strip ribbon, not `GL_LINE_STRIP` — line widths above 1 are unreliable on mobile GPUs. Labels rendered in Compose from CPU-projected positions |
-| **G7** | Gestures | Pan, fling, pinch, rotate, tilt — with the ~60 ms / 12 dp **mode-locking classification window**, without which the camera jitters constantly |
-| **G8** | Crossfade in | The globe fades in over the static preview from **C3** once its first frame is ready |
+| **G7** | Gestures | **Now a pure-JVM recogniser with a distance latch per axis and no clock**: pan and pinch concurrent, rotate and tilt latched. The 60 ms / 12 dp mode lock this row used to describe is what made pinch unreachable — it was measured from the *first* finger and never re-opened |
+| **G8** | Crossfade in | **The still map from C3 fades *out* over the surface.** Fading the surface in never worked: a Compose alpha on the node hosting a below-window `SurfaceView` does not reach the SurfaceControl |
 | **G9** | Accessibility | A `SurfaceView` is invisible to TalkBack: content description, custom actions, and visible ± and compass controls |
 
-**Open risk:** Esri tile licensing for a consumer app is unresolved. `TileProvider`
-stays swappable and NASA GIBS (public domain, keyless, caps around z8–z9) is the
-default until that is settled.
+**Imagery, decided 2026-09-07:** the keyless Esri endpoint the desktop uses is not
+licensed for this app (its item licence forbids offline tile export outright), so
+the provider is **ArcGIS Location Platform World Imagery with an API key, to z18**,
+and **NASA GIBS Blue Marble (public domain, keyless, z8)** when the build has no
+key. PLAN.md §11 has the terms and the one clause still to confirm with Esri.
+
+### The overhaul
+
+Four sentences from the first real use — "No pinch to zoom. Also no zoom layers
+when zooming in. slow loading of tiles. Or tiles not loading in with zooming" —
+and what each turned out to be. Every cause below was confirmed by an adversarial
+verifier re-deriving the finder's arithmetic against the code, and every fix has
+a test that would have caught it.
+
+| Sentence | What it actually was | What changed |
+| --- | --- | --- |
+| No pinch to zoom | The classifier decided pan-or-zoom once, on a 60 ms clock measured from the **first** finger, and never re-opened when the second landed. Real hands land 30–120 ms apart, so a pinch could only ever pan — at any speed. Even a simultaneous landing needed 24 dp of separation change inside 60 ms, because the score multiplied a *half*-separation by a stale frame. | `math/GestureRecognizer.kt`, pure JVM: pan is live, zoom latches on separation alone, rotate and tilt latch on their own axes and exclude only each other. No clock. Every latch absorbs its slop instead of repaying it as a 1.2–1.4× pop. `GlobeCameraState` owns *all* motion, so a touch stops a fling and ± during a fling does not fight it. 27 recogniser tests and 21 camera tests on the JVM; 5 instrumented tests drive a real surface with a second finger 80 ms late. |
+| No zoom layers when zooming in | GIBS stops at z8 (611 m per texel) and the camera went to 637 m above the surface — ~11 doublings of pure magnification. The interactive zoom clamped to `MIN_ALTITUDE`; only the *fit* knew the imagery's floor. | Provider decision above. The zoom floor is now the provider's finest texel at one pixel, one octave lower, threaded from `GlobeSession` into the camera. `TileKey` re-packed over a `Long` (the `Int` packing threw past z12 on the render thread). `Quadtree.MAX_LOD` and `FINEST_TEXEL_RADIANS` became functions of the provider's level. |
+| Slow loading of tiles | One LIFO stack under a breadth-first traversal: the deepest leaves were fetched first and the ancestors they fall back on last, and the pinned warm-up pushed z0 *first*, so the one tile the whole pyramid falls back to arrived 85th. Four blocking workers against an HTTP/1.1-only origin (the KDoc's "HTTP/2 multiplexes anyway" was false). GIBS's three-day `max-age` on an immutable layer. A new 96 MB `okhttp3.Cache` opened over the same directory per session and never closed. | `TileQueue`: coarsest level first, newest first within a level, a prefetch bucket below all. 8 workers (the reference's figure). `TileHttp`: one process-scoped client, connect 4 s / read 6 s / call 8 s, a network interceptor writing a year of `max-age` for immutable providers, an application interceptor serving a real cache hit on `IOException`. Pinned floor 85 → 21 tiles. Measured against GIBS: 24 tiles 2.08 s → 1.07 s at 12 workers. |
+| Tiles not loading in with zooming | 238 distinct non-pinned requests per frame into 171 evictable slots: the atlas evicted ~5.7 tiles a frame *forever* with a parked camera, `hasWork` never went false, the loop never settled, and the victims were the z4–z7 ancestors — the fallback pyramid itself. Plus a decoded tile that had left `pending` and not yet reached `resident` was re-requested and re-decoded, and a flat 30 s memo on any failure with nothing to wake the loop when it expired. | The structural budget above, incidence folded into the split test (limb tiles cover fewer pixels than their chord says; worst case 238 → 208), no depth sort (it changed the mesh signature on 49 of 60 pan frames when the tile set changed on 7). Hold-before-ready, a bounded newest-first ready deque, exponential backoff 500 ms → 30 s with a permanent memo for 400/404, `retryDue` and `meshDirty` folded into `wantsFrame`, uploads on a 3 ms time budget. |
+
+Also fixed along the way, each recorded in its KDoc: the still-map crossfade
+(fades the map out over the surface — see G8); a camera carried from the hero
+into the immersive screen is rescaled by the height ratio, because the focal
+length scales with height and the same camera was the same view magnified 2.3×
+with both airports off the sides; `renderedCamera` is committed after
+`beginFrame` succeeds; a theme change on a settled globe redraws; two attached
+surfaces share one scene through an update owner; `GlobeMesh` hoists its
+trigonometry (four transcendentals per vertex → three multiplies); the ribbon is
+rebuilt only when the camera moves; `TileAtlas.touch` is O(1); the credit is a
+structured `ImageryAttribution` that follows the provider onto the glass, into
+Settings and onto the Licences screen.
+
+**Verified:** 103 JVM tests and 5 instrumented tests green, `./gradlew build`
+green, `checkInvariants` green; on the emulator, the crossfade, the fit, the
+hero → immersive → hero carry, and the pinch/pan/tap/nested-scroll gestures.
+**Not verified:** the SM-S942B (GPU timing, the 3 ms upload budget); Esri
+imagery (no key in this checkout); airplane mode after a session.
 
 ### Where the build diverged from the table above
 
@@ -1658,8 +1694,8 @@ did not happen.
 | --- | --- | --- |
 | G2: a **translucent** swap chain | An **opaque** one | `SwapChain.CONFIG_TRANSPARENT` does not exist in Filament 1.75.1 — established by compiling a probe, as this project requires. It is also unnecessary: the surface is composited *below* the window, so it has nothing behind it to blend with, and an opaque swap chain is the cheaper path through the compositor. |
 | Materials compiled at runtime | `matc` at **build time**, `.filamat` blobs committed as assets | `filamat-android` is 33 MB of JNI for a compiler that would run four times ever. Committing generated binaries matches what the airport index and the baseline profile already do. |
-| The desktop’s `MAX_LOD` | **8** | GIBS `BlueMarble_ShadedRelief_Bathymetry` has no imagery above z8, so a deeper level is a request that 404s. |
-| The desktop’s 256 visible tiles | **160** | The atlas has 256 slots of which 85 are pinned, leaving 171 evictable. Asking for 256 visible tiles guarantees the selector evicts a tile it is about to draw — a thrash that shows up as flicker, not as a log line. |
+| The desktop’s `MAX_LOD` | **The provider's `maxLevel`: 18 with a key, 8 without** | Was a hardcoded 8 because GIBS has no imagery above z8. That ceiling — with a camera still allowed down to 637 m — was eleven doublings of zoom in which nothing could sharpen, i.e. the whole of "no zoom layers". The quadtree now takes the level as a parameter and the fit and the zoom floor derive from it. |
+| The desktop’s 256 visible tiles | **256 leaves, bounded by the atlas structurally** | Was 160, justified against 171 evictable slots while counting only leaves; the traversal also requests every non-pinned ancestor, and a frame asked for up to 238 into 171 — a thrash that never converged with a parked camera. The budget now counts requested non-pinned nodes against the atlas's actual evictable slots, and a test sweeps real viewports and tilts to prove it fits. |
 | Vulkan | Vulkan, then **OpenGL** | Engine creation is attempted on Vulkan and falls back. A device that fails both reports `GlobeSupport.NoRenderer` and never sees a globe. |
 
 ### What the globe is reachable from
@@ -1941,20 +1977,29 @@ Recorded because a confirmed count reads as more certain than it is:
 ### What is still owed
 
 The review above is the list. In the order the defects actually cost a user
-something:
+something, with the state after *The overhaul*:
 
-1. **`GlobeFit`.** Give it the viewport, aim at the arc midpoint, raise the 2.5
-   clamp, and decide what a sub-776 NM leg should look like. One file, and it is
-   the first thing every user sees, wrong in four ways. It has no test file.
-2. **The `overImagery` / `SystemBarsOverMedia` mechanism.** Gate it on imagery
-   rather than on mode, call it from the immersive screen, and take the snapshot
-   read out of the theme root.
-3. **The offline path.** `TileAtlas.basePinned` exists and has no reader.
-4. **The pan clamp and fling cancellation** — the two states a user cannot get out
-   of — and the `ACTION_CANCEL`-as-release bug behind the third.
-5. **`onTrimMemory`**, then the accessibility occlusion.
+1. ~~**`GlobeFit`.**~~ Done before the overhaul (viewport-aware, arc midpoint); the
+   overhaul added the provider's depth as a parameter and a test file.
+2. **The `overImagery` / `SystemBarsOverMedia` mechanism.** Still open. Gate it on
+   imagery rather than on mode, call it from the immersive screen, and take the
+   snapshot read out of the theme root. Visible in the immersive screenshots as
+   dark status glyphs over imagery.
+3. **The offline path.** Partly done: the cache now stores immutable tiles for a
+   year and serves a real hit on `IOException`; `basePinned` was dead and is gone.
+   Not verified in airplane mode yet.
+4. ~~**The pan clamp and fling cancellation** and the `ACTION_CANCEL`-as-release
+   bug.~~ Done: the pan target is held to the disc and the solve verified, one
+   motion owner, cancel detected on the Initial pass and released with zero
+   velocity — all under test.
+5. **`onTrimMemory`**, then the accessibility occlusion. Still open, both.
 6. **The two things that do not belong to this feature at all**: the `sharedExit()`
-   retune, which changed five unrelated transitions, and the AGP bump.
+   retune and the AGP bump. Still open.
+7. **New, from the overhaul's own screenshots:** a label plate can sit under the
+   camera stack on the hero (`GlobeLabels` fades a plate that rises into the top
+   chrome and knows nothing about the bottom-right controls); the Esri offline-
+   cache clause to confirm in writing (PLAN.md §11); the 3 ms upload budget and
+   `INCIDENCE_FLOOR` are unmeasured on hardware.
 
 Still outstanding from the first pass, unchanged:
 

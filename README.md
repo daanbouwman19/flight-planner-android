@@ -38,11 +38,17 @@ wrapper.
 ./gradlew check                  # everything, including airport-asset verification
 ```
 
-`local.properties` must point at your SDK:
+`local.properties` must point at your SDK, and may carry the globe's imagery key:
 
 ```properties
 sdk.dir=/path/to/Android/Sdk
+# Optional. An ArcGIS Location Platform API key gives the 3D globe Esri World Imagery to z18.
+# Without it the build falls back to NASA GIBS Blue Marble, which stops sharpening at z8.
+arcgis.apiKey=...
 ```
+
+The key can also come from the `ARCGIS_API_KEY` environment variable, which is how a CI build
+gets it. It is never committed.
 
 ## Architecture
 
@@ -116,8 +122,12 @@ fill, and still look like *a* planet.
   public domain, so there is nothing to attribute on screen.
 - Weather: [NOAA Aviation Weather Center](https://aviationweather.gov/data/api/) — no API key
   required. [AVWX](https://avwx.rest/) is available as an alternative provider.
-- Satellite imagery: attribution is rendered on the globe and depends on the selected tile
-  provider.
+- Satellite imagery: [Esri World Imagery](https://www.esri.com/en-us/legal/terms/data-attributions)
+  through the ArcGIS Location Platform when the build has an API key — "Powered by Esri", with the
+  data providers credited on the globe itself as Esri's terms require; otherwise
+  [NASA GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api)
+  Blue Marble, which is public domain. The credit on the glass, in Settings and on the Licences
+  screen follows whichever provider the build selected.
 
 ## Licence
 

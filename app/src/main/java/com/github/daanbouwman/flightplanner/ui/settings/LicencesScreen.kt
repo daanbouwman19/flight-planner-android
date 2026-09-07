@@ -27,6 +27,7 @@ import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
+import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeImagery
 
 /**
  * Open-source licences and data attributions.
@@ -39,9 +40,12 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlanne
  * both are listed regardless, because a licences screen that omits its own
  * data is missing the thing most likely to be asked about.
  *
- * No Esri/tile-provider entry yet: that attribution belongs to Phase G's
- * globe, which does not exist yet — an entry for a feature nobody can reach
- * would be a promise, not a licence.
+ * The globe's imagery credit is the one entry that is not hand-written: it is
+ * read from the provider the build selected, because a licences screen that
+ * named Esri while the tiles came from NASA — or the other way round — would be
+ * wrong in the one place that exists to be right about it. It is the full
+ * notice, with the provider's own attribution page, where the plate on the
+ * glass carries only what fits.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +94,18 @@ private fun LicencesContent(modifier: Modifier = Modifier) {
         Text(
             text = stringResource(R.string.licences_data_naturalearth),
             style = MaterialTheme.typography.bodyMedium,
+        )
+
+        SectionLabel(stringResource(R.string.licences_imagery_title), topPadding = 16.dp)
+        val imagery = GlobeImagery.attribution
+        Text(
+            text = imagery.notice,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = imagery.url,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

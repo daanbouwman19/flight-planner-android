@@ -10,7 +10,6 @@ import com.github.daanbouwman.flightplanner.feature.globe.math.RibbonBuffer
 import com.github.daanbouwman.flightplanner.feature.globe.math.RouteGeometry
 import com.github.daanbouwman.flightplanner.feature.globe.math.Vec3
 import com.github.daanbouwman.flightplanner.feature.globe.math.VisibleTile
-import com.github.daanbouwman.flightplanner.feature.globe.tile.DecodedTile
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileAtlas
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileKey
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileLoader
@@ -32,12 +31,16 @@ import java.nio.ByteOrder
 /**
  * Everything the globe draws, and the per-frame work that keeps it current.
  *
- * ### Three renderables, and why not more
+ * ### Two shared renderables, and why not more
  *
- * The backdrop sphere, the tile mesh and the route ribbon. The tile mesh is
- * **one** primitive covering every visible tile, which is what the single atlas
- * buys: with a texture per tile it would have to be one draw call per tile and
- * the visible set would cost a hundred and sixty state changes a frame.
+ * The backdrop sphere and the tile mesh. The tile mesh is **one** primitive
+ * covering every visible tile, which is what the single atlas buys: with a
+ * texture per tile it would have to be one draw call per tile and the visible
+ * set would cost a couple of hundred state changes a frame.
+ *
+ * The route ribbon is **not** here. It is per-surface — see [RouteRibbon] and
+ * [createRibbon] — because unlike the mesh it is a function of the camera
+ * looking at it.
  *
  * The DEP and DEST markers are deliberately *not* here. Per the design they are
  * Compose — a dot and its code on one plate, anchored to a CPU-projected
@@ -46,12 +49,17 @@ import java.nio.ByteOrder
  *
  * ### What is rebuilt when
  *
- * The camera matrices change every frame. The ribbon is rebuilt every frame the
- * camera moves, because its width is constant in pixels and therefore depends on
- * the projection. The tile mesh is rebuilt only when the **visible set or the
- * atlas** changes, which during a slow drag is a few times a second: positions
- * are on the unit sphere and the limb fade lives in the material, so nothing in
- * that mesh is a function of where the camera is.
+ * The camera matrices change every frame. The tile mesh is rebuilt only when the
+ * **visible set or the atlas** changes, which during a slow drag is a few times
+ * a second: positions are on the unit sphere and the limb fade lives in the
+ * material, so nothing in that mesh is a function of where the camera is. Each
+ * surface's ribbon is rebuilt when *its* camera, viewport or the arcs change.
+ *
+ * ### One driver
+ *
+ * More than one surface can be attached to this scene at a time — see
+ * [drivesUpdates]. Exactly one of them runs [update]; every one of them runs
+ * [applyCamera] and its own [RouteRibbon] with its own camera.
  */
 internal class GlobeScene(
     context: Context,
@@ -65,42 +73,21 @@ internal class GlobeScene(
         private const val BACKDROP_RINGS = 48
         private const val BACKDROP_SEGMENTS = 96
 
-        /** Ribbon half-width in pixels — the arc's weight on the glass. */
-        private const val ARC_HALF_WIDTH_PX = 1.6f
-
-        /** The casing under the arc, wider, in the surface's own colour — the
-         * technique an aeronautical chart uses to keep a route legible wherever
-         * it crosses something else. See [GlobeInk.routeCasing]. */
-        private const val ARC_CASING_HALF_WIDTH_PX = 3.4f
-
         /**
-         * Tiles uploaded per frame.
+         * How long one frame may spend handing decoded tiles to the driver.
          *
-         * An upload is a synchronous texture write, so draining a whole pan's
-         * worth in one frame is a visible hitch while spreading them over a few
-         * frames is not — each one only sharpens a tile that already has a
-         * coarse ancestor drawn under it.
+         * A time budget rather than a count. It was six tiles a frame, and a
+         * 60-frame zoom left 27 frames — nearly half a second — of catch-up
+         * after the fingers lifted, the globe still sharpening on a picture that
+         * had stopped moving. Each upload only sharpens a tile that already has
+         * a coarse ancestor drawn under it, so spreading them out buys
+         * smoothness; but the right amount to spread is however many fit in the
+         * slack of a frame, not a number picked once. Three milliseconds leaves
+         * the rest of a 16 ms frame for the traversal and the mesh. At least one
+         * tile goes through per frame regardless, so a slow frame still makes
+         * progress.
          */
-        private const val UPLOADS_PER_FRAME = 6
-
-        /**
-         * The ribbon budget, in vertices, for **both** subjects.
-         *
-         * It used to be `SAMPLES * 2 + 8` — two vertices per point of one
-         * 256-point arc. That was right while the only subject was a leg, and it
-         * became a crash the moment [setArcs] took a list: the visited network
-         * feeds every leg in the logbook, sampled at 32 points each, so eight
-         * legs is 526 vertices and the eighth one overflowed the upload buffer
-         * inside a Choreographer callback.
-         *
-         * 16,384 holds a logbook of roughly 250 distinct legs at 66 vertices
-         * apiece — 64 for the run and two for the degenerate bridge to the next
-         * one. Past that [RibbonBuffer] stops accepting vertices rather than
-         * growing, so a larger logbook loses its last few arcs instead of
-         * throwing. The cost is 196 kB a buffer, and the ring holds three of
-         * them for each of the arc and its casing.
-         */
-        private const val MAX_RIBBON_VERTICES = 16_384
+        private const val UPLOAD_BUDGET_NANOS = 3_000_000L
 
         /**
          * The effects-fast spring's sampled duration, in seconds.
@@ -121,8 +108,6 @@ internal class GlobeScene(
 
     private val tileInstance: MaterialInstance = tileMaterial.createInstance()
     private val backdropInstance: MaterialInstance = solidMaterial.createInstance()
-    private val arcInstance: MaterialInstance = overlayMaterial.createInstance()
-    private val arcCasingInstance: MaterialInstance = overlayMaterial.createInstance()
 
     private val tileVertices = VertexBuffer.Builder()
         .bufferCount(1)
@@ -152,35 +137,13 @@ internal class GlobeScene(
     private val backdropIndices: IndexBuffer
     private val backdropIndexCount: Int
 
-    private val ribbonVertices = VertexBuffer.Builder()
-        .bufferCount(1)
-        .vertexCount(MAX_RIBBON_VERTICES)
-        .attribute(
-            VertexBuffer.VertexAttribute.POSITION, 0,
-            VertexBuffer.AttributeType.FLOAT3, 0, GlobeMesh.POSITION_VERTEX_BYTES,
-        )
-        .build(engine)
-
-    private val casingVertices = VertexBuffer.Builder()
-        .bufferCount(1)
-        .vertexCount(MAX_RIBBON_VERTICES)
-        .attribute(
-            VertexBuffer.VertexAttribute.POSITION, 0,
-            VertexBuffer.AttributeType.FLOAT3, 0, GlobeMesh.POSITION_VERTEX_BYTES,
-        )
-        .build(engine)
-
     private val tileVertexRing =
         BufferRing(GlobeMesh.MAX_TILE_VERTICES * GlobeMesh.TILE_VERTEX_BYTES)
     private val tileIndexRing = BufferRing(GlobeMesh.MAX_TILE_INDICES * 2)
-    private val ribbonRing = BufferRing(MAX_RIBBON_VERTICES * GlobeMesh.POSITION_VERTEX_BYTES)
-    private val casingRing = BufferRing(MAX_RIBBON_VERTICES * GlobeMesh.POSITION_VERTEX_BYTES)
 
     private val entityManager = EntityManager.get()
     private val backdropEntity = entityManager.create()
     private val tileEntity = entityManager.create()
-    private val arcEntity = entityManager.create()
-    private val casingEntity = entityManager.create()
 
     val scene: Scene = engine.createScene()
 
@@ -188,15 +151,49 @@ internal class GlobeScene(
     var hasDrawnImagery: Boolean = false
         private set
 
-    private val ribbon = RibbonBuffer(MAX_RIBBON_VERTICES)
-    private val casingRibbon = RibbonBuffer(MAX_RIBBON_VERTICES)
-    private val decodedScratch = ArrayList<DecodedTile>(UPLOADS_PER_FRAME)
 
-    private var routeArcs: List<Array<Vec3>> = emptyList()
-    private var visibleTiles: List<VisibleTile> = emptyList()
+    /** The visible set as of the last [update], for a surface that is not driving it. */
+    var visibleTiles: List<VisibleTile> = emptyList()
+        private set
+
     private var lastVisibleSignature: Long = Long.MIN_VALUE
     private var atlasGeneration: Int = 0
     private var lastBuiltGeneration: Int = -1
+
+    /**
+     * Bumped every time the tile mesh is rebuilt.
+     *
+     * A surface compares it with the value it last drew, so a view that is not
+     * driving [update] still redraws when the driver's frame changes the
+     * geometry under it — otherwise it would settle on a mesh that was current
+     * a frame ago and stay there.
+     */
+    var meshGeneration: Int = 0
+        private set
+
+    /**
+     * A tile-mesh rebuild was owed and could not run because every ring buffer
+     * was still with the driver, so the next frame must try again.
+     *
+     * Set **only** there — never on the "nothing to draw" branch. That branch is
+     * every frame before the first tile lands, and treating it as owed work
+     * would spin the loop at 60 Hz offline forever.
+     */
+    private var meshDirty = false
+
+
+    /** The arcs every attached surface draws, in its own ribbon. */
+    var routeArcs: List<Array<Vec3>> = emptyList()
+        private set
+
+    /** Bumped by [setArcs], so a ribbon can tell a new subject from a redraw. */
+    var arcsGeneration: Int = 0
+        private set
+
+
+    /** The traversal's callbacks, allocated once rather than per frame. */
+    private val requestTile: (Int, Int, Int) -> Unit = { z, x, y -> loader.request(TileKey.of(z, x, y)) }
+    private val prefetchTile: (Int, Int, Int) -> Unit = { z, x, y -> loader.prefetch(TileKey.of(z, x, y)) }
 
     /** Seconds since the scene was created — the clock both fades read. */
     private val startNanos = System.nanoTime()
@@ -214,7 +211,7 @@ internal class GlobeScene(
     private var nextFadeExpiry: Float = Float.MAX_VALUE
 
     /**
-     * The backdrop’s own storage, held for the life of the scene.
+     * The backdrop's own storage, held for the life of the scene.
      *
      * **Fields, not locals, and that is the whole point of them.** Filament does
      * not copy a buffer handed to `setBufferAt`: it keeps the address. A direct
@@ -275,6 +272,8 @@ internal class GlobeScene(
             .material(0, backdropInstance)
             .culling(false)
             .priority(PRIORITY_BACKDROP)
+            // Shared: every attached surface renders it.
+            .layerMask(LAYER_MASK_ALL, LAYER_SHARED)
             .build(engine, backdropEntity)
 
         RenderableManager.Builder(1)
@@ -283,28 +282,11 @@ internal class GlobeScene(
             .material(0, tileInstance)
             .culling(false)
             .priority(PRIORITY_TILES)
+            .layerMask(LAYER_MASK_ALL, LAYER_SHARED)
             .build(engine, tileEntity)
-
-        RenderableManager.Builder(1)
-            .boundingBox(bounds)
-            .geometry(0, RenderableManager.PrimitiveType.TRIANGLE_STRIP, casingVertices, 0, 0)
-            .material(0, arcCasingInstance)
-            .culling(false)
-            .priority(PRIORITY_ARC_CASING)
-            .build(engine, casingEntity)
-
-        RenderableManager.Builder(1)
-            .boundingBox(bounds)
-            .geometry(0, RenderableManager.PrimitiveType.TRIANGLE_STRIP, ribbonVertices, 0, 0)
-            .material(0, arcInstance)
-            .culling(false)
-            .priority(PRIORITY_ARC)
-            .build(engine, arcEntity)
 
         scene.addEntity(backdropEntity)
         scene.addEntity(tileEntity)
-        scene.addEntity(casingEntity)
-        scene.addEntity(arcEntity)
     }
 
     /**
@@ -318,6 +300,7 @@ internal class GlobeScene(
         routeArcs = arcs.mapNotNull { (lats, lons) ->
             if (lats.size < 2) null else RouteGeometry.toWorldPoints(lats, lons)
         }
+        arcsGeneration++
     }
 
     /** The themed colours the sphere and the arc are drawn in. */
@@ -326,15 +309,11 @@ internal class GlobeScene(
             "baseColor",
             ink.backdrop.red, ink.backdrop.green, ink.backdrop.blue, 1f,
         )
-        arcInstance.setParameter(
-            "baseColor",
-            ink.route.red, ink.route.green, ink.route.blue, ink.route.alpha,
-        )
-        arcCasingInstance.setParameter(
-            "baseColor",
-            ink.routeCasing.red, ink.routeCasing.green, ink.routeCasing.blue, ink.routeCasing.alpha,
-        )
         tileInstance.setParameter("tint", ink.imageryDim, ink.imageryDim, ink.imageryDim, 1f)
+        // Held so a ribbon created after the theme was set still gets it, and
+        // pushed to the ones that already exist.
+        currentInk = ink
+        ribbons.forEach { it.setInk(ink) }
         spaceColor = doubleArrayOf(
             ink.space.red.toDouble(),
             ink.space.green.toDouble(),
@@ -349,7 +328,9 @@ internal class GlobeScene(
      *
      * The renderer belongs to [GlobeSurfaceView] and the theme belongs to
      * Compose, so the colour is parked here - the one object both of them
-     * already hold - rather than threaded through either.
+     * already hold - rather than threaded through either. The surface folds the
+     * counter into its settled test, so a theme flip on a still globe is drawn
+     * rather than merely applied to a renderer that then skips the frame.
      */
     // A DoubleArray because that is what `Renderer.ClearOptions.clearColor` is.
     var spaceColor: DoubleArray = doubleArrayOf(0.0, 0.0, 0.0, 1.0)
@@ -358,6 +339,77 @@ internal class GlobeScene(
     var spaceGeneration: Int = 0
         private set
 
+    /**
+     * The one surface whose frame runs [update].
+     *
+     * During the hero-to-immersive transition, and again under a predictive
+     * back, two surfaces are attached to this scene at once — and there is one
+     * tile mesh and one visible-set signature between them. Both calling
+     * [update] with their own cameras had them rebuilding the mesh out from
+     * under each other every frame. So the most recently attached surface
+     * drives; the other draws what the driver built — it still points its own
+     * Filament camera with [applyCamera], so it renders from its own viewpoint —
+     * and whichever is left when one detaches takes over on its next frame.
+     *
+     * This is sound only because the mesh is camera-independent. The ribbon is
+     * not, and is per-surface for exactly that reason.
+     */
+    private var updateOwner: Any? = null
+
+    /**
+     * A route ribbon of this surface's own, on a layer only its view renders.
+     *
+     * Filament gives every renderable an eight-bit layer mask and every view a
+     * mask of the layers it draws; [LAYER_SHARED] carries the mesh and the
+     * backdrop, and each ribbon takes one of the remaining seven bits. The
+     * caller is responsible for telling its view which bits to render and for
+     * calling [RouteRibbon.destroy] on detach.
+     *
+     * Seven is far more than the two surfaces the app can have attached at
+     * once — a route detail handing over to the immersive screen — so running
+     * out means a ribbon was leaked rather than that the app grew; sharing the
+     * last bit degrades to two surfaces drawing each other's arc, which is the
+     * behaviour this replaced, rather than to a crash.
+     */
+    fun createRibbon(): RouteRibbon {
+        val free = (1..7).map { 1 shl it }.firstOrNull { it and ribbonLayers == 0 } ?: (1 shl 7)
+        ribbonLayers = ribbonLayers or free
+        return RouteRibbon(engine, scene, overlayMaterial, free).also { ribbon ->
+            ribbons += ribbon
+            currentInk?.let(ribbon::setInk)
+        }
+    }
+
+    /** Releases [ribbon]'s layer bit and its geometry. */
+    fun destroyRibbon(ribbon: RouteRibbon) {
+        if (!ribbons.remove(ribbon)) return
+        ribbonLayers = ribbonLayers and ribbon.layerBit.inv()
+        ribbon.destroy()
+    }
+
+    private val ribbons = mutableListOf<RouteRibbon>()
+    private var ribbonLayers = LAYER_SHARED
+    private var currentInk: GlobeInk? = null
+
+    /** [owner] has attached; it drives from here on. */
+    fun claimUpdates(owner: Any) {
+        updateOwner = owner
+    }
+
+    /** [owner] has detached. A no-op unless it was the one driving. */
+    fun releaseUpdates(owner: Any) {
+        if (updateOwner === owner) updateOwner = null
+    }
+
+    /**
+     * Whether [owner] runs [update] this frame. A scene nobody is driving goes
+     * to the first surface that asks, which is how the survivor of a detach
+     * takes over.
+     */
+    fun drivesUpdates(owner: Any): Boolean {
+        if (updateOwner == null) updateOwner = owner
+        return updateOwner === owner
+    }
 
     /**
      * Brings the scene up to date for one frame.
@@ -370,17 +422,32 @@ internal class GlobeScene(
         nowSeconds = (System.nanoTime() - startNanos) / 1e9f
         uploadReadyTiles()
 
-        visibleTiles = Quadtree.collectVisibleTiles(camera, basis, viewport) { z, x, y ->
-            loader.request(TileKey.of(z, x, y))
-        }
+        // Forgotten before the traversal and re-armed by it: every visible tile
+        // that is resting after a failure folds its due time back in as it is
+        // requested, so what remains describes exactly the tiles still wanted.
+        loader.resetRetryDue()
+        visibleTiles = Quadtree.collectVisibleTiles(
+            camera = camera,
+            basis = basis,
+            viewport = viewport,
+            maxLod = loader.maxLevel,
+            pinnedMaxLevel = atlas.pinnedMaxLevel,
+            evictableSlots = atlas.evictableSlots,
+            request = requestTile,
+            prefetch = prefetchTile,
+        )
 
         val signature = signatureOf(visibleTiles)
-        val stale = signature != lastVisibleSignature ||
+        val stale = meshDirty ||
+            signature != lastVisibleSignature ||
             atlasGeneration != lastBuiltGeneration ||
             nowSeconds >= nextFadeExpiry
-        if (stale && rebuildTileMesh()) {
-            lastVisibleSignature = signature
-            lastBuiltGeneration = atlasGeneration
+        if (stale) {
+            meshDirty = !rebuildTileMesh()
+            if (!meshDirty) {
+                lastVisibleSignature = signature
+                lastBuiltGeneration = atlasGeneration
+            }
         }
 
         tileInstance.setParameter(
@@ -389,21 +456,22 @@ internal class GlobeScene(
         )
         tileInstance.setParameter("clock", nowSeconds, sharpenSeconds, 0f, 0f)
 
-        rebuildRibbon(camera, basis, viewport)
+        // The ribbon is deliberately absent here. Its width, its lift and the
+        // samples it drops are all functions of the camera looking at it, so it
+        // belongs to the surface rather than to the scene — see [RouteRibbon].
         return visibleTiles
     }
-
 
     /**
      * Whether the scene would draw something different from last frame.
      *
-     * Tiles arriving, tiles still being fetched, or a sharpen crossfade that
-     * has not run out. It deliberately says nothing about the camera: that is
-     * the surface’s to compare, and the surface is the only thing that knows
-     * which camera it last rendered.
+     * Tiles arriving or in flight, a sharpen crossfade still running, a mesh
+     * rebuild that was owed and starved of a buffer, or a failed tile     * whose backoff has run out. It deliberately says nothing about the camera,
+     * the clear colour or the mesh generation: those are the surface's to
+     * compare, and the surface is the only thing that knows which it last drew.
      */
     val wantsFrame: Boolean
-        get() = loader.hasWork || isFading
+        get() = loader.hasWork || isFading || meshDirty || loader.retryDue()
 
     /**
      * Whether a sharpen crossfade is still running.
@@ -430,9 +498,19 @@ internal class GlobeScene(
         filamentCamera.setModelMatrix(CameraMatrices.model(camera))
     }
 
+    /**
+     * Hands decoded tiles to the atlas, newest first, until the budget is spent.
+     *
+     * Newest first for the reason the loader's queue is: the tile decoded a
+     * moment ago is for where the camera is, and one from the start of a pan
+     * may be for a place that has scrolled off. A tile the atlas declines — no
+     * evictable slot, which the current budgets make impossible — is un-held so
+     * it can be asked for again rather than lost.
+     */
     private fun uploadReadyTiles() {
-        loader.drainReady(UPLOADS_PER_FRAME, decodedScratch)
-        for (tile in decodedScratch) {
+        val deadline = System.nanoTime() + UPLOAD_BUDGET_NANOS
+        do {
+            val tile = loader.pollReady() ?: return
             val uploaded = atlas.upload(tile.key, tile.pixels, nowSeconds) {
                 loader.recycleBuffer(tile.pixels)
             }
@@ -440,18 +518,21 @@ internal class GlobeScene(
                 loader.markResident(tile.key)
                 atlasGeneration++
             } else {
+                loader.markEvicted(tile.key)
                 loader.recycleBuffer(tile.pixels)
             }
-        }
-        decodedScratch.clear()
+        } while (System.nanoTime() < deadline)
     }
 
     /**
      * A cheap identity for the visible set.
      *
-     * Order-sensitive by construction, which is what is wanted: the list is
-     * sorted back to front, so a change of order is a change of draw order and
-     * the mesh has to be rebuilt for it.
+     * Order-sensitive by construction, and that is harmless rather than wanted:
+     * the traversal returns its leaves in breadth-first order, which is
+     * deterministic for a given visible set, so this changes when the set does
+     * and not otherwise. The list used to be sorted back to front first, and the
+     * sort changed the order — and forced a rebuild — on 49 of 60 frames of a
+     * slow pan in which the set itself changed on 7.
      */
     private fun signatureOf(tiles: List<VisibleTile>): Long {
         var hash = 1125899906842597L
@@ -463,6 +544,11 @@ internal class GlobeScene(
         return hash
     }
 
+    /**
+     * Rebuilds the tile mesh. Returns false **only** when the ring was starved
+     * and the rebuild has to be retried; a frame with nothing to draw returns
+     * true, because nothing is owed.
+     */
     private fun rebuildTileMesh(): Boolean {
         val vertexBytes = tileVertexRing.acquire() ?: return false
         val indexBytes = tileIndexRing.acquire() ?: run {
@@ -484,7 +570,7 @@ internal class GlobeScene(
             // never handed to the driver, so no callback will ever return them.
             tileVertexRing.release(vertexBytes)
             tileIndexRing.release(indexBytes)
-            return false
+            return true
         }
 
         val (vertexHandler, vertexCallback) = tileVertexRing.releaseCallback(vertexBytes)
@@ -504,63 +590,9 @@ internal class GlobeScene(
             0,
             indexCount,
         )
+        meshGeneration++
         hasDrawnImagery = true
         return true
-    }
-
-    private fun rebuildRibbon(
-        camera: GlobeCamera,
-        basis: CameraBasis,
-        viewport: GlobeViewport,
-    ) {
-        if (routeArcs.isEmpty()) {
-            setStripCount(arcEntity, ribbonVertices, 0)
-            setStripCount(casingEntity, casingVertices, 0)
-            return
-        }
-        uploadStrip(
-            RouteGeometry.ribbonInto(
-                routeArcs, camera, basis, viewport, ARC_CASING_HALF_WIDTH_PX, casingRibbon,
-            ),
-            casingRibbon, casingRing, casingVertices, casingEntity,
-        )
-        uploadStrip(
-            RouteGeometry.ribbonInto(
-                routeArcs, camera, basis, viewport, ARC_HALF_WIDTH_PX, ribbon,
-            ),
-            ribbon, ribbonRing, ribbonVertices, arcEntity,
-        )
-    }
-
-    private fun uploadStrip(
-        vertexCount: Int,
-        source: RibbonBuffer,
-        ring: BufferRing,
-        buffer: VertexBuffer,
-        entity: Int,
-    ) {
-        if (vertexCount < 3) {
-            setStripCount(entity, buffer, 0)
-            return
-        }
-        val bytes = ring.acquire() ?: return
-        bytes.asFloatBuffer().put(source.positions, 0, vertexCount * 3)
-        val (handler, callback) = ring.releaseCallback(bytes)
-        buffer.setBufferAt(
-            engine, 0, bytes, 0, vertexCount * GlobeMesh.POSITION_VERTEX_BYTES, handler, callback,
-        )
-        setStripCount(entity, buffer, vertexCount)
-    }
-
-    private fun setStripCount(entity: Int, buffer: VertexBuffer, count: Int) {
-        renderableManager().setGeometryAt(
-            renderableManager().getInstance(entity),
-            0,
-            RenderableManager.PrimitiveType.TRIANGLE_STRIP,
-            buffer,
-            0,
-            count,
-        )
     }
 
     private fun renderableManager(): RenderableManager = engine.renderableManager
@@ -575,27 +607,17 @@ internal class GlobeScene(
     }
 
     fun destroy() {
-        scene.removeEntities(intArrayOf(backdropEntity, tileEntity, arcEntity, casingEntity))
+        scene.removeEntities(intArrayOf(backdropEntity, tileEntity))
         engine.destroyEntity(backdropEntity)
         engine.destroyEntity(tileEntity)
-        engine.destroyEntity(arcEntity)
-        engine.destroyEntity(casingEntity)
         entityManager.destroy(backdropEntity)
         entityManager.destroy(tileEntity)
-        entityManager.destroy(arcEntity)
-        entityManager.destroy(casingEntity)
-
         engine.destroyVertexBuffer(tileVertices)
         engine.destroyIndexBuffer(tileIndices)
         engine.destroyVertexBuffer(backdropVertices)
         engine.destroyIndexBuffer(backdropIndices)
-        engine.destroyVertexBuffer(ribbonVertices)
-        engine.destroyVertexBuffer(casingVertices)
-
         engine.destroyMaterialInstance(tileInstance)
         engine.destroyMaterialInstance(backdropInstance)
-        engine.destroyMaterialInstance(arcInstance)
-        engine.destroyMaterialInstance(arcCasingInstance)
         engine.destroyMaterial(tileMaterial)
         engine.destroyMaterial(solidMaterial)
         engine.destroyMaterial(overlayMaterial)
@@ -623,8 +645,6 @@ internal class GlobeScene(
  */
 private const val PRIORITY_BACKDROP: Int = 0
 private const val PRIORITY_TILES: Int = 1
-private const val PRIORITY_ARC_CASING: Int = 2
-private const val PRIORITY_ARC: Int = 3
 
 /**
  * The atlas sampler.
