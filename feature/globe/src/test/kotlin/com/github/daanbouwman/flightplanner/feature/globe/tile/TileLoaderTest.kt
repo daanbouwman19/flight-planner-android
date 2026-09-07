@@ -299,7 +299,13 @@ class TileLoaderTest {
         }
     }
 
-    private fun awaitUntil(what: String, timeoutMs: Long = 5_000L, condition: () -> Boolean) {
+    /**
+     * Polls [condition] to a deadline. Generous, because the offline test's
+     * failure path is bounded by the client's 4 s connect timeout — twice, with
+     * `retryOnConnectionFailure` — on a host that times out rather than refuses;
+     * a localhost refusal is immediate and the tests take milliseconds.
+     */
+    private fun awaitUntil(what: String, timeoutMs: Long = 20_000L, condition: () -> Boolean) {
         val deadline = System.nanoTime() + timeoutMs * 1_000_000L
         while (!condition()) {
             if (System.nanoTime() > deadline) fail("timed out waiting for $what")
