@@ -57,9 +57,17 @@ import com.google.android.filament.android.UiHelper
  * **Visible but settled: the callback stays, the work does not.** Posting to the
  * Choreographer costs nothing worth measuring; the tile traversal, the ribbon
  * rebuild and `Renderer.render` cost the frame. So a frame is skipped when the
- * camera has not moved, the viewport is unchanged, and the scene says it has no
- * tiles in flight and no crossfade running. Every one of those is biased toward
- * drawing: anything unknown renders.
+ * camera has not moved, the viewport is unchanged, the mesh this view last drew
+ * is still the scene's current one, the clear colour is current, and the scene
+ * says it has no tiles in flight and no crossfade running. Every one of those is
+ * biased toward drawing: anything unknown renders.
+ *
+ * ### Two views, one scene
+ *
+ * During the hero-to-immersive transition both surfaces are attached at once,
+ * and again under a predictive back. The most recently attached one drives the
+ * scene's per-frame update — see [GlobeScene.drivesUpdates] — and the other only
+ * points its own camera and draws what the driver built.
  */
 internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
 
@@ -117,9 +125,10 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
     private var windowVisible = false
     private var attached = false
 
-    /** What the last drawn frame used, for the settled test. */
+    /** What the last **drawn** frame used, for the settled test. */
     private var renderedCamera: GlobeCamera? = null
     private var renderedViewport = GlobeViewport(0f, 0f)
+    private var renderedMeshGeneration = -1
 
     init {
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
@@ -158,6 +167,8 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
         super.onAttachedToWindow()
         val acquired = GlobeSession.acquire(context) ?: return
         session = acquired
+        // Last attached drives: this is the surface the user is now looking at.
+        acquired.scene.claimUpdates(this)
         displayHelper = DisplayHelper(context)
         renderer = acquired.engine.createRenderer().apply {
             clearOptions = Renderer.ClearOptions().apply { clear = true }
@@ -235,7 +246,10 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
         filamentCamera = null
         displayHelper = null
 
-        if (session != null) {
+        session?.let {
+            // Only if this view was the one driving; a view that was never the
+            // driver must not take the drive away from the one that is.
+            it.scene.releaseUpdates(this)
             session = null
             GlobeSession.release()
         }
@@ -252,49 +266,65 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
         if (!uiHelper.isReadyToRender) return
         if (viewport.width < 1f || viewport.height < 1f) return
 
+        val scene = session.scene
+        val camera = cameraProvider()
+
         // The theme can change under a live surface - Cockpit, or the system
         // flipping to dark - so the clear colour is re-read rather than set once
         // at creation. A generation counter, because comparing four floats every
         // frame to set a value that changes twice a session is the wrong shape.
-        if (appliedSpaceGeneration != session.scene.spaceGeneration) {
-            appliedSpaceGeneration = session.scene.spaceGeneration
-            val space = session.scene.spaceColor
-            renderer.clearOptions = Renderer.ClearOptions().apply {
-                clear = true
-                clearColor = space
-            }
-        }
+        // It is part of the settled test below: a flip on a still globe used to
+        // be applied to the renderer here and then never drawn.
+        val spaceChanged = appliedSpaceGeneration != scene.spaceGeneration
 
-        val camera = cameraProvider()
-
-        // Settled: the same camera in the same box, with nothing arriving and no
+        // Settled: the same camera in the same box, the mesh this view last drew
+        // still current, the clear colour current, and nothing arriving and no
         // crossfade left to run. Returning here skips the traversal, the ribbon
         // rebuild and the render — everything that costs a frame — while the
         // callback stays posted so the next change is picked up on the next vsync.
         if (camera == renderedCamera &&
             viewport == renderedViewport &&
-            !session.scene.wantsFrame
+            scene.meshGeneration == renderedMeshGeneration &&
+            !spaceChanged &&
+            !scene.wantsFrame
         ) {
             return
         }
-        renderedCamera = camera
-        renderedViewport = viewport
+
+        if (spaceChanged) {
+            appliedSpaceGeneration = scene.spaceGeneration
+            renderer.clearOptions = Renderer.ClearOptions().apply {
+                clear = true
+                clearColor = scene.spaceColor
+            }
+        }
 
         val basis = camera.computeBasis()
 
-        val tiles = session.scene.update(camera, basis, viewport)
-        filamentCamera?.let { session.scene.applyCamera(it, camera, viewport) }
+        // One driver per scene; the other view draws what the driver built,
+        // from its own camera.
+        val tiles = if (scene.drivesUpdates(this)) {
+            scene.update(camera, basis, viewport)
+        } else {
+            scene.visibleTiles
+        }
+        filamentCamera?.let { scene.applyCamera(it, camera, viewport) }
 
         // `beginFrame` returning false is the driver saying it would rather this
         // frame were skipped — it is behind, and rendering anyway only makes the
-        // queue longer.
+        // queue longer. What was rendered is recorded only when something was:
+        // a declined frame has to be retried on the next vsync, not remembered
+        // as drawn.
         if (renderer.beginFrame(chain, frameTimeNanos)) {
             renderer.render(view)
             renderer.endFrame()
+            renderedCamera = camera
+            renderedViewport = viewport
+            renderedMeshGeneration = scene.meshGeneration
         }
 
         onFrame(tiles)
-        if (!announcedFirstImagery && session.scene.hasDrawnImagery) {
+        if (!announcedFirstImagery && scene.hasDrawnImagery) {
             announcedFirstImagery = true
             onFirstImagery()
         }

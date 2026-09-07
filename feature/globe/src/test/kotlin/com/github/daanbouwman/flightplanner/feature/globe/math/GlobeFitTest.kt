@@ -20,6 +20,12 @@ import kotlin.test.assertNotNull
  */
 class GlobeFitTest {
 
+    private companion object {
+        /** The keyless fallback's ceiling and the keyed provider's — see `TileProvider`. */
+        const val KEYLESS_MAX_LOD = 8
+        const val KEYED_MAX_LOD = 18
+    }
+
     /** The deep hero on a 411 dp phone: nearly square. */
     private val hero = GlobeViewport(width = 1080f, height = 1066f)
 
@@ -121,11 +127,22 @@ class GlobeFitTest {
 
     @Test
     fun `a very short leg is not framed closer than the imagery is sharp`() {
-        // 71 NM, the shortest kind of leg the app actually generates.
+        // 71 NM, the shortest kind of leg the app actually generates. With no
+        // ceiling given the fit assumes the keyless provider's z8 pyramid.
         val camera = GlobeFit.frameRoute(-6.1256, 106.6559, -6.9, 107.6, hero)
         val focal = camera.focalPixels(hero.height)
-        val sharpest = Quadtree.FINEST_TEXEL_RADIANS * focal
+        val sharpest = Quadtree.finestTexelRadians(KEYLESS_MAX_LOD) * focal
         camera.altitude shouldBeGreaterThan sharpest - 1e-4f
+    }
+
+    @Test
+    fun `a keyed provider lets the same short leg be framed closer`() {
+        // The floor is the imagery's, so a pyramid that publishes to z18 frames
+        // the leg by its extent rather than by the z8 fallback's texel size.
+        val keyless = GlobeFit.frameRoute(-6.1256, 106.6559, -6.9, 107.6, hero, maxLod = KEYLESS_MAX_LOD)
+        val keyed = GlobeFit.frameRoute(-6.1256, 106.6559, -6.9, 107.6, hero, maxLod = KEYED_MAX_LOD)
+        keyed.altitude shouldBeLessThan keyless.altitude
+        keyed.framesBoth(-6.1256 to 106.6559, -6.9 to 107.6, hero)
     }
 
     @Test

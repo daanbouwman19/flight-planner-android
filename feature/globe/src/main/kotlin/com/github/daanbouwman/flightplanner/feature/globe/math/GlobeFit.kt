@@ -88,10 +88,12 @@ internal object GlobeFit {
         destLat: Double,
         destLon: Double,
         viewport: GlobeViewport,
+        maxLod: Int = KEYLESS_MAX_LOD,
     ): GlobeCamera = framePoints(
         lats = doubleArrayOf(depLat, destLat),
         lons = doubleArrayOf(depLon, destLon),
         viewport = viewport,
+        maxLod = maxLod,
     )
 
     /**
@@ -107,8 +109,18 @@ internal object GlobeFit {
      * The distance is the furthest any point needs, so a logbook confined to
      * Europe zooms in and one spanning two hemispheres pulls back to show the
      * whole planet, which is the entire argument for drawing it on a sphere.
+     *
+     * [maxLod] is the deepest level the live imagery publishes — see
+     * [sharpestAltitude]. It defaults to the keyless provider's ceiling so a
+     * caller that does not know the provider gets the conservative floor; the
+     * globe surface passes the session's real one.
      */
-    fun framePoints(lats: DoubleArray, lons: DoubleArray, viewport: GlobeViewport): GlobeCamera {
+    fun framePoints(
+        lats: DoubleArray,
+        lons: DoubleArray,
+        viewport: GlobeViewport,
+        maxLod: Int = KEYLESS_MAX_LOD,
+    ): GlobeCamera {
         if (lats.isEmpty() || viewport.height < 1f || viewport.width < 1f) return GlobeCamera()
 
         var sx = 0f
@@ -148,7 +160,7 @@ internal object GlobeFit {
         }
 
         val altitude = (distance - 1f)
-            .coerceIn(sharpestAltitude(viewport), MAX_ALTITUDE)
+            .coerceIn(sharpestAltitude(viewport, maxLod), MAX_ALTITUDE)
 
         return GlobeCamera(
             centerLat = asin(centre.y.coerceIn(-1f, 1f)) * RAD_TO_DEG,
@@ -212,12 +224,24 @@ internal object GlobeFit {
      * `inverseZoom` clamped to 8, which pinned **every** leg under about 776 NM to
      * one identical camera — including every route the seeded ATR 42-600 can fly,
      * since its range is 703 NM. The clamp is gone; this is the honest constraint
-     * that was hiding behind it, and unlike the 8 it moves when the imagery does.
+     * that was hiding behind it, and unlike the 8 it moves when the imagery does:
+     * [maxLod] is the provider's ceiling, 8 for the keyless fallback and 18 for
+     * the keyed one, and the floor is a thousand times lower at 18.
+     *
+     * Internal rather than private because the session derives its zoom floor
+     * from it — the same number, halved, for a different purpose.
      */
-    private fun sharpestAltitude(viewport: GlobeViewport): Float {
+    internal fun sharpestAltitude(viewport: GlobeViewport, maxLod: Int): Float {
         val focal = (viewport.height * 0.5f) / tan(DEFAULT_FOV_Y * 0.5f)
-        return (Quadtree.FINEST_TEXEL_RADIANS * focal).coerceIn(MIN_ALTITUDE, MAX_ALTITUDE)
+        return (Quadtree.finestTexelRadians(maxLod) * focal).coerceIn(MIN_ALTITUDE, MAX_ALTITUDE)
     }
+
+    /**
+     * The keyless fallback provider's ceiling, for callers that do not know
+     * which provider is live. Conservative: a fit floored for a z8 pyramid is
+     * never *too* close on a z18 one, only further out than it needs to be.
+     */
+    private const val KEYLESS_MAX_LOD = 8
 
     /**
      * East and north unit tangents at [centre].
