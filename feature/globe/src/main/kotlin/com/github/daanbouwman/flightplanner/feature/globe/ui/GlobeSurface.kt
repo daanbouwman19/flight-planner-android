@@ -41,12 +41,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
 import com.github.daanbouwman.flightplanner.feature.globe.R
-import com.github.daanbouwman.flightplanner.feature.globe.math.CameraBasis
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeFit
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
 import com.github.daanbouwman.flightplanner.feature.globe.math.Limb
-import com.github.daanbouwman.flightplanner.feature.globe.math.MIN_ALTITUDE
 import com.github.daanbouwman.flightplanner.feature.globe.math.ScreenPoint
 import com.github.daanbouwman.flightplanner.feature.globe.math.Vec3
 import com.github.daanbouwman.flightplanner.feature.globe.math.latLonToWorld
@@ -162,9 +160,13 @@ fun rememberGlobeStatus(): GlobeStatus {
  *
  * ### The crossfade in (G8)
  *
- * [content] — the still `RouteMap` from C3 — stays composed underneath, and the
- * globe fades in over it on an effects spring once the first tile mesh has been
- * built. **Alpha only: nothing moves, so nothing may overshoot**, and the still
+ * [content] — the still `RouteMap` from C3 — is composed **on top of** the
+ * surface and fades out on an effects spring once the first tile mesh has been
+ * built, which reads as the globe fading in. It is drawn on top rather than
+ * underneath because the surface is a `SurfaceView` below the window: a Compose
+ * alpha on the node hosting it never reaches the SurfaceControl, so the first
+ * build of this — the still map underneath, the surface fading in — was a hard
+ * cut. **Alpha only: nothing moves, so nothing may overshoot**, and the still
  * map holds the frame throughout. There is deliberately no geometric morph
  * between the two; a `SurfaceView` cannot be a shared element, and pretending
  * otherwise would mean animating a screenshot of one.
@@ -211,7 +213,7 @@ fun GlobeSurface(
     nestedVerticalScroll: Boolean = false,
     /** Placed over the globe, inside the same box — controls, a title, chips. */
     overlay: @Composable BoxScope.() -> Unit = {},
-    /** Drawn under the globe: the still map it fades in over, and the fallback. */
+    /** The still map: drawn over the globe until the first tiles land, then faded out; the whole picture where there is no renderer. */
     content: @Composable () -> Unit = {},
 ) {
     val depWorld = remember(route) {
@@ -230,11 +232,12 @@ fun GlobeSurface(
         key = route.key,
         arcs = remember(route) { listOf(route.arcLats to route.arcLons) },
         fit = remember(route) {
-            { viewport: GlobeViewport ->
+            { viewport: GlobeViewport, maxLod: Int ->
                 GlobeFit.frameRoute(
                     route.arcLats.first(), route.arcLons.first(),
                     route.arcLats.last(), route.arcLons.last(),
                     viewport,
+                    maxLod = maxLod,
                 )
             }
         },
@@ -298,8 +301,8 @@ fun GlobeNetworkSurface(
             val lons = network.nodes.map { it.longitude }.toDoubleArray()
             // Named rather than returned as a trailing lambda: after a `val`, the
             // parser reads a bare `{ … }` as an argument to the line above it.
-            val solve: (GlobeViewport) -> GlobeCamera =
-                { viewport -> GlobeFit.framePoints(lats, lons, viewport) }
+            val solve: (GlobeViewport, Int) -> GlobeCamera =
+                { viewport, maxLod -> GlobeFit.framePoints(lats, lons, viewport, maxLod = maxLod) }
             solve
         },
         description = description,
@@ -341,8 +344,13 @@ private fun GlobeCanvas(
      * `atan(tan(fovY / 2) · width / height)`, so the same leg needs a different
      * distance in the deep hero and in the immersive screen. Passing the fit
      * already solved meant solving it against a viewport nobody had measured yet.
+     *
+     * The second argument is the imagery's deepest level, from the session: the
+     * fit will not park the camera closer than the point where that level is one
+     * texel per pixel, and with a keyed provider that point is far lower than
+     * with the keyless fallback.
      */
-    fit: (GlobeViewport) -> GlobeCamera,
+    fit: (GlobeViewport, Int) -> GlobeCamera,
     description: String,
     modifier: Modifier,
     controls: GlobeControlsHandle?,
@@ -361,7 +369,7 @@ private fun GlobeCanvas(
     // process. Both halves belong to the same effect.
     //
     // The first frame therefore has no session and draws [content], which is the
-    // still map it was always going to fade in over.
+    // still map that stays on top until the globe has something to show.
     var held by remember(context) { mutableStateOf<GlobeSession?>(null) }
     DisposableEffect(context) {
         held = GlobeSession.acquire(context)
@@ -395,7 +403,7 @@ private fun GlobeCanvas(
     // is a placeholder too; the effect below is what corrects both.
     var viewport by remember { mutableStateOf(GlobeViewport(1f, 1f)) }
 
-    val fitted = remember(fit, viewport) { fit(viewport) }
+    val fitted = remember(fit, viewport, session) { fit(viewport, session.maxLevel) }
 
     // The camera starts from the session, not from the fit: moving from the hero
     // to the immersive screen must not re-frame a view the user had already
@@ -404,13 +412,11 @@ private fun GlobeCanvas(
         GlobeCameraState(
             initial = if (session.routeKey == key) session.camera else fitted,
             scope = scope,
-            // WIRING POINT — the interactive zoom floor. `MIN_ALTITUDE` here
-            // reproduces the camera's own range and is the stand-in until the
-            // session can say how deep its imagery goes; the intended value is
-            // the session's floor, a function of the viewport, so that a pinch
-            // stops where the finest tile is one texel per pixel. See the
-            // class note on GlobeCameraState.
-            zoomFloor = { MIN_ALTITUDE },
+            // The session knows how deep its imagery goes; the floor is the
+            // altitude at which the finest tile is one texel per pixel, one
+            // octave lower. A pinch stops there instead of ten doublings later
+            // in magnified mush. See the class note on GlobeCameraState.
+            zoomFloor = { box -> session.zoomFloor(box) },
             onChange = { session.camera = it },
         )
     }
@@ -486,10 +492,6 @@ private fun GlobeCanvas(
     // nothing to do with; the limb overlay drew its rim across the page for the
     // same reason. The globe owns its box and nothing it draws leaves it.
     Box(modifier = modifier.clipToBounds()) {
-        // Never removed: it is what the globe fades in over, and on a device
-        // without a renderer it is the whole feature.
-        content()
-
         AndroidView(
             factory = { ctx ->
                 GlobeSurfaceView(ctx).apply {
@@ -509,9 +511,28 @@ private fun GlobeCanvas(
                 .onGloballyPositioned { coordinates ->
                     val bounds = coordinates.boundsInWindow()
                     onScreen = bounds.width > 0f && bounds.height > 0f
-                }
-                .graphicsLayer { alpha = globeAlpha.value },
+                },
         )
+
+        // **The still map fades *out*, over the surface, rather than the surface
+        // fading in.** The surface is a `SurfaceView` composited below the window
+        // through a hole punched in it; a Compose `graphicsLayer { alpha }` on the
+        // node hosting it never reaches the SurfaceControl, so the globe used to
+        // arrive as a hard cut at the moment the first mesh landed — and with the
+        // node rendered offscreen for the alpha, the hole punch could fail
+        // outright. Drawing the still map on top and taking *it* to zero is the
+        // same crossfade with the alpha on something Compose actually owns.
+        //
+        // Never removed: before the first tile it is the whole picture, and on a
+        // device without a renderer this branch is never reached and it is the
+        // whole feature.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = 1f - globeAlpha.value },
+        ) {
+            content()
+        }
 
         LimbOverlay(
             cameraState = cameraState,
