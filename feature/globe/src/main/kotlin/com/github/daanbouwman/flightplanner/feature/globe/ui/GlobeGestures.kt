@@ -3,258 +3,222 @@ package com.github.daanbouwman.flightplanner.feature.globe.ui
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.atan2
+import com.github.daanbouwman.flightplanner.feature.globe.math.GestureConfig
+import com.github.daanbouwman.flightplanner.feature.globe.math.GestureIntent
+import com.github.daanbouwman.flightplanner.feature.globe.math.GestureRecognizer
+import com.github.daanbouwman.flightplanner.feature.globe.math.PointerSample
+import kotlin.math.ln
 
 /**
- * What a touch on the globe has been decided to mean.
+ * One decided movement, in the units the camera wants.
  *
- * The set is closed and exactly one is active at a time — see [globeGestures]
- * for why that matters more here than in most gesture handling.
+ * The Compose-typed face of [GestureIntent]: the recogniser in `math/` speaks
+ * floats so it can be tested without an Android runtime, and this is where they
+ * become `Offset` and `Velocity`.
  */
-internal enum class GlobeGesture { Pan, Zoom, Rotate, Tilt }
-
-/** One classified movement, in the units the camera wants. */
 internal sealed interface GlobeGestureEvent {
-    /** The finger, or the centroid of two, moved to [position]. */
+    /** Something is now touching the globe. Stops any running camera motion. */
+    data object Down : GlobeGestureEvent
+
+    /** The finger, or the centroid of two, moved to [position]; the drag began at [start]. */
     data class Pan(val position: Offset, val start: Offset) : GlobeGestureEvent
 
-    /** The pinch span changed by [factor], centred on [focus]. */
+    /** The pinch separation grew by [factor] since the last event, about [focus]. Above one is closer. */
     data class Zoom(val factor: Float, val focus: Offset) : GlobeGestureEvent
 
-    /** The two fingers turned by [radians]. */
+    /** The fingers twisted by [radians], positive clockwise on screen. */
     data class Rotate(val radians: Float) : GlobeGestureEvent
 
     /** Two fingers moved together by [dy] pixels vertically. */
     data class Tilt(val dy: Float) : GlobeGestureEvent
 
-    /** The gesture is over; [velocity] is the release velocity of a pan. */
-    data class End(val gesture: GlobeGesture, val velocity: Velocity) : GlobeGestureEvent
+    /** Two clean taps at [position], inside the double-tap timeout. */
+    data class DoubleTap(val position: Offset) : GlobeGestureEvent
 
-    /** Something is now touching the globe. Stops any running camera animation. */
-    data object Down : GlobeGestureEvent
+    /**
+     * The gesture is over. [velocity] is the centroid's release velocity, already
+     * clamped to the platform's maximum fling; it is zero unless [flingEligible].
+     */
+    data class End(val flingEligible: Boolean, val velocity: Velocity) : GlobeGestureEvent
 }
 
 /**
- * Pan, pinch, rotate and tilt, with the classification window that makes them
- * usable.
+ * The pump: pointer events in, [GlobeGestureEvent]s out, with a
+ * [GestureRecognizer] doing all of the deciding in between.
  *
- * ### The mode lock, and why the globe is unusable without it
+ * This function owns exactly three things the recogniser cannot, because they
+ * are Compose's:
  *
- * Two fingers on a screen are *always* doing all three of pinching, twisting and
- * dragging a little, because hands are not machines. Applied continuously, the
- * result is a camera whose zoom, bearing and centre all wobble at once — which
- * on a sphere compounds, because a small bearing error rotates the pan direction
- * and a small tilt error changes what the pinch is centred on. The desktop
- * original avoids the question entirely by having separate mouse buttons.
+ * - **Velocity.** A `VelocityTracker` over the tracked centroid, reset on every
+ *   [GestureIntent.Reseed] so the jump when a finger lands or lifts is never
+ *   read as speed, and clamped through `calculateVelocity(maximumVelocity)` —
+ *   the unlimited overload let an abandoned pinch release into a fling nobody
+ *   moved at.
+ * - **Consumption.** Position changes are consumed only once the recogniser has
+ *   claimed the gesture — a pan latched, two fingers down, or a quick-scale
+ *   running. Consuming from the first move, as the old loop did, meant a drag
+ *   that started on the globe could never scroll the page it sits in, and it
+ *   cancelled the double-tap detector that used to sit in a second
+ *   `pointerInput` on its final pass.
+ * - **Cancellation.** A system pointer-cancel — the back gesture stealing the
+ *   stream — arrives as an up that is already consumed; a real up never is. It
+ *   ends the gesture with no fling instead of being read as a release.
  *
- * So the first [CLASSIFY_MS] milliseconds, or the first [SLOP_DP] of movement,
- * whichever ends sooner, are spent **watching rather than acting**. Whichever
- * axis moves furthest relative to its own threshold wins, and from then until
- * every finger lifts, only that axis is applied. A gesture that turns into a
- * different gesture requires lifting and starting again, which is what everyone
- * already does.
+ * ### Embedded in a scrolling page
  *
- * Nothing is lost during the window: the movement accumulated while classifying
- * is applied in full the moment the mode is decided, so the first event is not
- * a jump but a catch-up.
+ * With [nestedVerticalScroll], a single finger whose drag turns out to be within
+ * [GestureRecognizer.RELEASE_CONE_DEGREES] of vertical at the slop is released:
+ * no pan, nothing consumed, and the hosting `Column` or `LazyColumn` scrolls.
+ * Horizontal drags and anything with two fingers stay the globe's. This is the
+ * standard embedded-map compromise — the alternative is a page that cannot be
+ * scrolled past its own map — and the immersive screen, which owns the window,
+ * leaves it off.
  */
 internal suspend fun PointerInputScope.globeGestures(
+    nestedVerticalScroll: Boolean,
     onEvent: (GlobeGestureEvent) -> Unit,
 ) {
-    val slop = SLOP_DP.dp.toPx()
-    val zoomSlop = slop
-    val rotateSlop = ROTATE_SLOP_RADIANS
-    val tiltSlop = slop
+    // Created at the first touch rather than here: the quick-scale rate needs
+    // the measured height, and it lives across gestures because a double-tap is
+    // two of them. Rebuilt if the surface has been resized between gestures —
+    // the hero handing over to the immersive screen — so the rate stays a
+    // half-screen per two notches; a tap remembered across a resize is lost,
+    // which is nothing anybody was doing.
+    var recognizer: GestureRecognizer? = null
+    var recognizerHeight = -1
+    val velocity = VelocityTracker()
+    val maximumVelocity = Velocity(
+        viewConfiguration.maximumFlingVelocity,
+        viewConfiguration.maximumFlingVelocity,
+    )
 
     awaitEachGesture {
-        val first = awaitFirstDown(requireUnconsumed = false)
-        onEvent(GlobeGestureEvent.Down)
-
-        val startTime = first.uptimeMillis
-        var gesture: GlobeGesture? = null
-
-        var centroidStart = first.position
-        var centroid = first.position
-        var span = 0f
-        var angle = 0f
-        var haveTwoFingers = false
-
-        val velocity = VelocityTracker()
-        velocity.addPosition(first.uptimeMillis, first.position)
-
-        var accumulatedZoom = 1f
-        var accumulatedRotation = 0f
-        var accumulatedTilt = 0f
-
-        while (true) {
-            val event = awaitPointerEvent(PointerEventPass.Main)
-            val pressed = event.changes.filter { it.pressed }
-            if (pressed.isEmpty()) break
-
-            val nextCentroid = pressed.centroid()
-            val nextSpan = pressed.span(nextCentroid)
-            val nextAngle = pressed.angle()
-
-            if (pressed.size >= 2 && !haveTwoFingers) {
-                // A second finger has landed. Re-seed the two-finger quantities
-                // rather than measuring them against a one-finger frame, which
-                // would report a span that jumped from zero.
-                haveTwoFingers = true
-                span = nextSpan
-                angle = nextAngle
-                centroidStart = nextCentroid
-                centroid = nextCentroid
-            } else if (pressed.size < 2 && haveTwoFingers) {
-                // **And a finger leaving needs the same treatment.** The centroid
-                // of two fingers is between them; the centroid of the one that
-                // remains is under it. Without re-seeding, that jump — half the
-                // finger separation — arrives as a single frame of pan, which
-                // slams the globe sideways, and goes into the velocity tracker as
-                // a real movement, so letting go then flings at a speed nobody
-                // moved at.
-                haveTwoFingers = false
-                span = 0f
-                centroidStart = nextCentroid
-                centroid = nextCentroid
-                velocity.resetTracking()
-                velocity.addPosition(event.changes.first().uptimeMillis, nextCentroid)
+        val first = awaitFirstDown()
+        val recogniser = recognizer?.takeIf { recognizerHeight == size.height }
+            ?: GestureRecognizer(gestureConfig(nestedVerticalScroll)).also {
+                recognizer = it
+                recognizerHeight = size.height
             }
+        velocity.resetTracking()
+        var claimed = false
 
-            val panDelta = nextCentroid - centroid
-            val zoomFactor = if (span > 1f && nextSpan > 1f) nextSpan / span else 1f
-            val rotation = if (pressed.size >= 2) shortestAngle(nextAngle - angle) else 0f
-            val tiltDelta = if (pressed.size >= 2) panDelta.y else 0f
-
-            if (gesture == null) {
-                accumulatedZoom *= zoomFactor
-                accumulatedRotation += rotation
-                accumulatedTilt += tiltDelta
-
-                val elapsed = event.changes.first().uptimeMillis - startTime
-                val panScore = (nextCentroid - centroidStart).getDistance() / slop
-                val zoomScore = if (haveTwoFingers) abs(span * (accumulatedZoom - 1f)) / zoomSlop else 0f
-                val rotateScore = if (haveTwoFingers) abs(accumulatedRotation) / rotateSlop else 0f
-                val tiltScore = if (haveTwoFingers) abs(accumulatedTilt) / tiltSlop else 0f
-
-                val best = maxOf(panScore, zoomScore, rotateScore, tiltScore)
-                if (best >= 1f || elapsed >= CLASSIFY_MS) {
-                    gesture = when {
-                        // A single finger can only ever be a pan, whatever the
-                        // scores say — the other three need two.
-                        !haveTwoFingers -> GlobeGesture.Pan
-                        best < 1f -> GlobeGesture.Pan
-                        best == zoomScore -> GlobeGesture.Zoom
-                        best == rotateScore -> GlobeGesture.Rotate
-                        best == tiltScore -> GlobeGesture.Tilt
-                        else -> GlobeGesture.Pan
-                    }
-                    // Catch up: apply everything the window watched, so the
-                    // gesture starts from where the fingers actually are.
-                    when (gesture) {
-                        GlobeGesture.Pan -> onEvent(
-                            GlobeGestureEvent.Pan(nextCentroid, centroidStart),
-                        )
-                        GlobeGesture.Zoom -> onEvent(
-                            GlobeGestureEvent.Zoom(accumulatedZoom, nextCentroid),
-                        )
-                        GlobeGesture.Rotate -> onEvent(
-                            GlobeGestureEvent.Rotate(accumulatedRotation),
-                        )
-                        GlobeGesture.Tilt -> onEvent(GlobeGestureEvent.Tilt(accumulatedTilt))
-                    }
-                }
-            } else {
-                when (gesture) {
-                    GlobeGesture.Pan -> if (panDelta != Offset.Zero) {
-                        onEvent(GlobeGestureEvent.Pan(nextCentroid, centroidStart))
-                    }
-                    GlobeGesture.Zoom -> if (zoomFactor != 1f) {
-                        onEvent(GlobeGestureEvent.Zoom(zoomFactor, nextCentroid))
-                    }
-                    GlobeGesture.Rotate -> if (rotation != 0f) {
-                        onEvent(GlobeGestureEvent.Rotate(rotation))
-                    }
-                    GlobeGesture.Tilt -> if (tiltDelta != 0f) {
-                        onEvent(GlobeGestureEvent.Tilt(tiltDelta))
-                    }
+        fun dispatch(intents: List<GestureIntent>) {
+            for (intent in intents) {
+                when (intent) {
+                    GestureIntent.Down -> onEvent(GlobeGestureEvent.Down)
+                    GestureIntent.Reseed -> velocity.resetTracking()
+                    GestureIntent.Released -> Unit
+                    is GestureIntent.Pan -> onEvent(
+                        GlobeGestureEvent.Pan(
+                            position = Offset(intent.x, intent.y),
+                            start = Offset(intent.startX, intent.startY),
+                        ),
+                    )
+                    is GestureIntent.Zoom -> onEvent(
+                        GlobeGestureEvent.Zoom(intent.factor, Offset(intent.focusX, intent.focusY)),
+                    )
+                    is GestureIntent.Rotate -> onEvent(GlobeGestureEvent.Rotate(intent.radians))
+                    is GestureIntent.Tilt -> onEvent(GlobeGestureEvent.Tilt(intent.dy))
+                    is GestureIntent.DoubleTap -> onEvent(
+                        GlobeGestureEvent.DoubleTap(Offset(intent.x, intent.y)),
+                    )
+                    is GestureIntent.End -> onEvent(
+                        GlobeGestureEvent.End(
+                            flingEligible = intent.flingEligible,
+                            velocity = if (intent.flingEligible) {
+                                velocity.calculateVelocity(maximumVelocity)
+                            } else {
+                                Velocity.Zero
+                            },
+                        ),
+                    )
                 }
             }
-
-            velocity.addPosition(event.changes.first().uptimeMillis, nextCentroid)
-            centroid = nextCentroid
-            span = nextSpan
-            angle = nextAngle
-
-            // Consumed so an ancestor scroll container does not also act on it.
-            // The globe fills its box and every touch inside it is the globe's.
-            event.changes.forEach { if (it.positionChanged()) it.consume() }
         }
 
-        val settled = gesture ?: GlobeGesture.Pan
-        onEvent(
-            GlobeGestureEvent.End(
-                gesture = settled,
-                velocity = if (settled == GlobeGesture.Pan) {
-                    velocity.calculateVelocity()
-                } else {
-                    Velocity.Zero
-                },
-            ),
-        )
+        dispatch(recogniser.onEvent(listOf(first.sample()), first.uptimeMillis))
+        velocity.addPosition(first.uptimeMillis, first.position)
+
+        while (true) {
+            val event = awaitPointerEvent()
+            if (event.changes.any { it.isSystemCancel() }) {
+                dispatch(recogniser.onCancel())
+                break
+            }
+
+            val pressed = event.changes.filter { it.pressed }
+            val time = event.changes.first().uptimeMillis
+            val intents = recogniser.onEvent(pressed.map { it.sample() }, time)
+            if (pressed.isEmpty()) {
+                dispatch(intents)
+                break
+            }
+
+            // The tracker is fed the recogniser's own centroid — the first two
+            // pointers by id — so a third finger is as invisible to the fling as
+            // it is to the zoom. Reset first, on a reseed, then given the new
+            // centroid as its opening sample.
+            dispatch(intents)
+            velocity.addPosition(time, Offset(recogniser.centroidX, recogniser.centroidY))
+
+            claimed = claimed || recogniser.isClaimed
+            if (claimed) event.changes.forEach { if (it.positionChanged()) it.consume() }
+        }
     }
 }
 
+private fun PointerInputChange.sample() = PointerSample(id.value, position.x, position.y)
+
 /**
- * How long the classifier watches before it has to decide.
+ * A pointer-cancel delivered by the system, as opposed to a finger lifting.
  *
- * Short enough that a deliberate gesture does not feel like it is being ignored
- * — under about 80 ms a delay reads as the finger's own travel rather than as
- * lag — and long enough to see which way a two-finger gesture is going.
+ * Compose hands `ACTION_CANCEL` to gesture detectors as a synthetic up: a copy
+ * of the last change with `pressed = false`, **already consumed**, and with its
+ * previous position and time set equal to its current ones — nothing moved and
+ * no time passed, because no event happened. Every built-in detector reads that
+ * as a cancel, and so does this. A real release reaches this node unconsumed
+ * because nothing below it exists to consume it; the position and time
+ * equalities are there so that even a release an ancestor did consume on the
+ * initial pass is not mistaken for a cancel.
  */
-private const val CLASSIFY_MS = 60L
+private fun PointerInputChange.isSystemCancel(): Boolean =
+    previousPressed && !pressed && isConsumed &&
+        position == previousPosition && uptimeMillis == previousUptimeMillis
 
-/** Movement, in dp, that ends the window early and settles the classification. */
-private const val SLOP_DP = 12f
-
-/** Twist, in radians, worth the same as [SLOP_DP] of movement. About 8°. */
-private const val ROTATE_SLOP_RADIANS = (PI / 22.0).toFloat()
-
-private fun List<PointerInputChange>.centroid(): Offset {
-    var sum = Offset.Zero
-    forEach { sum += it.position }
-    return sum / size.toFloat()
+/**
+ * Every threshold, in one place, each named for the platform detector it mirrors.
+ *
+ * - `touchSlop` is `ViewConfiguration.getScaledTouchSlop`, which `GestureDetector`
+ *   uses to tell a tap from a drag.
+ * - The span slop is **twice** the touch slop: `ScaleGestureDetector.mSpanSlop`
+ *   is `getScaledTouchSlop() * 2`, and the span it measures is the full
+ *   separation, as here.
+ * - The tilt slop is the touch slop, per finger.
+ * - The double-tap timeout is `ViewConfiguration.getDoubleTapTimeout` (300 ms).
+ * - The double-tap slop is `ViewConfiguration.getScaledDoubleTapSlop`, 100 dp,
+ *   which Compose does not surface; it is named here as [DoubleTapSlop]. It
+ *   bounds how far apart the two presses may land, not how far a tap may move.
+ * - The quick-scale rate is `2·ln 2` over half the height: a drag from the tap
+ *   to the bottom of the surface is two notches of the ± controls.
+ */
+private fun PointerInputScope.gestureConfig(nestedVerticalScroll: Boolean): GestureConfig {
+    val touchSlop = viewConfiguration.touchSlop
+    return GestureConfig(
+        touchSlopPx = touchSlop,
+        spanSlopPx = touchSlop * 2f,
+        tiltSlopPx = touchSlop,
+        doubleTapTimeoutMs = viewConfiguration.doubleTapTimeoutMillis,
+        doubleTapSlopPx = DoubleTapSlop.toPx(),
+        quickScaleLnPerPx = 2f * ln(2f) / (size.height.coerceAtLeast(1) / 2f),
+        releaseVerticalSingleFingerDrags = nestedVerticalScroll,
+    )
 }
 
-/** Mean distance from the centroid — zero for one finger, half the span for two. */
-private fun List<PointerInputChange>.span(centroid: Offset): Float {
-    if (size < 2) return 0f
-    var sum = 0f
-    forEach { sum += (it.position - centroid).getDistance() }
-    return sum / size
-}
-
-/** The angle of the line between the first two fingers. */
-private fun List<PointerInputChange>.angle(): Float {
-    if (size < 2) return 0f
-    val delta = this[1].position - this[0].position
-    return atan2(delta.y, delta.x)
-}
-
-/** Folds an angle difference into (−π, π], so a twist past the seam is small. */
-private fun shortestAngle(radians: Float): Float {
-    var a = radians
-    val turn = (2 * PI).toFloat()
-    while (a > PI) a -= turn
-    while (a < -PI) a += turn
-    return a
-}
-
+/** See [gestureConfig]: `ViewConfiguration.DOUBLE_TAP_SLOP`, which is 100 dp on every Android release. */
+private val DoubleTapSlop = 100.dp
