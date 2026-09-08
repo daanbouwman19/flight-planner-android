@@ -212,6 +212,13 @@ private fun GlobeNetworkBand(
         // scrolls the list, as it does over every other card; sideways and
         // two-finger gestures still turn the globe.
         nestedVerticalScroll = true,
+        // ...and this globe is *embedded*: a `LazyColumn` item inside a rounded
+        // card, rather than a full-bleed hero that owns its box. Two things
+        // follow, and both are bugs when they are missing — it is drawn by a
+        // `TextureView` so Compose can actually clip it, and the session gets a
+        // longer teardown grace so scrolling past the card does not rebuild the
+        // engine and the 32 MB atlas. See `GlobeTextureView`.
+        embedded = true,
         modifier = Modifier
             .fillMaxWidth()
             .height(GlobeBandHeight),

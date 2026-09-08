@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
@@ -30,6 +31,7 @@ import com.github.daanbouwman.flightplanner.feature.globe.math.CameraBasis
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
 import com.github.daanbouwman.flightplanner.feature.globe.math.RouteGeometry
+import com.github.daanbouwman.flightplanner.feature.globe.math.ScreenPoint
 import com.github.daanbouwman.flightplanner.feature.globe.math.Vec3
 import com.github.daanbouwman.flightplanner.feature.globe.math.facingValueFast
 import com.github.daanbouwman.flightplanner.feature.globe.math.latLonToWorld
@@ -93,6 +95,17 @@ internal fun GlobeLabels(
      * instead, and re-framing brings it back.
      */
     topChromeInset: Dp = 0.dp,
+    /**
+     * Rectangles, in this surface's own pixels, where the host has placed chrome
+     * over the imagery — the camera stack in one bottom corner, the imagery
+     * credit in the other.
+     *
+     * A plate whose dot projects into one of these fades out, **case 2 once
+     * more**: the code is not shoved sideways to clear the control, because a
+     * code away from its airport is the same lie as one clamped to the limb. It
+     * drops, and re-framing brings it back.
+     */
+    reservedCorners: List<Rect> = emptyList(),
 ) {
     if (viewport.width < 1f || viewport.height < 1f) return
 
@@ -109,10 +122,13 @@ internal fun GlobeLabels(
     val depScreen = camera.worldToScreen(departure.world, viewport)
     val destScreen = camera.worldToScreen(destination.world, viewport)
     val plateReservePx = with(LocalDensity.current) { PlateReserve.toPx() }
+    val plateHalfWidthPx = with(LocalDensity.current) { PlateHalfWidth.toPx() }
     val depAlpha = limbAlpha(basis, departure.world, camera) *
-        edgeAlpha(depScreen?.y, chromePx, fadePx, viewport.height, plateReservePx)
+        edgeAlpha(depScreen?.y, chromePx, fadePx, viewport.height, plateReservePx) *
+        cornerAlpha(depScreen, reservedCorners, plateReservePx, plateHalfWidthPx)
     val destAlpha = limbAlpha(basis, destination.world, camera) *
-        edgeAlpha(destScreen?.y, chromePx, fadePx, viewport.height, plateReservePx)
+        edgeAlpha(destScreen?.y, chromePx, fadePx, viewport.height, plateReservePx) *
+        cornerAlpha(destScreen, reservedCorners, plateReservePx, plateHalfWidthPx)
 
     val separation = depScreen?.let { d ->
         destScreen?.let { hypot(it.x - d.x, it.y - d.y) }
@@ -232,7 +248,7 @@ private fun Code(text: String) {
  * bottom edge of the strip rather than above it, and is done over roughly the
  * height of one plate.
  */
-private fun edgeAlpha(
+internal fun edgeAlpha(
     y: Float?,
     chromePx: Float,
     fadePx: Float,
@@ -249,8 +265,50 @@ private fun edgeAlpha(
     return underChrome * overEdge
 }
 
+/**
+ * How a label fades out as its dot approaches a corner the host has covered.
+ *
+ * Within a reserved rect's horizontal span the fade starts one plate-height
+ * *above* the rect's top edge, because the plate hangs below its dot: a dot level
+ * with the top of the stack still puts its code over the stack. Zero once the dot
+ * is at or below that edge.
+ *
+ * **The span is the rect widened by half a plate, not the rect.** [Plate] centres
+ * its content on the dot, so the code reaches [plateHalfWidthPx] either side of
+ * it; testing the dot x against the bare rect let a dot a few pixels outside
+ * the stack draw the inner half of its code straight over it — the exact overlap
+ * this fade exists to prevent. [edgeAlpha] already gives the same kind of slack
+ * vertically through `plateReservePx`; this is its horizontal twin.
+ */
+internal fun cornerAlpha(
+    point: ScreenPoint?,
+    reserved: List<Rect>,
+    plateReservePx: Float,
+    plateHalfWidthPx: Float,
+): Float {
+    if (point == null || reserved.isEmpty()) return 1f
+    var alpha = 1f
+    for (rect in reserved) {
+        if (rect.isEmpty) continue
+        if (point.x < rect.left - plateHalfWidthPx) continue
+        if (point.x > rect.right + plateHalfWidthPx) continue
+        val above = rect.top - point.y
+        alpha = minOf(alpha, (above / plateReservePx).coerceIn(0f, 1f))
+    }
+    return alpha
+}
+
 /** How much room below its dot a plate needs. A dot and a line of code. */
 private val PlateReserve = 40.dp
+
+/**
+ * How far a plate reaches either side of its dot.
+ *
+ * Sized from the same measurement [MergeDistancePx] cites — two four-character
+ * codes at `labelMedium` are about 44 dp wide — halved, plus the plate's own 6 dp
+ * of horizontal padding.
+ */
+private val PlateHalfWidth = 28.dp
 
 /** How far below the chrome a label is fully in. Roughly one plate. */
 private val ChromeFadeSpan = 28.dp

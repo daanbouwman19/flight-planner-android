@@ -45,22 +45,50 @@ import kotlin.math.sqrt
  * traversal rather than a hope. The leaf cap is kept at the reference's 256, but
  * the atlas constraint is the one that binds.
  *
- * Breadth-first order does **not** degrade detail uniformly when a budget runs
- * out, whatever the reference's comment says: the budget is spent on the near
- * field first and the middle distance is starved — measured at 1.7× under
- * resolution across fifteen leaves at altitude 1.0, and 2.1× across up to
- * sixty-four at a 1.2 rad tilt with the old leaf budget. Letting the atlas
- * constraint bind instead of a low leaf cap is what gives those leaves their
- * split back.
+ * ### Order of spending, which is the whole design
  *
- * ### Incidence
+ * At `MAX_TILT` a correct traversal wants roughly **1,960** non-pinned tiles
+ * against the atlas's **235** evictable slots — an eight-fold shortfall. Which
+ * tiles get those slots therefore decides what the frame looks like, and this is
+ * the one part of the traversal the reference is no guide for: it has no atlas
+ * and gates on leaf count alone.
  *
- * A tile seen edge-on at the limb covers far fewer pixels than its chord
- * suggests. The split test scales the chord estimate by the cosine of the
- * viewing angle at the tile's centre, floored at [INCIDENCE_FLOOR]; the viewport
- * test keeps the unscaled estimate for its margin, because that margin is about
- * the tile's *extent* on screen, which incidence does not shrink. Measured: the
- * worst-case request count falls from 238 to 208.
+ * **Breadth-first spends them uniformly**, and that is exactly wrong. When the
+ * budget runs out at level *k* every remaining branch stops at level *k*, so the
+ * near field — which is closest and has earned the most detail — is truncated to
+ * the same depth as the horizon. The nodes are therefore held in a max-heap
+ * ordered by [TraversalFrame.priority] and the budget is spent largest-first: the
+ * near field keeps its depth and the horizon stays coarse, which is what a tilted
+ * view should look like. See `NodeHeap`.
+ *
+ * ### Incidence orders the spend; it does not gate the split
+ *
+ * A tile seen edge-on at the limb covers fewer pixels than its chord suggests,
+ * and this used to scale the **split** estimate by the cosine of the viewing
+ * angle at the tile's centre. That was a defect, and the paragraph arguing for it
+ * refuted itself in its own last sentence: it kept the *unscaled* estimate for
+ * the viewport margin "because that margin is about the tile's extent on screen,
+ * which incidence does not shrink" — and the split test is equally an extent
+ * test. Foreshortening compresses one screen axis; the texel budget is set by the
+ * uncompressed one, so multiplying an isotropic extent by `cos θ` is
+ * dimensionally wrong.
+ *
+ * What it did in practice: at the screen centre the incidence is exactly
+ * `cos(tilt)`, so at `MAX_TILT` it was 0.309 and the whole view lost two LOD
+ * levels — a four-fold blur that swept in from the horizon as the user tilted.
+ * [INCIDENCE_FLOOR] never even engaged. The term had been introduced as a
+ * *demand reducer* for the atlas, not as a resolution feature.
+ *
+ * So the split test is the reference's again — raw [TraversalFrame.screenPx],
+ * which `chord` already takes as `max(ewArc, nsArc)`, the maximum on-screen
+ * extent — and the incidence factor moves to [TraversalFrame.priority], where it
+ * decides the order the scarce atlas slots are spent in. It is a bad predictor of
+ * a tile's screen *extent* and a good one of its screen *area*, which is the
+ * question a budget actually asks.
+ *
+ * Simply deleting it would have made things **worse**, not better: demand jumps
+ * to 1,960 against 235 slots and breadth-first truncation then takes the median
+ * leaf from z8 down to z7. The metric and the spend order had to change together.
  *
  * ### Prefetch
  *
@@ -72,14 +100,20 @@ import kotlin.math.sqrt
  *
  * ### Order
  *
- * The leaves come back in traversal order, **not** sorted back to front as the
+ * The leaves come back sorted by `(z, x, y)`, **not** back to front as the
  * reference does. Tiles are one primitive drawn without depth writes, they do
  * not overlap except at sub-pixel bulge slivers, and the coarse and sharp layers
  * of one tile are ordered by emission within the buffer — so a depth sort buys
  * nothing visible. What it cost was real: the scene's mesh signature is
  * order-sensitive, and the sort changed the order on 49 of 60 frames of a slow
- * pan when the visible *set* changed on 7. Traversal order is deterministic for
- * a given visible set, so the signature now changes only when the set does.
+ * pan when the visible *set* changed on 7.
+ *
+ * Breadth-first order happened to be a function of the visible set, which is what
+ * the signature needs. **A priority order is not** — it is a function of
+ * continuous float priorities, so a sub-pixel camera move could reorder two
+ * near-ties and force a rebuild of geometry that did not change. Sorting by key
+ * makes the order a pure function of the set, which is strictly stronger than
+ * what the FIFO gave for free, and keeps coarse tiles emitted before fine ones.
  *
  * The requests themselves go out in traversal order too. Coarse-before-fine
  * *fetching* is the loader's queue's responsibility, not this function's; what a
@@ -122,6 +156,12 @@ internal object Quadtree {
      * slots too, so it was both too high to protect the atlas and too low for the
      * middle distance. The atlas is protected structurally now; this is a
      * backstop against a pathological camera, and it is not what binds.
+     *
+     * **It becomes what binds the moment the atlas grows.** The worst leaf count
+     * over the shipping sweep is 174 against 256, so today `evictableSlots` is
+     * the only real constraint — but at a second 4096² atlas page (512 slots) this
+     * cap pins the result and the extra slots do nothing. Anyone adding one has to
+     * move this too. Judged from what `TiltDetailTest` prints, not by estimate.
      */
     const val MAX_VISIBLE_TILES: Int = 256
 
@@ -132,12 +172,14 @@ internal object Quadtree {
     private const val PREFETCH_FRACTION = 0.75f
 
     /**
-     * The least the incidence factor may scale a tile's screen estimate by.
+     * The least the incidence factor may scale a tile's spend priority by.
      *
-     * A chosen floor, not a derived one. A limb tile is seen at nearly ninety
-     * degrees and its cosine is nearly zero; letting that through would report
-     * the tile as covering no pixels and collapse it to a very coarse level
-     * right where the coarse level is most visible against its neighbours.
+     * A chosen floor, not a derived one, and its job changed when incidence moved
+     * out of the split test: a limb tile's cosine is nearly zero, and without a
+     * floor it would sort to the very back of the heap and be **starved** of a
+     * slot rather than, as before, *collapsed* to a coarse level. Same number,
+     * different failure it prevents. A zero-priority node is still popped — the
+     * heap drains completely — it is simply popped after the budget is gone.
      */
     private const val INCIDENCE_FLOOR = 0.25f
 
@@ -195,8 +237,11 @@ internal object Quadtree {
     }
 
     /**
-     * Walks the quadtree breadth-first and returns the leaves to render, in
-     * traversal order.
+     * Walks the quadtree in descending screen-space-error order and returns the
+     * leaves to render, sorted by `(z, x, y)`.
+     *
+     * The atlas budget is spent near-field first — see the class note on the
+     * order of spending, which is why this is a heap and not a queue.
      *
      * [request] is called for **every visited node** — leaves and their
      * ancestors alike — which is what guarantees every leaf has a resident
@@ -227,17 +272,23 @@ internal object Quadtree {
         )
 
         val leaves = ArrayList<VisibleTile>(64)
-        val queue = LongQueue(256)
+        val heap = NodeHeap(256)
         val nearSplit = LongQueue(64)
-        queue.addLast(pack(0, 0, 0))
+        // The root always survives its own cull: at z0 the angular radius is
+        // clamped to PI, which is above VIEWPORT_CULL_MAX_ANG_RADIUS so the
+        // viewport test is skipped, and the horizon test is unsatisfiable. So
+        // pushing it through the same gate as every other node costs nothing and
+        // keeps one path. The old code could not reach this case, which is why
+        // it is worth a sentence.
+        pushIfVisible(frame, heap, 0, 0, 0)
         var nonPinnedRequested = 0
 
-        while (!queue.isEmpty) {
-            val node = queue.removeFirst()
+        while (!heap.isEmpty) {
+            val slot = heap.pop()
+            val node = heap.nodeAt(slot)
             val z = zOf(node)
             val x = xOf(node)
             val y = yOf(node)
-            if (!tileMetrics(frame, z, x, y)) continue
             request(z, x, y)
             if (z > pinnedMaxLevel) nonPinnedRequested++
 
@@ -247,26 +298,33 @@ internal object Quadtree {
             // argument holds for `requested + queue` against the atlas: a
             // dequeued node moves from one term to the other or drops out, and
             // only a split grows the sum, by exactly the four checked here.
-            val withinLeafCap = leaves.size + queue.size + 4 <= MAX_VISIBLE_TILES
-            val withinAtlas = nonPinnedRequested + queue.size + 4 <= evictableSlots
+            val withinLeafCap = leaves.size + heap.size + 4 <= MAX_VISIBLE_TILES
+            val withinAtlas = nonPinnedRequested + heap.size + 4 <= evictableSlots
+            val screenPx = heap.screenPxAt(slot)
 
-            if (z < maxLod && withinLeafCap && withinAtlas && frame.splitPx > SPLIT_SCREEN_PX) {
+            if (z < maxLod && withinLeafCap && withinAtlas && screenPx > SPLIT_SCREEN_PX) {
                 val cx = x * 2
                 val cy = y * 2
-                queue.addLast(pack(z + 1, cx, cy))
-                queue.addLast(pack(z + 1, cx + 1, cy))
-                queue.addLast(pack(z + 1, cx, cy + 1))
-                queue.addLast(pack(z + 1, cx + 1, cy + 1))
+                pushIfVisible(frame, heap, z + 1, cx, cy)
+                pushIfVisible(frame, heap, z + 1, cx + 1, cy)
+                pushIfVisible(frame, heap, z + 1, cx, cy + 1)
+                pushIfVisible(frame, heap, z + 1, cx + 1, cy + 1)
             } else {
                 leaves += VisibleTile(
                     z = z,
                     x = x,
                     y = y,
-                    lonMin = frame.lonMin,
-                    lonMax = frame.lonMax,
-                    depth = frame.depth,
+                    lonMin = heap.lonMinAt(slot),
+                    lonMax = heap.lonMaxAt(slot),
+                    depth = heap.depthAt(slot),
                 )
-                if (z < maxLod && frame.splitPx > PREFETCH_FRACTION * SPLIT_SCREEN_PX) {
+                // "Nearly ready to split" means a tile that stopped for its
+                // *size*, not one the budget refused: prefetching the children of
+                // a budget-truncated leaf asks for exactly what was just declined.
+                if (z < maxLod &&
+                    screenPx > PREFETCH_FRACTION * SPLIT_SCREEN_PX &&
+                    screenPx <= SPLIT_SCREEN_PX
+                ) {
                     nearSplit.addLast(node)
                 }
             }
@@ -285,7 +343,44 @@ internal object Quadtree {
             prefetchBudget -= 4
         }
 
+        // **Sorted by key, not left in traversal order.** GlobeScene builds a
+        // mesh signature from this list and rebuilds the geometry when it
+        // changes, on the argument that the order is a function of the visible
+        // set. Breadth-first made that true by accident; a priority order does
+        // not - it is a function of continuous float priorities, so a sub-pixel
+        // camera move could reorder two near-ties and force a needless rebuild.
+        // Sorting by (z, x, y) makes the order a pure function of the set, which
+        // is strictly stronger than what the FIFO gave, and keeps the
+        // coarse-before-fine property the emitted order used to have.
+        leaves.sortWith(BY_TILE_KEY)
         return leaves
+    }
+
+    /** Ascending pack(z, x, y) - z first, so coarse tiles still come first. */
+    private val BY_TILE_KEY = Comparator<VisibleTile> { a, b ->
+        pack(a.z, a.x, a.y).compareTo(pack(b.z, b.x, b.y))
+    }
+
+    /**
+     * Evaluates (z, x, y) and queues it unless it is culled.
+     *
+     * Culling at **push** time rather than at pop is load-bearing twice over. A
+     * node carries its own priority into the heap rather than inheriting its
+     * parent's, which would tie all four siblings and degrade the order back
+     * toward breadth-first. And the budget gate stops over-charging for nodes
+     * that will never be spent, so more of the atlas reaches real splits. Every
+     * node is still evaluated exactly once; only the moment moves.
+     */
+    private fun pushIfVisible(frame: TraversalFrame, heap: NodeHeap, z: Int, x: Int, y: Int) {
+        if (!tileMetrics(frame, z, x, y)) return
+        heap.push(
+            node = pack(z, x, y),
+            priority = frame.priority,
+            screenPx = frame.screenPx,
+            depth = frame.depth,
+            lonMin = frame.lonMin,
+            lonMax = frame.lonMax,
+        )
     }
 
     // (z, x, y) packed into one Long for the work queue: z at bit 48, x at bit
@@ -339,8 +434,11 @@ internal object Quadtree {
         /** The chord-based screen estimate, for the viewport margin. */
         var screenPx = 0f
 
-        /** The same, scaled by incidence, for the split test. */
-        var splitPx = 0f
+        /**
+         * The same, scaled by incidence — the order the atlas budget is spent
+         * in, **not** a split test. See the class note on incidence.
+         */
+        var priority = 0f
         var depth = 0f
         var lonMin = 0f
         var lonMax = 0f
@@ -401,7 +499,7 @@ internal object Quadtree {
 
         val incidence = if (dist < MIN_DEPTH) 1f else (wx * tx + wy * ty + wz * tz) / dist
         frame.screenPx = screenPx
-        frame.splitPx = screenPx * max(INCIDENCE_FLOOR, incidence)
+        frame.priority = screenPx * max(INCIDENCE_FLOOR, incidence)
         frame.depth = dist
         frame.lonMin = lonMin
         frame.lonMax = lonMax
@@ -468,6 +566,141 @@ internal object Quadtree {
             (maxX + margin) >= 0f &&
             (minY - margin) <= frame.height &&
             (maxY + margin) >= 0f
+    }
+
+    /**
+     * The traversal's work queue, ordered by how much each node deserves the
+     * atlas rather than by how deep it is.
+     *
+     * ### Why an order at all
+     *
+     * The split test asks whether a tile is too big for its texture; the budget
+     * asks who gets one of the atlas's finite slots when not everyone can. Those
+     * are different questions, and only the first is the reference's — it has no
+     * atlas and gates on leaf count alone. At `MAX_TILT` a correct traversal wants
+     * roughly 1,960 non-pinned tiles against 235 slots, an eight-fold shortfall,
+     * so *which* tiles get them is the whole design. Breadth-first spends them
+     * uniformly: when the budget runs out at level k every remaining branch stops
+     * at level k, which is the "everything turns to mush" the incidence term used
+     * to hide by suppressing demand before the budget ever bound.
+     *
+     * Popping the largest `priority` first spends the budget on the near field
+     * and lets the horizon stay coarse, which is what a tilted view should look
+     * like. Incidence belongs *here* — it is a bad predictor of a tile's screen
+     * extent, which is what an SSE test measures, and a good predictor of its
+     * screen area, which is what should decide who gets a scarce slot.
+     *
+     * ### Shape
+     *
+     * An index-ordered binary max-heap over a parallel-array arena, the same
+     * idiom as [LongQueue] and the atlas's intrusive LRU: the heap holds `Int`
+     * record indices, so a sift swaps one `Int` rather than six fields. Records
+     * are append-only — a popped record is never reclaimed, because the caller
+     * reads a node's metrics *after* popping it and the arena is bounded by the
+     * number of nodes ever pushed.
+     *
+     * Allocated per traversal rather than hoisted to object scratch: two test
+     * classes call [collectVisibleTiles], and shared mutable scratch would turn a
+     * parallel test runner into intermittent failures. Seven arrays of 256 is
+     * 8 KB against the ~150 `VisibleTile` the traversal already allocates.
+     */
+    private class NodeHeap(initialCapacity: Int) {
+        private var node = LongArray(initialCapacity)
+        private var priority = FloatArray(initialCapacity)
+        private var screenPx = FloatArray(initialCapacity)
+        private var depth = FloatArray(initialCapacity)
+        private var lonMin = FloatArray(initialCapacity)
+        private var lonMax = FloatArray(initialCapacity)
+
+        /** Record indices, ordered as a binary max-heap over [priority]. */
+        private var order = IntArray(initialCapacity)
+
+        private var records = 0
+
+        var size = 0
+            private set
+
+        val isEmpty: Boolean get() = size == 0
+
+        fun nodeAt(slot: Int): Long = node[slot]
+        fun screenPxAt(slot: Int): Float = screenPx[slot]
+        fun depthAt(slot: Int): Float = depth[slot]
+        fun lonMinAt(slot: Int): Float = lonMin[slot]
+        fun lonMaxAt(slot: Int): Float = lonMax[slot]
+
+        fun push(
+            node: Long,
+            priority: Float,
+            screenPx: Float,
+            depth: Float,
+            lonMin: Float,
+            lonMax: Float,
+        ) {
+            if (records == this.node.size) growRecords()
+            val slot = records++
+            this.node[slot] = node
+            this.priority[slot] = priority
+            this.screenPx[slot] = screenPx
+            this.depth[slot] = depth
+            this.lonMin[slot] = lonMin
+            this.lonMax[slot] = lonMax
+
+            if (size == order.size) order = order.copyOf(order.size * 2)
+            order[size] = slot
+            siftUp(size)
+            size++
+        }
+
+        /** The record index of the highest-priority node, removed from the heap. */
+        fun pop(): Int {
+            val top = order[0]
+            size--
+            if (size > 0) {
+                order[0] = order[size]
+                siftDown(0)
+            }
+            return top
+        }
+
+        private fun siftUp(from: Int) {
+            var i = from
+            val slot = order[i]
+            val key = priority[slot]
+            while (i > 0) {
+                val parent = (i - 1) / 2
+                if (priority[order[parent]] >= key) break
+                order[i] = order[parent]
+                i = parent
+            }
+            order[i] = slot
+        }
+
+        private fun siftDown(from: Int) {
+            var i = from
+            val slot = order[i]
+            val key = priority[slot]
+            while (true) {
+                val left = i * 2 + 1
+                if (left >= size) break
+                val right = left + 1
+                var child = left
+                if (right < size && priority[order[right]] > priority[order[left]]) child = right
+                if (priority[order[child]] <= key) break
+                order[i] = order[child]
+                i = child
+            }
+            order[i] = slot
+        }
+
+        private fun growRecords() {
+            val n = node.size * 2
+            node = node.copyOf(n)
+            priority = priority.copyOf(n)
+            screenPx = screenPx.copyOf(n)
+            depth = depth.copyOf(n)
+            lonMin = lonMin.copyOf(n)
+            lonMax = lonMax.copyOf(n)
+        }
     }
 
     /** A FIFO of packed nodes over a ring of longs: no boxing, no per-node allocation. */

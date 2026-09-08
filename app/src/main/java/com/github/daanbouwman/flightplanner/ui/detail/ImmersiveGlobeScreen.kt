@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -81,9 +83,13 @@ fun ImmersiveGlobeScreen(
     // Full-bleed photograph under the status bar the moment it exists — the
     // one surface in the app that is edge-to-edge imagery throughout. Unlike
     // the deep hero there is no scroll term: the sphere either has imagery or
-    // it does not.
+    // it does not — but past a long-range camera the disc still retreats from
+    // the top of the window and what is under the clock becomes space colour,
+    // so the geometric predicate applies here too.
     var hasImagery by remember { mutableStateOf(false) }
-    SystemBarsOverMedia(active = hasImagery)
+    var imageryReachesTop by remember { mutableStateOf(false) }
+    val statusStripPx = WindowInsets.statusBars.getTop(LocalDensity.current).toFloat()
+    SystemBarsOverMedia(active = hasImagery && imageryReachesTop)
 
     val globeRoute = remember(state.arc, route) {
         state.arc?.let {
@@ -110,7 +116,9 @@ fun ImmersiveGlobeScreen(
             // fades rather than moving off its airport.
             topChromeInset = WindowInsets.safeDrawing.asPaddingValues()
                 .calculateTopPadding() + GlassGutter + ImmersiveControlSize,
+            statusStripPx = statusStripPx,
             onImageryVisible = { hasImagery = it },
+            onImageryReachesTop = { imageryReachesTop = it },
             modifier = Modifier.fillMaxSize(),
             overlay = {
                 // Every control takes the safe-drawing inset itself rather than

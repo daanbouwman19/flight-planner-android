@@ -160,10 +160,9 @@ internal data class GlobeCamera(
         val look = (n * -cT + upBase * sT).normalize()
         val up = (upBase * cT + n * sT).normalize()
 
-        // Camera position on the sphere of radius r. `t` is the camera-to-nadir
-        // distance, from solving |P| = r for P on the look ray through the nadir.
-        val r = distance
-        val t = -cT + sqrt(max(0f, r * r - sT * sT))
+        // Camera position on the sphere of radius r, placed along the look ray
+        // through the nadir at [nadirDistance].
+        val t = nadirDistance()
         val position = n * (1f + t * cT) + upBase * (-t * sT)
 
         return CameraBasis(
@@ -171,8 +170,26 @@ internal data class GlobeCamera(
             up = up,
             look = look,
             position = position,
-            facingUnit = position * (1f / r),
+            facingUnit = position * (1f / distance),
         )
+    }
+
+    /**
+     * How far the camera is from the point directly under it.
+     *
+     * Solved from `|P| = r` for `P` on the look ray through the nadir, which is
+     * also why the nadir is what lands at the centre of the screen at every tilt:
+     * [computeBasis] places the camera *on* that ray. Tilting therefore moves the
+     * camera genuinely further from the ground it is looking at — at altitude
+     * 0.01 this grows from 0.010 at nadir to 0.031 at `MAX_TILT` — which is real
+     * geometry rather than an artefact, and is the reason a tilt-versus-nadir
+     * detail comparison has to hold *this* constant rather than the altitude.
+     */
+    fun nadirDistance(): Float {
+        val sT = sin(tilt)
+        val cT = cos(tilt)
+        val r = distance
+        return -cT + sqrt(max(0f, r * r - sT * sT))
     }
 
     /** Focal length in pixels: half the viewport height over `tan(fovY / 2)`. */
@@ -237,6 +254,41 @@ internal data class GlobeCamera(
         val t = (-b - sqrt(disc)) / a
         if (t < 0f) return null
         return basis.position + dir * t
+    }
+
+    /**
+     * Whether the sphere covers the whole strip the system draws its status-bar
+     * glyphs over.
+     *
+     * The question a host actually needs answered before asking for light
+     * glyphs: at a long-range camera the sphere retreats from the top of the
+     * window and what is painted under the clock is `GlobeInk.space`, which **is**
+     * `colorScheme.surface` in a light theme — light glyphs on a near-white page.
+     *
+     * Asked with the ray [screenToWorld] already casts, rather than off the
+     * projected limb. The limb version scanned every sample for the global
+     * minimum `y`, which ignores `x`: under tilt and bearing the silhouette is a
+     * *rotated* ellipse whose apex can sit far to one side while the sphere at
+     * top-centre, where the clock is, is nowhere near the strip. It also had a
+     * silent cliff — fewer than three samples in front of the camera and it gave
+     * up, even with the sphere filling the viewport. A ray-sphere intersection has
+     * neither problem and is exact at any tilt and bearing.
+     *
+     * **Conservative on purpose.** Every sample must hit, because the two errors
+     * are not equal: a wrongly-dark glyph over imagery is slightly less
+     * contrasty, and a wrongly-light glyph over a white page is invisible.
+     */
+    fun coversStatusStrip(viewport: GlobeViewport, stripPx: Float): Boolean {
+        if (stripPx <= 0f || viewport.width < 1f || viewport.height < 1f) return false
+        // The strip's own corners and midpoints, top and bottom edges. The disc
+        // is convex on screen, so a handful of samples across the rectangle is
+        // enough to say the whole of it is covered.
+        for (col in 0..STRIP_SAMPLES) {
+            val x = viewport.width * col / STRIP_SAMPLES
+            if (screenToWorld(ScreenPoint(x, 0f), viewport) == null) return false
+            if (screenToWorld(ScreenPoint(x, stripPx), viewport) == null) return false
+        }
+        return true
     }
 
     /**
@@ -346,6 +398,9 @@ internal data class GlobeCamera(
     fun isRotated(): Boolean = abs(bearing) > 1e-3f || abs(tilt) > 1e-3f
 
     companion object {
+        /** Columns sampled across the status strip by [coversStatusStrip]. */
+        private const val STRIP_SAMPLES = 4
+
         private const val CULLING_FADE_MARGIN = 0.3f
         private const val NEWTON_ITERATIONS = 4
         private const val PAN_EPS_DEGREES = 0.005f

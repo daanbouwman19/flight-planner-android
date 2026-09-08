@@ -1778,10 +1778,10 @@ seconds: **184 jiffies at rest before, 0 after**, and 28 with the hero scrolled
 off. The globe still wakes on a drag, on the zoom controls and on a tile
 arriving.
 
-### The material toolchain is not in the build
+### The material toolchain is not in the build — but a stale `.filamat` now fails one
 
-`src/main/materials/*.mat` are compiled to the committed `src/main/assets/materials/*.filamat`
-by hand, with:
+`src/main/materials/*.mat` are still compiled to the committed
+`src/main/assets/materials/*.filamat` by hand, with:
 
 ```
 matc --platform=mobile --api=opengl --api=vulkan -o <out>.filamat <in>.mat
@@ -1789,8 +1789,30 @@ matc --platform=mobile --api=opengl --api=vulkan -o <out>.filamat <in>.mat
 
 `matc` ships in the Filament release archive (`filament-<version>-windows.tgz`),
 not in the AAR, so it is not on any developer machine by default and there is no
-Gradle task for it. **A change to a `.mat` that is not recompiled by hand ships the
-old shader and nothing says so.** Wiring this into the build is outstanding.
+Gradle task that recompiles them. **What is closed** is the forgotten-recompile
+path — and it took two halves, because a checksum manifest on its own attests
+file identity rather than the compile relationship:
+`:feature:globe:verifyFilamatFreshness` (wired into `check`, so `./gradlew build`
+runs it) hashes each `.mat` and each `.filamat` against a committed manifest,
+`src/main/materials/checksums.txt`, and fails the build naming any pair that has
+drifted — a `.mat` edited without its `.filamat` regenerated, or either file
+changed out from under the manifest. After a legitimate `matc` recompile,
+`./gradlew :feature:globe:updateFilamatChecksums` rewrites the manifest and it is
+committed with the new blob — the same regenerate-and-commit shape the baseline
+profile already has.
+
+**And `updateFilamatChecksums` refuses to bless a lie.** Regenerating the manifest
+after editing a `.mat` *without* recompiling would otherwise record the new source
+hash beside the unchanged blob and leave the guard permanently blind to that
+material — the exact hole a review found. A real `matc` run on a changed source
+produces a different blob, so the task fails when a `.mat` moved and its
+`.filamat` did not, printing the `matc` line; `-PallowUnchangedFilamat=true` is
+the escape hatch for an edit that genuinely compiles to identical bytes. All three
+behaviours are verified by planting the violation, per CLAUDE.md.
+
+A checksum manifest rather than a `matc` integration because `matc` cannot be
+assumed present; wiring `matc` itself into the build is still outstanding but no
+longer load-bearing.
 
 ### Chrome over a photograph
 
@@ -1930,8 +1952,8 @@ Fourteen dimensions looking inside `:feature:globe` found none of these.
 
 | Symptom | Cause |
 | --- | --- |
-| The globe arrives as a hard cut, and G8's crossfade does not exist | The fade is `graphicsLayer { alpha = … }` on the `AndroidView` hosting a Z-below `SurfaceView`. `CompositingStrategy.Auto` sets `hasOverlappingRendering`, so alpha < 1 renders the node offscreen and the surface's `PorterDuff.CLEAR` hole punch only zeroes the offscreen. The same mechanism defeats the predictive-back fade. |
-| The rim and its glow break by 160–300 px whenever the view is tilted | `Limb.projectInto` drops points behind the camera plane with `continue` and writes the survivors **compacted**, so the consumer cannot tell the run was broken and draws a straight segment across the gap. |
+| The globe arrives as a hard cut, and G8's crossfade does not exist | The fade is `graphicsLayer { alpha = … }` on the `AndroidView` hosting a Z-below `SurfaceView`, and **a Compose alpha never reaches a separate compositor layer**. The same is true of a Compose *clip*, which is the bug recorded under *A SurfaceView cannot be clipped* below. (This row used to explain itself via "the surface's `PorterDuff.CLEAR` hole punch only zeroes the offscreen". On the pinned SDK the punch is `Canvas.punchHole`, which hwui propagates, so that sentence is wrong and must not be re-used — the layer, not the punch, is the reason.) |
+| ~~The rim and its glow break by 160–300 px whenever the view is tilted~~ **Fixed 2026-09-08.** | `Limb.projectInto` dropped points behind the camera plane with `continue` and wrote the survivors **compacted**, so the consumer could not tell the run was broken and drew a straight segment across the gap. It now writes all `SAMPLES` slots, `(NaN, NaN)` for a culled point, and returns only the count in front of the camera; `limbPath` in `GlobeSurface` starts the walk just after the gap, lifts the pen across it, and closes only when nothing was culled. `LimbTest` (new — `Limb` had no test file) pins the contiguous-run and NaN-in-place contract. |
 | Tile thrash of exactly the kind `MAX_VISIBLE_TILES = 160` was set to prevent | The budget counted leaves, but `request` fires for every visited node and every non-pinned ancestor takes a slot. Counted by porting `collectVisibleTiles`: **227 distinct requested keys** against `SLOTS − PINNED_SLOTS` = 171. |
 | Two surfaces drawing each other's tiles | `GlobeScene` is a process singleton but `lastVisibleSignature`, `lastBuiltGeneration` and the tile buffers are per-scene, not per-view. Every hero↔immersive transition, and every held predictive-back drag, has two attached views selecting different LOD (`focalPixels` is height-dependent) and invalidating each other. |
 | The ribbon re-derived from scratch every frame for every leg | `appendArc` allocates roughly ten short-lived `Vec3` per visible sample and `rebuildRibbon` runs unconditionally, against a KDoc claiming "one pass over 256 points… a few microseconds". |
@@ -2068,44 +2090,245 @@ something, with the state after *The overhaul*:
    (9.3.2 → 9.4.0) is kept rather than reverted: nothing in the globe needs it,
    but it was already merged and green, and reverting a working toolchain for
    tidiness costs a decision nobody would then own.
-7. **New, from the overhaul's own screenshots:** a label plate can sit under the
-   camera stack on the hero (`GlobeLabels` fades a plate that rises into the top
-   chrome and knows nothing about the bottom-right controls); the Esri offline-
-   cache clause to confirm in writing (PLAN.md §11); the 3 ms upload budget and
-   `INCIDENCE_FLOOR` are unmeasured on hardware.
+7. **New, from the overhaul's own screenshots:** ~~a label plate can sit under
+   the camera stack on the hero~~ — fixed 2026-09-08. `GlobeCameraControls` and
+   `GlobeAttribution` report their own `boundsInParent()` (guarded against
+   thrash) into `GlobeControlsHandle`; `GlobeLabels` fades a plate whose dot
+   projects into either reserved rect, `cornerAlpha` — the same "case 2" drop
+   the top inset gets, starting one plate-height above the rect so the plate
+   that hangs below the dot clears it too. Measured bounds rather than dp
+   constants because the credit plate grows at font scale 2.0 and the stack
+   grows a cell when the view is rotated. `cornerAlpha` is pure and tested
+   (`GlobeLabelsAlphaTest`). Still open: the Esri offline-cache clause to
+   confirm in writing (PLAN.md §11); the 3 ms upload budget and `INCIDENCE_FLOOR` — which turned out to be the wrong knob entirely, see *Tilt destroyed the LOD* — unmeasured on hardware.
+
+### A `SurfaceView` cannot be clipped, and that was the white flash
+
+The user reported the Stats globe "sometimes turns white when scrolling while
+still a part is on the screen", and narrowed it: **only while actively pulling at
+the end, so the page stretches.** Reproduced on the SM-S942B, and pre-existing —
+identical on a clean `HEAD`.
+
+**One cause, two symptoms.** A `SurfaceView` is a separate compositor layer, so
+nothing Compose does to its ancestors reaches it. Where an ancestor clip cannot be
+reduced to a plain rectangle the platform stops cropping the layer at all and
+composites the **whole buffer at its unclipped position** — in a `LazyColumn` that
+put the 260 dp band over the card's own header and up across the status bar. The
+overscroll stretch is a `RenderEffect`, a non-affine warp the layer cannot follow
+either, so pulling at the end toggled that same layer's visibility: imagery,
+page, imagery, several times a second. **No Filament call is in that loop**, which
+is why logcat was silent and why the absent `FEngine` line proved nothing.
+
+Two hypotheses were tested on the device and **both refuted**: it is not
+`fadeUnderStatusBar`'s `CompositingStrategy.Offscreen` layer (the spill is
+identical with it gone) and not the `Card`'s rounded clip (identical with a
+`RectangleShape`). Nor is it reachable from app code:
+`SurfaceView.setClipBounds` is inert without the `@hide`
+`setEnableSurfaceClipping`, and `setCornerRadius` is `@hide` *and* disables the
+automatic crop outright. Disabling overscroll would work and is rejected — it
+fights Material 3 Expressive.
+
+**So the surface type is the fix, not a workaround around it.** `GlobeRenderHost`
+now holds everything that renders — swap chain, renderer, camera, ribbon, frame
+loop, settled test, teardown ordering — and the view is a dozen lines of lifecycle
+forwarding on top of it. There are two: `GlobeSurfaceView` keeps the below-window
+hole punch for the full-bleed hosts (route-detail hero, immersive), where it is
+free and nothing clips it; `GlobeTextureView` draws as ordinary view content for
+the one *embedded* host, the Stats band, at the cost of a copy per frame. One
+`embedded` flag at that call site selects the view **and** the longer session
+teardown grace, because both follow from the same fact.
+
+Verified on device: zero `SurfaceControl`s for the Stats globe, no white frames
+across a sustained pull at the end of the list, and the route-detail hero still on
+its three `SurfaceView` layers.
+
+**It also closed a bug nobody had filed.** `fadeUnderStatusBar` erases content
+passing under the clock with a `DstIn` blend in the window's own layer — which
+could never reach a compositor layer, so the globe was the one thing in the app
+exempt from it. Measured down from the top of the screen, the band now reads
+233 → 179 → 138 → 115 → 108 → 88: the globe dissolves under the status bar like
+every other card, which is the "system bars stay empty" invariant finally applying
+to the one surface that is a photograph.
+
+**Still owed:** the `TextureView`'s frame cost is unmeasured. It is a copy per
+frame on the UI thread's hardware canvas over a 260 dp band, very likely fine and
+not yet proved — `:macrobenchmark` over a Stats scroll, which H2 owes anyway.
+
+### Tilt destroyed the LOD, and the obvious fix made it worse
+
+Reported from the device: *"LOD also fails when using tilt and everything gets
+lower res the farther I tilt until everything is just a blob of pixels."*
+
+**The defect** was one multiplier, `Quadtree.kt:404`, scaling the screen-space
+error by the incidence at the tile's centre. At the screen centre that is exactly
+`cos(tilt)`, so at `MAX_TILT` it was 0.309 — two LOD levels, a four-fold blur,
+sweeping in from the horizon. The Rust reference has no such term and splits on
+raw `screen_px`; everything else in the arithmetic was already byte-for-byte the
+same, so this was the single divergence in the whole metric. `INCIDENCE_FLOOR`
+never engaged, so §9's open item about it was aimed at the wrong knob. The
+paragraph arguing for the term refuted itself in its own last sentence — it kept
+the *unscaled* estimate for the viewport margin "because that margin is about the
+tile's extent on screen, which incidence does not shrink", and a split test is
+equally an extent test.
+
+**Deleting it alone regresses**, which is the part worth remembering. The term was
+introduced as an atlas *demand reducer*, not a resolution feature. Without it a
+correct traversal at `MAX_TILT` wants ~1,960 non-pinned tiles against 235
+evictable slots, the breadth-first walk hits `withinAtlas`, and every remaining
+branch stops at the same level: median leaf z8 → **z7**, worse than the bug.
+
+**So the metric and the spend order changed together.** The split test is the
+reference's again — raw `screenPx`, which `chord` already takes as
+`max(ewArc, nsArc)` — and incidence moved from the *gate* to the *spend order*:
+the traversal is now a max-heap on `screenPx × max(INCIDENCE_FLOOR, incidence)`,
+so the scarce slots go to the near field and the horizon stays coarse. Incidence
+is a bad predictor of a tile's screen *extent*, which is what an SSE test
+measures, and a good predictor of its screen *area*, which is what a budget
+should ask. Culling moved from pop time to push time — load-bearing twice: a node
+carries its own priority rather than its parent's, and the budget gate stops
+over-charging for nodes that will never be spent.
+
+Leaves are now **sorted by `(z, x, y)`** before returning. Breadth-first order was
+a function of the visible set by accident, which is what `GlobeScene`'s mesh
+signature relies on; a priority order is a function of continuous float
+priorities, so without the sort a sub-pixel camera move could rebuild geometry
+that had not changed.
+
+**Measured, in Kotlin, not from a desk estimate:**
+
+| | before | after |
+| --- | --- | --- |
+| `TiltDetailTest` A — the metric, atlas out of the way | 8 of 25 cells fail | all 25 pass |
+| `TiltDetailTest` B — near field under the real budget | **4 levels** of blur | **2 levels** |
+| mesh worst case | — | 16,672 vertices / 73,512 indices against 40,000 / 192,000 |
+
+**Re-tuning: nothing changed, and that is a measurement.** Sweeping
+`evictableSlots` at the worst case gives z9 at 171, 235, 251, 470 *and* 4096 —
+dropping the pinned floor from z2 to z1 buys 16 slots and zero levels while
+costing the z2 fallback crop. `MAX_VISIBLE_TILES` stays 256 (worst leaf count 174)
+but its KDoc now records that it becomes the binding constraint the moment the
+atlas grows. A second 4096² atlas page is worth about one level at extreme tilt
+and is named as a deliberate deferral.
+
+**The test that was missing.** `QuadtreeTest` had eleven cases and none compared
+leaf depth under tilt against nadir — and one of them was *propped up by the bug*:
+the atlas-budget assertion passes more comfortably when the view coarsens, because
+coarsening reduces requests. Its KDoc now says the bound is a proof rather than a
+measurement, and says what used to be holding it up. `TiltDetailTest` is new and
+was written **against the unchanged traversal first**, where it failed on exactly
+the 8 cells and the 4-level deficit the analysis predicted. Neither existing test
+was deleted, ignored or weakened; two had their *rationale* rewritten because the
+reason they hold changed.
+
+Note also that a tilt-versus-nadir comparison cannot hold *altitude* constant:
+`GlobeCamera.nadirDistance()` (extracted for this) grows from 0.010 to 0.031
+between tilt 0 and `MAX_TILT`, so some of the centre deficit is correct geometry.
+Case A holds the camera-to-ground distance constant; case B probes the near field.
+
+**Verified on the device by the user**: tilting no longer drops the map's
+resolution. **Not verified:** frame timing on `benchmarkRelease`, and the atlas at
+its new operating point — occupancy moves 228/235 → **235/235**, so the slack that
+used to mask thrash is gone. It is structurally safe (the gate proves
+`requested + queued ≤ evictable` at every step) but wants a parked tilted camera
+and a look at `TileStats.pending` settling to zero and staying there.
+
+**A cost worth stating rather than burying:** over an 8,064-camera sweep, 74 cells
+regress by exactly one level — mid-field, at tilt ≥ 1.0, where the budget is
+genuinely zero-sum. The trade is mid-field for near-field, and near-field is what
+was reported.
+
+**Separable follow-up:** `TileQueue.pop` takes `pollLast` within a level, which
+with the new order systematically fetches the *least* important newly-appeared
+tile of each level first. Recording the visited nodes and issuing `request` in
+reverse after the traversal fixes it. Small, and independent of this change.
+
+### Five review findings against the fixes themselves
+
+`/code-review` over the Phase G cleanup returned five, and two were real
+behavioural defects of the same shape: **a predicate that uses a point but ignores
+an extent.**
+
+- **The status-glyph predicate scanned the limb for its minimum `y`.** A minimum
+  over `y` says nothing about `x`, and the disc reaches the top of the window well
+  before it is wide enough to span it — so an apex above the strip was read as the
+  strip being covered, which is the same false positive one layer down from the
+  one it replaced. It also had a silent cliff at fewer than three visible samples.
+  Both dissolve into `GlobeCamera.coversStatusStrip`, which asks the question with
+  the ray `screenToWorld` already casts: exact at any tilt and bearing, no
+  polygon, no cliff, and conservative on purpose — every sample must hit, because
+  a wrongly-dark glyph is slightly less contrasty while a wrongly-light one is
+  invisible. `Limb.discReachesTop` is deleted; the NaN-gap fix it sat beside
+  stays, since that one is for the rim.
+
+  **A correction to the review, and to my own repetition of it.** It described the
+  case as a tilted, rotated ellipse whose apex swings off-axis. A sweep of
+  altitudes 0.6–2 × bearings 0.5–2.2 × tilts 0.4–`MAX_TILT` found no such camera;
+  what makes the defect reachable is the plain narrow-disc case at altitude 1.
+  Recorded because the fix is the same either way and the reason for it should be
+  the true one. `StatusStripCoverageTest` measures the real case, and also pins
+  something counter-intuitive found while writing it: leaning toward the horizon
+  *uncovers* the strip even 0.05 above the surface, because the horizon is then
+  inside the window and the top of the screen really is sky.
+
+- **`cornerAlpha` tested the label dot against the bare rect.** `Plate` centres a
+  code on its dot, so a dot just outside the camera stack still drew the inner half
+  of that code over it — the exact overlap the fade exists to prevent. The span is
+  now the rect widened by `PlateHalfWidth`, the horizontal twin of the
+  `plateReservePx` slack `edgeAlpha` already had. **One existing case in
+  `GlobeLabelsAlphaTest` asserted the defect** — "a dot beside the stack is
+  untouched" — and was changed deliberately rather than quietly, with the reason
+  in its KDoc.
+
+- **The `.filamat` guard's docs overstated it**; see *The material toolchain* above
+  for the two halves that closed it.
+- **A silent cliff** in the same predicate, and **a duplicated bounds-reporting
+  modifier** in `GlobeControls`, both folded in.
 
 Still outstanding from the first pass, unchanged:
 
-- **The Stats card in Globe mode, on a device with a populated logbook.** It is
-  deliberately full-bleed and square-cornered, because a Compose `clip` is a
-  render-node clip and does not reach a `SurfaceView` composited below the
-  window — that reasoning is written down but has not been seen.
+- ~~**The Stats card in Globe mode, on a device with a populated logbook.**~~
+  Seen 2026-09-08, and the reasoning was right but stopped one step short. A
+  Compose `clip` does not reach a below-window `SurfaceView` — so it does not
+  round the corners, *and it does not bound the position either*. See **A
+  SurfaceView cannot be clipped** below.
 - **H2's extension of `:macrobenchmark` to the globe**, and a check that nothing
   in the globe path has moved into `Application.onCreate`.
 - **The Esri question above**, unchanged.
-- **Nothing makes a stale `.filamat` fail a build.** The `.mat` sources are
-  compiled by hand and no hash or manifest exists to catch a source newer than its
-  blob. They are in sync today; nothing keeps them so.
+- ~~**Nothing makes a stale `.filamat` fail a build.**~~ Fixed 2026-09-08.
+  `:feature:globe:verifyFilamatFreshness`, wired into `check`, hashes each
+  `.mat`/`.filamat` pair against `src/main/materials/checksums.txt` and fails on
+  any drift; `updateFilamatChecksums` rewrites the manifest after a hand recompile.
+  See "The material toolchain is not in the build" above.
 
 Found while fixing item 2 above, not fixed:
 
-- **Past roughly 8,200 km the top of the globe is `GlobeInk.space`, which *is*
-  `colorScheme.surface`.** `imageryCovers` answers "is the hero's imagery still
-  behind this strip", and at that range it correctly is — the still map or the
-  tile mesh genuinely reaches the top — but what is painted there is the ink's
-  own space colour, indistinguishable from the page in a light theme. Light
-  status glyphs are then wrong for a reason geometry, not scroll position,
-  would have to answer: whether the sphere's projected disc actually reaches
-  the status strip at the current camera. Needs `Limb`'s own projection, not a
-  height measurement, and is more than this item asked for.
-- **The Stats card's `GlobeSession` is rebuilt on an ordinary scroll.** It is a
-  `LazyColumn` item, so it is disposed the moment it leaves the viewport, and
-  the 2 s deferred-teardown window — sized for a navigation's compose-then-
-  dispose, not for a list scroll — routinely expires before the card scrolls
-  back into view. Item 5's fix does not touch this: `forceTeardown` and
-  `reacquireIfNeeded` exist for the *backgrounding* case, where the view never
-  detaches at all; here it genuinely does, and `release()`'s own timer is just
-  too short for how far a `LazyColumn` can move in under two seconds.
+- ~~**Past roughly 8,200 km the top of the globe is `GlobeInk.space`, which *is*
+  `colorScheme.surface`.**~~ Fixed 2026-09-08, and it did need `Limb`'s own
+  projection rather than a height measurement. `GlobeSurface` now projects the
+  limb on a *settled* camera (`collectLatest` + a 150 ms delay over
+  `snapshotFlow { camera }`) and reports `Limb.discReachesTop(points, valid,
+  statusStripPx)` — whether the top of the projected disc is above the status
+  inset — through a new `onImageryReachesTop` callback. `RouteDetailScreen` and
+  `ImmersiveGlobeScreen` AND that Boolean into what they pass to
+  `SystemBarsOverMedia`, so at a long-range camera, where `imageryCovers` still
+  says the box is covered, the glyphs stay the theme's own. Only the Boolean
+  crosses to `:app` — no per-frame float in the host's recomposition.
+  `discReachesTop` is a pure function, tested in `LimbTest`.
+  The `Limb.projectInto` fix (compaction → NaN gaps) landed with this and is
+  recorded under "Rendering and geometry" above.
+- ~~**The Stats card's `GlobeSession` is rebuilt on an ordinary scroll.**~~ Fixed
+  2026-09-08. `GlobeSession.release` now takes a grace, and `GlobeSurface` /
+  `GlobeNetworkSurface` a `retainAcrossScroll` flag — set only by the Stats
+  visited-network band, the one globe hosted directly in a `LazyColumn` item —
+  which raises the teardown window to 20 s (`GlobeSession.graceFor`), long enough
+  to cover a scroll to the end of a Stats list and back. `retainAcrossScroll` is
+  deliberately a separate flag from `nestedVerticalScroll`: the route hero passes
+  the latter but sits in a `Column(verticalScroll)`, which never disposes its
+  off-screen children, so it keeps the prompt 2 s default. The cost is the 32 MB
+  atlas held 20 s rather than 2 s when the card is closed for good — bounded, and
+  paid in memory instead of a main-thread `Filament.init()` + `Engine.build()` +
+  4096² allocation. JVM-tested at the `graceFor` boundary; the timer itself is a
+  device check (`adb logcat -s GlobeSession Filament`).
 
 ---
 

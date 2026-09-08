@@ -84,6 +84,15 @@ class QuadtreeTest {
      * phone-sized viewport used to request 238 distinct tiles above the pinned
      * floor against 171 evictable slots, so on a parked camera the atlas evicted
      * the fallback pyramid itself, six tiles a frame, forever.
+     *
+     * **This is a proof, not a measurement, and it used to be propped up by a
+     * bug.** Subdivision is gated on `requested + queued + 4 <= evictableSlots`
+     * before every split and neither term can grow otherwise, so the ceiling
+     * cannot be crossed — a sweep that comes back at exactly the ceiling is the
+     * gate working, not nearly failing. Worth saying because for a while this
+     * passed comfortably for the wrong reason: the split test scaled its estimate
+     * by incidence, coarsening the whole view under tilt, and coarsening reduces
+     * requests. The defect was holding the assertion up. See `TiltDetailTest`.
      */
     @Test
     fun `a frame never asks the atlas for more than it can hold`() {
@@ -145,13 +154,20 @@ class QuadtreeTest {
 
     /**
      * The scene's mesh signature is order-sensitive, so the order has to be a
-     * function of the set alone. Breadth-first emission is: every leaf at one
-     * level comes before any at the next, and two traversals of one camera
-     * agree exactly. The back-to-front sort that used to follow changed the
-     * order on 49 of 60 frames of a slow pan in which the set changed on 7.
+     * function of the set alone. The back-to-front sort that used to follow the
+     * traversal changed the order on 49 of 60 frames of a slow pan in which the
+     * set changed on 7.
+     *
+     * **The property is the same; what guarantees it changed.** Breadth-first
+     * emission used to give it for free — every leaf at one level before any at
+     * the next. The traversal is now ordered by screen-space error, which is a
+     * function of continuous float priorities rather than of the set, so the
+     * leaves are explicitly sorted by `(z, x, y)` before they are returned. That
+     * is strictly stronger than what the FIFO gave, and it keeps both halves of
+     * this assertion true: coarse before fine, and one camera one order.
      */
     @Test
-    fun `leaves come back coarse to fine in traversal order, and the same set gives the same order`() {
+    fun `leaves come back coarse to fine, and the same set gives the same order`() {
         val camera = GlobeCamera(centerLat = 30f, centerLon = 10f, altitude = 0.3f, tilt = 0.8f)
         val frame = collect(camera)
         frame.leaves.zipWithNext().forEach { (before, after) ->
