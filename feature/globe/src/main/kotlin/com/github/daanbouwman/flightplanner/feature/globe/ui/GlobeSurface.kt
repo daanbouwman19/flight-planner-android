@@ -16,10 +16,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -55,7 +57,11 @@ import com.github.daanbouwman.flightplanner.feature.globe.math.latLonToWorld
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeInk
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSession
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSupport
+import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeHostView
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSurfaceView
+import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeTextureView
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.roundToInt
 
 /**
@@ -216,6 +222,20 @@ fun GlobeSurface(
      */
     nestedVerticalScroll: Boolean = false,
     /**
+     * True when the host disposes and recomposes this globe as it scrolls — a
+     * `LazyColumn` item does, a `Column(verticalScroll)` does not. It lengthens
+     * the session's teardown grace so scrolling the card out of view and back
+     * does not rebuild the engine and the 32 MB atlas. See
+     * [com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSession.graceFor].
+     */
+    embedded: Boolean = false,
+    /**
+     * The height, in px, of the strip the *system* paints its status-bar glyphs
+     * over — the status inset alone. When it is greater than zero the surface
+     * reports [onImageryReachesTop]; zero switches that reporting off.
+     */
+    statusStripPx: Float = 0f,
+    /**
      * Called with `true` once the globe's own imagery — not the still map — is
      * the whole picture under [topChromeInset], and `false` the moment that
      * stops being true: before the first tile, while there is no renderer, and
@@ -224,6 +244,14 @@ fun GlobeSurface(
      * [com.github.daanbouwman.flightplanner.core.designsystem.theme.SystemBarsOverMedia].
      */
     onImageryVisible: (Boolean) -> Unit = {},
+    /**
+     * Called with whether the sphere's projected disc actually reaches above
+     * [statusStripPx] on a *settled* camera. The host ANDs this with its own box
+     * geometry: past a long-range camera the disc retreats from the top strip
+     * and what is under the clock is space colour, not a photograph, so light
+     * glyphs would be wrong. Only meaningful while [statusStripPx] > 0.
+     */
+    onImageryReachesTop: (Boolean) -> Unit = {},
     /** Placed over the globe, inside the same box — controls, a title, chips. */
     overlay: @Composable BoxScope.() -> Unit = {},
     /** The still map: drawn over the globe until the first tiles land, then faded out; the whole picture where there is no renderer. */
@@ -259,7 +287,10 @@ fun GlobeSurface(
         controls = controls,
         interactive = interactive,
         nestedVerticalScroll = nestedVerticalScroll,
+        embedded = embedded,
+        statusStripPx = statusStripPx,
         onImageryVisible = onImageryVisible,
+        onImageryReachesTop = onImageryReachesTop,
         markers = { cameraState, viewport, primary, tertiary ->
             GlobeLabels(
                 departure = GlobeLabel(route.departureIcao, depWorld, primary),
@@ -268,6 +299,10 @@ fun GlobeSurface(
                 viewport = viewport,
                 modifier = Modifier.fillMaxSize(),
                 topChromeInset = topChromeInset,
+                reservedCorners = listOfNotNull(
+                    controls?.reservedControlsBounds?.takeUnless { it.isEmpty },
+                    controls?.reservedCreditBounds?.takeUnless { it.isEmpty },
+                ),
             )
         },
         overlay = overlay,
@@ -297,6 +332,8 @@ fun GlobeNetworkSurface(
     interactive: Boolean = true,
     /** See [GlobeSurface]. The Stats band sits in a `LazyColumn`, which is what this is for. */
     nestedVerticalScroll: Boolean = false,
+    /** See [GlobeSurface]. The Stats band is a `LazyColumn` item, so this is `true` there. */
+    embedded: Boolean = false,
     /** See [GlobeSurface]. */
     onImageryVisible: (Boolean) -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit = {},
@@ -326,7 +363,10 @@ fun GlobeNetworkSurface(
         controls = controls,
         interactive = interactive,
         nestedVerticalScroll = nestedVerticalScroll,
+        embedded = embedded,
+        statusStripPx = 0f,
         onImageryVisible = onImageryVisible,
+        onImageryReachesTop = {},
         markers = { cameraState, viewport, primary, _ ->
             GlobeNodes(
                 nodes = network.nodes,
@@ -373,7 +413,10 @@ private fun GlobeCanvas(
     controls: GlobeControlsHandle?,
     interactive: Boolean,
     nestedVerticalScroll: Boolean,
+    embedded: Boolean,
+    statusStripPx: Float,
     onImageryVisible: (Boolean) -> Unit,
+    onImageryReachesTop: (Boolean) -> Unit,
     markers: @Composable (GlobeCameraState, GlobeViewport, Color, Color) -> Unit,
     overlay: @Composable BoxScope.() -> Unit,
     content: @Composable () -> Unit,
@@ -383,6 +426,7 @@ private fun GlobeCanvas(
     // recomposition (every host here does) must not restart them for that
     // reason alone.
     val latestOnImageryVisible by rememberUpdatedState(onImageryVisible)
+    val latestOnImageryReachesTop by rememberUpdatedState(onImageryReachesTop)
     val context = LocalContext.current
     // **Acquired in the effect, not in `remember`.** A `remember` runs during
     // composition and a `DisposableEffect` only when that composition is applied,
@@ -424,7 +468,7 @@ private fun GlobeCanvas(
 
         onDispose {
             processLifecycle.removeObserver(observer)
-            if (held != null) GlobeSession.release()
+            if (held != null) GlobeSession.release(GlobeSession.graceFor(embedded))
             held = null
         }
     }
@@ -564,7 +608,46 @@ private fun GlobeCanvas(
     // The screen this surface was on is going away, or the session under it
     // changed: either way it is no longer imagery under anyone's status bar.
     DisposableEffect(session) {
-        onDispose { latestOnImageryVisible(false) }
+        onDispose {
+            latestOnImageryVisible(false)
+            latestOnImageryReachesTop(false)
+        }
+    }
+
+    // **Does the sphere's projected disc actually reach the status strip?**
+    // The host's own `imageryCovers` is box geometry — true whenever the hero is
+    // tall enough — but past a long-range camera the sphere retreats from the
+    // top of that box and what is painted under the clock is `GlobeInk.space`,
+    // which is `colorScheme.surface` in a light theme. Light status glyphs are
+    // then wrong. This answers the geometric question the host cannot: it
+    // projects the limb (gap-aware — see [Limb]) on a *settled* camera and
+    // reports whether the top of the disc is above [statusStripPx]. Only the
+    // Boolean crosses back to `:app`, so a fling never lands a per-frame float
+    // in the host's recomposition. Unconditionally composed — the `remember`
+    // slot count must not depend on [statusStripPx], which is zero for hosts
+    // that do not care and can change on a rotation; `discReachesTop` is false
+    // for a zero strip anyway.
+    val limbScratch = remember { FloatArray(Limb.SAMPLES * 2) }
+    LaunchedEffect(cameraState, statusStripPx) {
+        if (statusStripPx <= 0f) {
+            latestOnImageryReachesTop(false)
+            return@LaunchedEffect
+        }
+        // `collectLatest` + `delay` is the settle: a new camera cancels the
+        // pending evaluation, so the predicate is computed once the movement
+        // stops rather than every frame of a pan or a fling.
+        snapshotFlow { cameraState.camera to viewport }
+            .collectLatest { (cam, vp) ->
+                delay(SettleDebounceMs)
+                if (vp.width < 1f || vp.height < 1f) {
+                    latestOnImageryReachesTop(false)
+                    return@collectLatest
+                }
+                val valid = Limb.projectInto(cam, cam.computeBasis(), vp, limbScratch)
+                latestOnImageryReachesTop(
+                    Limb.discReachesTop(limbScratch, valid, statusStripPx),
+                )
+            }
     }
 
     // Binding rather than a side effect: the handle holds no state of its own,
@@ -580,7 +663,15 @@ private fun GlobeCanvas(
     // same reason. The globe owns its box and nothing it draws leaves it.
     Box(modifier = modifier.clipToBounds()) {
         AndroidView(
-            factory = { ctx -> GlobeSurfaceView(ctx) },
+            // **Which view, and why it is not a detail.** A full-bleed globe gets
+            // a below-window `SurfaceView` and its free hole punch; a globe
+            // embedded in ordinary clipped, scrolling content gets a
+            // `TextureView`, because a compositor layer cannot be clipped by its
+            // Compose ancestors and composites its whole buffer at its unclipped
+            // position instead. See both classes.
+            factory = { ctx ->
+                if (embedded) GlobeTextureView(ctx) else GlobeSurfaceView(ctx)
+            },
             // **Every callback is re-bound here, not once in `factory`.**
             // `cameraState` and `firstImagery` are `remember(session)`-keyed, so
             // a session rebuilt after a background teardown replaces both — and
@@ -591,10 +682,15 @@ private fun GlobeCanvas(
             // stuck in the "no imagery yet" state, because `onFirstImagery`
             // was setting a dead flag.
             update = { view ->
-                view.cameraProvider = { cameraState.camera }
-                view.onFirstImagery = { firstImagery = true }
-                view.onViewportChanged = { viewport = it }
-                view.onScreen = onScreen
+                // The factory returns one of two unrelated View subclasses, so
+                // the common type Compose infers is `android.view.View`; the
+                // renderer they share is reached through [GlobeHostView].
+                val host = (view as GlobeHostView).host
+                host.cameraProvider = { cameraState.camera }
+                host.onFirstImagery = { firstImagery = true }
+                host.onViewportChanged = { viewport = it }
+                host.onScreen = onScreen
+                host.embedded = embedded
             },
             modifier = Modifier
                 .fillMaxSize()
@@ -714,6 +810,29 @@ class GlobeControlsHandle internal constructor(
     internal fun bind(state: GlobeCameraState, fitted: GlobeCamera) {
         this.state = state
         this.fitted = fitted
+    }
+
+    /**
+     * Where the host has placed its own chrome over the imagery, in the globe
+     * box's own pixels — so a label plate whose airport projects behind the
+     * camera stack or the imagery credit fades out rather than drawing its code
+     * under a control. Written by [GlobeCameraControls] / [GlobeAttribution]
+     * through their `boundsReporter`, read by [GlobeLabels]. Empty until those
+     * lay out, and on a host that does not report (the immersive screen folds
+     * its top-right stack into `topChromeInset` instead).
+     */
+    var reservedControlsBounds: Rect by mutableStateOf(Rect.Zero)
+        private set
+    var reservedCreditBounds: Rect by mutableStateOf(Rect.Zero)
+        private set
+
+    /** Change-guarded: a layout-phase write read during composition thrashes otherwise. */
+    fun reportControlsBounds(bounds: Rect) {
+        if (bounds != reservedControlsBounds) reservedControlsBounds = bounds
+    }
+
+    fun reportCreditBounds(bounds: Rect) {
+        if (bounds != reservedCreditBounds) reservedCreditBounds = bounds
     }
 
     /** Degrees the view is turned from north, for the compass needle. */
@@ -861,18 +980,9 @@ private fun LimbOverlay(
             // invalidates the drawing and nothing else, so a fling redraws the
             // rim without recomposing anything.
             val camera = cameraState.camera
-            val count = Limb.projectInto(camera, camera.computeBasis(), viewport, points)
-            if (count < 3) return@drawWithContent
-
-            val path = Path().apply {
-                moveTo(points[0], points[1])
-                for (i in 1 until count) lineTo(points[i * 2], points[i * 2 + 1])
-                // Closed only when the whole ring survived projection. At high
-                // tilt part of the limb is behind the camera and the run is
-                // genuinely open; closing it there draws a chord across the
-                // planet.
-                if (count == Limb.SAMPLES) close()
-            }
+            val valid = Limb.projectInto(camera, camera.computeBasis(), viewport, points)
+            if (valid < 3) return@drawWithContent
+            val path = limbPath(points, valid)
             drawPath(
                 path = path,
                 color = ink.atmosphere.copy(alpha = AtmosphereAlpha),
@@ -893,6 +1003,43 @@ private fun LimbOverlay(
             )
         },
     )
+}
+
+/**
+ * The projected limb as a [Path], from the `x, y` pairs [Limb.projectInto] wrote.
+ *
+ * NaN pairs are gaps — the arc of the ring that is behind the camera — and the
+ * pen lifts across them. The walk starts just after a gap so a visible arc that
+ * straddles index 0 is still one polyline rather than two with a missing segment
+ * between the last sample and the first; when nothing was culled ([valid] ==
+ * [Limb.SAMPLES]) the ring is whole and the path is closed.
+ */
+private fun limbPath(points: FloatArray, valid: Int): Path {
+    val closed = valid == Limb.SAMPLES
+    var start = 0
+    if (!closed) {
+        for (i in 0 until Limb.SAMPLES) {
+            val prev = (i + Limb.SAMPLES - 1) % Limb.SAMPLES
+            if (!points[i * 2].isNaN() && points[prev * 2].isNaN()) {
+                start = i
+                break
+            }
+        }
+    }
+    return Path().apply {
+        var penDown = false
+        for (k in 0 until Limb.SAMPLES) {
+            val i = (start + k) % Limb.SAMPLES
+            val x = points[i * 2]
+            val y = points[i * 2 + 1]
+            if (x.isNaN()) {
+                penDown = false
+                continue
+            }
+            if (penDown) lineTo(x, y) else { moveTo(x, y); penDown = true }
+        }
+        if (closed) close()
+    }
 }
 
 /**
@@ -981,6 +1128,13 @@ private fun tiltRadiansPerPixel(viewport: GlobeViewport): Float =
  * that duration is written as a number. The comment is what keeps it honest.
  */
 private const val DefaultSharpenSeconds = 0.166f
+
+/**
+ * How long the camera must hold still before the status-strip predicate is
+ * recomputed. Long enough that a pan or a fling settles first; short enough that
+ * the glyph colour follows a deliberate zoom without a visible lag.
+ */
+private const val SettleDebounceMs = 150L
 
 /** The haze along the limb: `primary`, faint and wide. */
 private const val AtmosphereAlpha = 0.30f

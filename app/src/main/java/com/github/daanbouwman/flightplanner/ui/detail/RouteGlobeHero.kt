@@ -83,8 +83,12 @@ fun DeepGlobeHero(
      * `GlobeLabels`.
      */
     topChromeInset: Dp = 0.dp,
+    /** The status-inset height in px, forwarded to [GlobeSurface] for [onImageryReachesTop]. */
+    statusStripPx: Float = 0f,
     /** See [GlobeSurface]. `false` while the hero is showing its placeholder. */
     onImageryVisible: (Boolean) -> Unit = {},
+    /** See [GlobeSurface]. Whether the sphere's disc actually reaches the status strip. */
+    onImageryReachesTop: (Boolean) -> Unit = {},
 ) {
     val controls = rememberGlobeControls()
 
@@ -103,7 +107,10 @@ fun DeepGlobeHero(
         if (globeRoute == null || arc == null) {
             // Before the airports have come back from the database: never
             // imagery, the same as GlobeSurface's own no-renderer branch.
-            SideEffect { onImageryVisible(false) }
+            SideEffect {
+                onImageryVisible(false)
+                onImageryReachesTop(false)
+            }
             // The hero holds its bounds from the first frame — a shared
             // element can only travel to something that is already there —
             // and fills in when the query returns.
@@ -136,7 +143,9 @@ fun DeepGlobeHero(
             // sideways drag, and anything with two fingers, is the globe's. The
             // immersive screen owns its window and does not make this trade.
             nestedVerticalScroll = true,
+            statusStripPx = statusStripPx,
             onImageryVisible = onImageryVisible,
+            onImageryReachesTop = onImageryReachesTop,
             modifier = Modifier.fillMaxSize(),
             content = {
                 // C3's still map, and the frame the globe crossfades in over. On
@@ -175,12 +184,16 @@ fun DeepGlobeHero(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(GlassGutter),
+                    // So a DEP/DEST plate whose airport projects into this corner
+                    // fades rather than drawing its code behind the stack.
+                    boundsReporter = controls::reportControlsBounds,
                 )
                 GlobeAttribution(
                     attribution = GlobeImagery.attribution,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(GlassGutter),
+                    boundsReporter = controls::reportCreditBounds,
                 )
             },
         )

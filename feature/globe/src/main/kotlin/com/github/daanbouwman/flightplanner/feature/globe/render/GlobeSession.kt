@@ -184,13 +184,41 @@ internal class GlobeSession private constructor(
 
     companion object {
         /**
-         * How long the engine outlives its last view.
+         * How long the engine outlives its last view, by default.
          *
          * Long enough to cover a navigation that disposes the old screen after
          * composing the new one, short enough that backing out of the route
          * detail gives the 32 MB back promptly.
          */
         private const val TEARDOWN_DELAY_MS = 2_000L
+
+        /**
+         * The same, for a globe hosted directly in a `LazyColumn` item.
+         *
+         * A lazy item is disposed the instant it scrolls out of the viewport and
+         * recomposed when it scrolls back — and a list can move much further than
+         * a screen in the two seconds [TEARDOWN_DELAY_MS] allows, so with the
+         * default the Stats visited-network globe rebuilt its engine and its
+         * 32 MB atlas on the main thread every time the card was scrolled past
+         * and back. This window covers a scroll to the end of a Stats list and
+         * back; the cost is the atlas held that much longer when the card is
+         * genuinely gone for good, which is bounded and paid in memory rather
+         * than in a main-thread stall. Only [GlobeNetworkSurface] with
+         * `embedded = true` asks for it — see [graceFor].
+         */
+        private const val LIST_TEARDOWN_DELAY_MS = 20_000L
+
+        /**
+         * The teardown grace for a view that is releasing.
+         *
+         * `embedded` is *not* the same question as
+         * `nestedVerticalScroll`: the latter says a vertical drag belongs to the
+         * page, this one says the host disposes and recomposes the globe as it
+         * scrolls (a `LazyColumn` item does; a `Column(verticalScroll)`, which is
+         * where the route hero lives, never does).
+         */
+        internal fun graceFor(embedded: Boolean): Long =
+            if (embedded) LIST_TEARDOWN_DELAY_MS else TEARDOWN_DELAY_MS
 
         /** The tiles' own disk cache, apart from the app's METAR cache. */
         private const val TILE_CACHE_DIR = "globe-tiles"
@@ -226,9 +254,9 @@ internal class GlobeSession private constructor(
          */
         private val surfaces = AttachedSurfaces()
 
-        internal fun registerSurface(view: GlobeSurfaceView) = surfaces.register(view)
+        internal fun registerSurface(view: BackgroundReleasable) = surfaces.register(view)
 
-        internal fun unregisterSurface(view: GlobeSurfaceView) = surfaces.unregister(view)
+        internal fun unregisterSurface(view: BackgroundReleasable) = surfaces.unregister(view)
 
         /** Registers the process-level watchers at most once. See [ensureWatchersRegistered]. */
         private var watchersRegistered = false
@@ -417,10 +445,10 @@ internal class GlobeSession private constructor(
             return ensureInstance(context)
         }
 
-        fun release() {
+        fun release(graceMs: Long = TEARDOWN_DELAY_MS) {
             attachedViews = (attachedViews - 1).coerceAtLeast(0)
             if (attachedViews == 0) {
-                handler.postDelayed(teardown, TEARDOWN_DELAY_MS)
+                handler.postDelayed(teardown, graceMs)
             }
         }
 

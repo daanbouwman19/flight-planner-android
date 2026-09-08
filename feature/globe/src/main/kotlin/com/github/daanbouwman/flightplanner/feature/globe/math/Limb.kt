@@ -40,12 +40,21 @@ internal object Limb {
     const val SAMPLES: Int = 64
 
     /**
-     * Projects the limb into [out] as `x, y` pairs and returns how many points
-     * were written.
+     * Projects the limb into [out] and returns how many of the [SAMPLES] points
+     * are in front of the camera.
      *
-     * Points behind the camera are skipped, which happens at high tilt when
-     * zoomed in — the far side of the silhouette is then genuinely off the back
-     * of the view, and the run of points is correctly open rather than closed.
+     * [out] must hold `SAMPLES * 2` floats and is written **in full**, one
+     * `x, y` pair per sample in angular order. A sample behind the camera plane
+     * — which happens at high tilt zoomed in, when the far side of the
+     * silhouette is genuinely off the back of the view — is written as
+     * `(NaN, NaN)` rather than skipped.
+     *
+     * The NaN gap is the point: the culled samples form one contiguous arc of
+     * the ring, and a consumer that only saw the survivors *compacted* could not
+     * tell the run was broken and drew a straight segment straight across the
+     * gap — the chord over the planet the rim and its glow used to show under
+     * tilt. A consumer walks the array, lifts its pen on a NaN, and closes the
+     * path only when the return value is [SAMPLES] (nothing was culled).
      */
     fun projectInto(
         camera: GlobeCamera,
@@ -64,15 +73,42 @@ internal object Limb {
         val e1 = (axis cross helper).normalize()
         val e2 = axis cross e1
 
-        var count = 0
+        var visible = 0
         for (i in 0 until SAMPLES) {
             val t = i * (2.0 * PI / SAMPLES)
             val w = ringCenter + e1 * (rho * cos(t).toFloat()) + e2 * (rho * sin(t).toFloat())
-            val p = camera.project(rotateFast(basis, w), viewport) ?: continue
-            out[count * 2] = p.x
-            out[count * 2 + 1] = p.y
-            count++
+            val p = camera.project(rotateFast(basis, w), viewport)
+            if (p == null) {
+                out[i * 2] = Float.NaN
+                out[i * 2 + 1] = Float.NaN
+            } else {
+                out[i * 2] = p.x
+                out[i * 2 + 1] = p.y
+                visible++
+            }
         }
-        return count
+        return visible
+    }
+
+    /**
+     * Whether the top of the projected disc reaches up past [statusStripPx].
+     *
+     * [points] and [visible] come straight from [projectInto]. A caller uses
+     * this to decide whether the *system* should draw its status-bar glyphs
+     * light: the imagery genuinely reaches under the clock only while the sphere
+     * does, and past a long-range camera the disc retreats and what is up there
+     * is the backdrop's space colour instead — which in a light theme is the
+     * page colour, where light glyphs are wrong.
+     */
+    fun discReachesTop(points: FloatArray, visible: Int, statusStripPx: Float): Boolean {
+        if (visible < 3 || statusStripPx <= 0f) return false
+        var topY = Float.MAX_VALUE
+        var i = 1
+        while (i < points.size) {
+            val y = points[i]
+            if (!y.isNaN() && y < topY) topY = y
+            i += 2
+        }
+        return topY <= statusStripPx
     }
 }

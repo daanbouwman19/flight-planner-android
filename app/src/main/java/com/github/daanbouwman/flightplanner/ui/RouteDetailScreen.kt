@@ -177,6 +177,13 @@ fun RouteDetailScreen(
     // Gating the chrome on mode alone is what used to force light status
     // glyphs over a near-white still map before any imagery existed.
     var hasImagery by remember { mutableStateOf(false) }
+    // Whether the sphere's projected disc actually reaches the status strip, from
+    // the globe's own limb projection on a settled camera. `imageryCovers` below
+    // is box geometry and stays true once the hero is tall enough; past a
+    // long-range camera the disc retreats and the top strip becomes space
+    // colour (`GlobeInk.space`, which is `colorScheme.surface` in a light
+    // theme), where forcing light glyphs is wrong.
+    var imageryReachesTop by remember { mutableStateOf(false) }
 
     val density = LocalDensity.current
     val heroHeightPx = with(density) { heroHeight().toPx() }
@@ -206,7 +213,7 @@ fun RouteDetailScreen(
     // is shallower than the app bar that contains it.
     val barsOverImagery by remember(showGlobe, heroHeightPx, statusBarPx) {
         derivedStateOf {
-            showGlobe && hasImagery &&
+            showGlobe && hasImagery && imageryReachesTop &&
                 imageryCovers(heroHeightPx, scrollState.value.toFloat(), statusBarPx.toFloat())
         }
     }
@@ -370,7 +377,9 @@ fun RouteDetailScreen(
                     // The bar sits over the hero, and the Scaffold has already
                     // worked out how tall it plus the status bar is.
                     topChromeInset = contentPadding.calculateTopPadding(),
+                    statusStripPx = statusBarPx.toFloat(),
                     onImageryVisible = { hasImagery = it },
+                    onImageryReachesTop = { imageryReachesTop = it },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

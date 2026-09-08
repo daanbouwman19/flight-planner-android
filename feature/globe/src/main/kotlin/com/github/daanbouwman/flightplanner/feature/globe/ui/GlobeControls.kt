@@ -21,11 +21,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -97,8 +100,24 @@ fun GlobeCameraControls(
     onRefit: () -> Unit,
     bearingDegrees: Float,
     modifier: Modifier = Modifier,
+    /**
+     * Called with this stack's bounds in its parent whenever they change, so the
+     * globe can fade a label plate that would otherwise draw its code behind the
+     * stack. Null on a host that does not need it. See [GlobeControlsHandle].
+     */
+    boundsReporter: ((Rect) -> Unit)? = null,
 ) {
-    GlassPlate(modifier = modifier.width(ControlSize)) {
+    GlassPlate(
+        modifier = modifier
+            .width(ControlSize)
+            .then(
+                if (boundsReporter != null) {
+                    Modifier.onGloballyPositioned { boundsReporter(it.boundsInParent()) }
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
         PlateCell(
             onClick = onZoomIn,
             contentDescription = stringResource(R.string.globe_zoom_in),
@@ -270,9 +289,21 @@ private fun CellRule() {
  * on the glass its [ImageryAttribution.credit] is null and the plate is one line.
  */
 @Composable
-fun GlobeAttribution(attribution: ImageryAttribution, modifier: Modifier = Modifier) {
+fun GlobeAttribution(
+    attribution: ImageryAttribution,
+    modifier: Modifier = Modifier,
+    /** See [GlobeCameraControls]'s `boundsReporter`; the credit is the other bottom corner. */
+    boundsReporter: ((Rect) -> Unit)? = null,
+) {
     Column(
         modifier = modifier
+            .then(
+                if (boundsReporter != null) {
+                    Modifier.onGloballyPositioned { boundsReporter(it.boundsInParent()) }
+                } else {
+                    Modifier
+                },
+            )
             .clearAndSetSemantics { }
             .background(
                 color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = PlateAlpha),

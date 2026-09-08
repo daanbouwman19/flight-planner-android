@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
@@ -30,6 +31,7 @@ import com.github.daanbouwman.flightplanner.feature.globe.math.CameraBasis
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
 import com.github.daanbouwman.flightplanner.feature.globe.math.RouteGeometry
+import com.github.daanbouwman.flightplanner.feature.globe.math.ScreenPoint
 import com.github.daanbouwman.flightplanner.feature.globe.math.Vec3
 import com.github.daanbouwman.flightplanner.feature.globe.math.facingValueFast
 import com.github.daanbouwman.flightplanner.feature.globe.math.latLonToWorld
@@ -93,6 +95,17 @@ internal fun GlobeLabels(
      * instead, and re-framing brings it back.
      */
     topChromeInset: Dp = 0.dp,
+    /**
+     * Rectangles, in this surface's own pixels, where the host has placed chrome
+     * over the imagery — the camera stack in one bottom corner, the imagery
+     * credit in the other.
+     *
+     * A plate whose dot projects into one of these fades out, **case 2 once
+     * more**: the code is not shoved sideways to clear the control, because a
+     * code away from its airport is the same lie as one clamped to the limb. It
+     * drops, and re-framing brings it back.
+     */
+    reservedCorners: List<Rect> = emptyList(),
 ) {
     if (viewport.width < 1f || viewport.height < 1f) return
 
@@ -110,9 +123,11 @@ internal fun GlobeLabels(
     val destScreen = camera.worldToScreen(destination.world, viewport)
     val plateReservePx = with(LocalDensity.current) { PlateReserve.toPx() }
     val depAlpha = limbAlpha(basis, departure.world, camera) *
-        edgeAlpha(depScreen?.y, chromePx, fadePx, viewport.height, plateReservePx)
+        edgeAlpha(depScreen?.y, chromePx, fadePx, viewport.height, plateReservePx) *
+        cornerAlpha(depScreen, reservedCorners, plateReservePx)
     val destAlpha = limbAlpha(basis, destination.world, camera) *
-        edgeAlpha(destScreen?.y, chromePx, fadePx, viewport.height, plateReservePx)
+        edgeAlpha(destScreen?.y, chromePx, fadePx, viewport.height, plateReservePx) *
+        cornerAlpha(destScreen, reservedCorners, plateReservePx)
 
     val separation = depScreen?.let { d ->
         destScreen?.let { hypot(it.x - d.x, it.y - d.y) }
@@ -232,7 +247,7 @@ private fun Code(text: String) {
  * bottom edge of the strip rather than above it, and is done over roughly the
  * height of one plate.
  */
-private fun edgeAlpha(
+internal fun edgeAlpha(
     y: Float?,
     chromePx: Float,
     fadePx: Float,
@@ -247,6 +262,30 @@ private fun edgeAlpha(
     // rendering fault rather than as a label that has run out of room.
     val overEdge = ((heightPx - y) / plateReservePx).coerceIn(0f, 1f)
     return underChrome * overEdge
+}
+
+/**
+ * How a label fades out as its dot approaches a corner the host has covered.
+ *
+ * Only dots within a reserved rect's own horizontal span are affected — a plate
+ * to the side of the camera stack is fine. Within that span the fade starts one
+ * plate-height *above* the rect's top edge, because the plate hangs below its
+ * dot: a dot level with the top of the stack still puts its code over the stack.
+ * Zero once the dot is at or below that edge.
+ */
+internal fun cornerAlpha(
+    point: ScreenPoint?,
+    reserved: List<Rect>,
+    plateReservePx: Float,
+): Float {
+    if (point == null || reserved.isEmpty()) return 1f
+    var alpha = 1f
+    for (rect in reserved) {
+        if (rect.isEmpty || point.x < rect.left || point.x > rect.right) continue
+        val above = rect.top - point.y
+        alpha = minOf(alpha, (above / plateReservePx).coerceIn(0f, 1f))
+    }
+    return alpha
 }
 
 /** How much room below its dot a plate needs. A dot and a line of code. */

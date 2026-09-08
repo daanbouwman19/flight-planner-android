@@ -1,0 +1,18 @@
+# Freshness manifest for the hand-compiled Filament materials.
+#
+# `matc` ships only in the Filament release archive, not in the AAR or on any
+# developer machine, so the build cannot recompile `*.mat` -> `*.filamat`. This
+# manifest lets `:feature:globe:verifyFilamatFreshness` (wired into `check`)
+# catch a `.mat` that was edited without its `.filamat` being regenerated, which
+# otherwise ships the old shader silently.
+#
+# After a legitimate recompile:
+#   matc --platform=mobile --api=opengl --api=vulkan \
+#     -o src/main/assets/materials/<name>.filamat src/main/materials/<name>.mat
+#   ./gradlew :feature:globe:updateFilamatChecksums
+#   git add src/main/materials/checksums.txt src/main/assets/materials/<name>.filamat
+#
+# Format: <name>  <sha256 of the .mat>  <sha256 of the .filamat>
+globe_overlay  49e2c272fda9ebf1b23849c69f921124582c7585e81e55e24c80f00e063121fa  6f25af4e213b18a196ab6537dd6b954e76677a217b85e88e816dc3fb633631c9
+globe_solid  4314bf5a5ec370e9bc0f9c7653670d08886db0107d497124dfdde7f858b1dc6c  f2e8b22f83d4c159af2a00e6df7d6a6e568d3cd05e81a86a9aa3264d7dede06d
+globe_tile  e96abcdbb69b092f8d4507804abf302005ef503f556238b1f65cd14d4cf7e1b6  56ab30e781af358f5f07a988d64f0b48ed6dab77a0420e198e7543031bb46edc
