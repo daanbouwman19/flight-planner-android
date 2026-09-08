@@ -47,12 +47,18 @@ dependencies {
 
     // Filament: Kotlin API over a Vulkan backend. Prebuilt native libraries ship
     // in the AAR, so no C/C++ is written or compiled here.
+    //
+    // Not `filament-utils-android`: that AAR is `com.google.android.filament.utils`
+    // (camera helpers, a glTF loader, the KTX1 texture path), and this module
+    // uses none of it — the camera math is ported by hand in `math/`, imagery
+    // comes from tile bitmaps, and nothing here loads a model. It was declared
+    // and never imported; ~4.3 MB of dead native code per ABI.
     implementation(libs.filament.android)
-    implementation(libs.filament.utils.android)
 
     implementation(libs.okhttp)
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.lifecycle.process)
 
     // The JUnit 5 variant by name: an Android module resolves plain `kotlin-test`
     // through a variant that maps to JUnit 4, where `kotlin.test.Test` is simply

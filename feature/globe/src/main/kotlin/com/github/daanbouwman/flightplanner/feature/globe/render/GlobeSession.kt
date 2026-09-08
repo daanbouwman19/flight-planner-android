@@ -1,10 +1,15 @@
 package com.github.daanbouwman.flightplanner.feature.globe.render
 
 import android.app.ActivityManager
+import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeFit
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
@@ -55,18 +60,32 @@ internal enum class GlobeSupport {
  * still. That is the honest version of the transition and it is what the design
  * specifies.
  *
- * ### Teardown is deferred
+ * ### Teardown is deferred — except when the app itself goes away
  *
  * Detaching the last view starts a short timer rather than destroying the
  * engine, because a navigation composes the destination before it disposes the
  * source often enough — but not always. Tearing down and rebuilding an engine
  * and an atlas across a transition would be a black rectangle where the globe
  * was, for the length of a re-download.
+ *
+ * That reasoning stops applying the moment the app is backgrounded: nothing
+ * detaches then — the composition holding a globe simply stops being drawn —
+ * so the 2 s timer never starts and the 32 MB atlas, the engine and the tile
+ * workers were held for as long as the app stayed in the recent-apps list,
+ * unbounded. [ProcessLifecycleOwner]'s `ON_STOP` and a live
+ * [ComponentCallbacks2.onTrimMemory] level both force the teardown immediately
+ * instead — see [forceTeardown] — and record [lastRouteKey]/[lastCamera] so
+ * the view that is still composed underneath, once the app is foregrounded
+ * again, rebuilds a session that picks the camera up where it left off rather
+ * than silently re-framing the route. See [reacquireIfNeeded].
  */
 internal class GlobeSession private constructor(
     context: Context,
     val engine: Engine,
 ) {
+    /** Set once, by [destroy]. A view holding a reference past this point must re-acquire. */
+    var isDestroyed: Boolean = false
+        private set
 
     private val provider: TileProvider = TileProviders.active
 
@@ -126,6 +145,18 @@ internal class GlobeSession private constructor(
         max(MIN_ALTITUDE, GlobeFit.sharpestAltitude(viewport, provider.maxLevel) / 2f)
 
     init {
+        // Adopt whatever the last session was showing, one shot. Ordinary
+        // construction — the first-ever session, or one built fresh after the
+        // deferred timer actually ran out — finds both null and starts at the
+        // defaults, same as before. A session rebuilt by [reacquireIfNeeded]
+        // after a forced teardown finds the route and camera [forceTeardown]
+        // recorded, and `GlobeCanvas`'s own `adopted` check treats this
+        // exactly like the hero-to-immersive carry it already handles.
+        routeKey = lastRouteKey
+        camera = lastCamera ?: GlobeCamera()
+        lastRouteKey = null
+        lastCamera = null
+
         loader.start()
         // Warm the permanent base levels immediately, so a coarse planet exists
         // from the first frames on and every leaf has an ancestor to fall back
@@ -145,6 +176,7 @@ internal class GlobeSession private constructor(
     }
 
     private fun destroy() {
+        isDestroyed = true
         loader.shutdown()
         scene.destroy()
         engine.destroy()
@@ -184,11 +216,110 @@ internal class GlobeSession private constructor(
         private var attachedViews = 0
         private var support: GlobeSupport? = null
 
+        /** What the session was showing, across a [forceTeardown]. See [reacquireIfNeeded]. */
+        private var lastRouteKey: String? = null
+        private var lastCamera: GlobeCamera? = null
+
+        /**
+         * The surfaces attached right now, so a forced teardown can ask each to
+         * let go of its own Filament objects first. See [AttachedSurfaces].
+         */
+        private val surfaces = AttachedSurfaces()
+
+        internal fun registerSurface(view: GlobeSurfaceView) = surfaces.register(view)
+
+        internal fun unregisterSurface(view: GlobeSurfaceView) = surfaces.unregister(view)
+
+        /** Registers the process-level watchers at most once. See [ensureWatchersRegistered]. */
+        private var watchersRegistered = false
+
         private val teardown = Runnable {
             if (attachedViews == 0) {
                 instance?.destroy()
                 instance = null
             }
+        }
+
+        /**
+         * `ON_STOP` and a live [ComponentCallbacks2] level both call this, and it
+         * is idempotent under both firing for the same backgrounding. Unlike
+         * [teardown] it does not check [attachedViews]: the composition holding a
+         * globe is still there, unbroken, underneath an app the user has simply
+         * left — nothing detaches, so the count staying above zero is not a
+         * reason to keep 32 MB of atlas resident for as long as the app sits in
+         * the recent-apps list.
+         *
+         * **`internal` for the instrumented test**, which calls it directly.
+         * Driving it through a real backgrounding instead sounds better and is
+         * not: neither `ON_STOP` nor a trim callback is reliably delivered to an
+         * app under instrumentation, so a test that waits for one passes without
+         * ever running this — which is exactly what the first attempt did.
+         */
+        internal fun forceTeardown() {
+            handler.removeCallbacks(teardown)
+            instance?.let { session ->
+                lastRouteKey = session.routeKey
+                lastCamera = session.camera
+                // **Every attached surface lets go before anything shared is
+                // destroyed.** Each one owns a RouteRibbon holding two
+                // MaterialInstances of a material `session.destroy()` frees, and
+                // Filament refuses to free a material while an instance of it is
+                // alive — see forcedTeardown. Nothing detaches when an app is
+                // backgrounded, so this is the only thing that asks them.
+                forcedTeardown(surfaces) { session.destroy() }
+            }
+            instance = null
+        }
+
+        /**
+         * The [ProcessLifecycleOwner] observer and the [ComponentCallbacks2]
+         * registration that drive [forceTeardown], installed once on the first
+         * [acquire].
+         *
+         * Not at application start: `androidx.startup` and `Application.onCreate`
+         * are cold-start budget, and this has nothing to watch until a globe has
+         * been shown at least once.
+         */
+        private fun ensureWatchersRegistered(context: Context) {
+            if (watchersRegistered) return
+            watchersRegistered = true
+
+            ProcessLifecycleOwner.get().lifecycle.addObserver(
+                object : DefaultLifecycleObserver {
+                    override fun onStop(owner: LifecycleOwner) = forceTeardown()
+                },
+            )
+
+            // `onLowMemory()` is required by `ComponentCallbacks` (hence
+            // implemented) but is itself deprecated in favour of
+            // `onTrimMemory`, which is why the override below carries the same
+            // annotation — the compiler's own suggested alternative to
+            // suppressing the "overrides a deprecated member" diagnostic.
+            context.applicationContext.registerComponentCallbacks(
+                object : ComponentCallbacks2 {
+                    override fun onTrimMemory(level: Int) {
+                        // Compared against one named level rather than switched
+                        // on all of them: a throwaway probe (compiled, read,
+                        // deleted — CLAUDE.md's rule for exactly this question)
+                        // found `TRIM_MEMORY_MODERATE`, `_COMPLETE` and every
+                        // `_RUNNING_*` level deprecated in the pinned SDK — the
+                        // background-trim levels a cached process used to
+                        // receive are not delivered the way they once were — and
+                        // referencing a deprecated constant is exactly the
+                        // warning CLAUDE.md's "no @Suppress" rule means not to
+                        // write around. `TRIM_MEMORY_UI_HIDDEN` and
+                        // `_BACKGROUND` were the two that survived, and the
+                        // lower of them already means what this needs: the UI
+                        // this session's atlas is for is no longer visible.
+                        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) forceTeardown()
+                    }
+
+                    override fun onConfigurationChanged(newConfig: Configuration) = Unit
+
+                    @Deprecated("Deprecated in ComponentCallbacks; superseded by onTrimMemory.")
+                    override fun onLowMemory() = Unit
+                },
+            )
         }
 
         /**
@@ -239,6 +370,21 @@ internal class GlobeSession private constructor(
         private const val GLES_3 = 0x0003_0000
 
         /**
+         * The session, building it if there is none — shared by [acquire] and
+         * [reacquireIfNeeded], which differ only in whether they count a view.
+         */
+        private fun ensureInstance(context: Context): GlobeSession? {
+            instance?.let { return it }
+
+            if (support(context) != GlobeSupport.Available) return null
+            val engine = createEngine() ?: run {
+                support = GlobeSupport.NoRenderer
+                return null
+            }
+            return GlobeSession(context.applicationContext, engine).also { instance = it }
+        }
+
+        /**
          * Acquires the session, creating it if this is the first view.
          *
          * Returns null on a device with no renderer, which the caller must treat
@@ -247,19 +393,28 @@ internal class GlobeSession private constructor(
          */
         fun acquire(context: Context): GlobeSession? {
             handler.removeCallbacks(teardown)
+            ensureWatchersRegistered(context)
             attachedViews++
-            instance?.let { return it }
+            val session = ensureInstance(context)
+            if (session == null) attachedViews--
+            return session
+        }
 
-            if (support(context) != GlobeSupport.Available) {
-                attachedViews--
-                return null
-            }
-            val engine = createEngine() ?: run {
-                support = GlobeSupport.NoRenderer
-                attachedViews--
-                return null
-            }
-            return GlobeSession(context.applicationContext, engine).also { instance = it }
+        /**
+         * Rebuilds the session for a view that never detached — [forceTeardown]
+         * tore it down while the app was backgrounded, out from under a
+         * composition that is still, unbroken, right there.
+         *
+         * **Does not touch [attachedViews].** The view calling this was already
+         * counted by the [acquire] that first attached it; counting it again
+         * here would leave the tally permanently one over the true number of
+         * attached views, and this class exists specifically so that the last
+         * one going away tears the session down promptly — a leak of exactly
+         * the kind [forceTeardown] was written to close.
+         */
+        internal fun reacquireIfNeeded(context: Context): GlobeSession? {
+            handler.removeCallbacks(teardown)
+            return ensureInstance(context)
         }
 
         fun release() {

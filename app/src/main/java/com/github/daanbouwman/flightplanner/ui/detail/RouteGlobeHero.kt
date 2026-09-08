@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +83,8 @@ fun DeepGlobeHero(
      * `GlobeLabels`.
      */
     topChromeInset: Dp = 0.dp,
+    /** See [GlobeSurface]. `false` while the hero is showing its placeholder. */
+    onImageryVisible: (Boolean) -> Unit = {},
 ) {
     val controls = rememberGlobeControls()
 
@@ -98,10 +101,12 @@ fun DeepGlobeHero(
         }
 
         if (globeRoute == null || arc == null) {
-            // Before the airports have come back from the database. The hero
-            // holds its bounds from the first frame — a shared element can only
-            // travel to something that is already there — and fills in when the
-            // query returns.
+            // Before the airports have come back from the database: never
+            // imagery, the same as GlobeSurface's own no-renderer branch.
+            SideEffect { onImageryVisible(false) }
+            // The hero holds its bounds from the first frame — a shared
+            // element can only travel to something that is already there —
+            // and fills in when the query returns.
             Surface(
                 // It carries the key as well, because the sentence above is only
                 // true if it does: a card arriving while the airport query is
@@ -131,6 +136,7 @@ fun DeepGlobeHero(
             // sideways drag, and anything with two fingers, is the globe's. The
             // immersive screen owns its window and does not make this trade.
             nestedVerticalScroll = true,
+            onImageryVisible = onImageryVisible,
             modifier = Modifier.fillMaxSize(),
             content = {
                 // C3's still map, and the frame the globe crossfades in over. On
@@ -193,9 +199,13 @@ fun DeepGlobeHero(
  * on the screen would sit below the fold behind a sphere that is mostly ocean.
  * That is the judgement the still hero already makes at that width, so this is a
  * floor on usable content rather than a floor on the globe.
+ *
+ * Internal rather than private: [com.github.daanbouwman.flightplanner.ui.RouteDetailScreen]
+ * needs the same figure to work out whether the hero's imagery still reaches
+ * under its own app bar — see `imageryCovers` there.
  */
 @Composable
-private fun heroHeight(): Dp {
+internal fun heroHeight(): Dp {
     val window = windowHeightDp()
     return if (window < ShortWindowMax) CompactHeroHeight else window * HeroFraction
 }

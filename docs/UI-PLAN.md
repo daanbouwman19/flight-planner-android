@@ -1981,10 +1981,31 @@ something, with the state after *The overhaul*:
 
 1. ~~**`GlobeFit`.**~~ Done before the overhaul (viewport-aware, arc midpoint); the
    overhaul added the provider's depth as a parameter and a test file.
-2. **The `overImagery` / `SystemBarsOverMedia` mechanism.** Still open. Gate it on
-   imagery rather than on mode, call it from the immersive screen, and take the
-   snapshot read out of the theme root. Visible in the immersive screenshots as
-   dark status glyphs over imagery.
+2. ~~**The `overImagery` / `SystemBarsOverMedia` mechanism.**~~ Done, 2026-09-07.
+   `RouteDetailScreen` no longer gates on hero *mode*: `GlobeSurface` now reports
+   whether its own imagery is actually the whole picture (`onImageryVisible`,
+   false before the first tile and offline, true once the crossfade completes),
+   and the screen turns that into two separate predicates —
+   `imageryCovers(heroHeightPx, scrollPx, depthPx)`, a pure function
+   (`GlobeChrome.kt`, unit-tested) — one for the app's own chrome against the
+   *measured* app bar height, one for the system's glyphs against the shorter
+   status inset alone. `ImmersiveGlobeScreen` now raises the flag itself. The
+   `FlightPlannerTheme` recomposition this caused is also fixed: the resolved
+   `ColorScheme` is `remember`ed, and the flag's own read moved into a small
+   `SystemBarsAppearance` composable so stepping it invalidates only that, not
+   the whole theme.
+
+   **Finished 2026-09-08, after `/verify` failed it on a device.** The first
+   build was right about the hero and wrong about everything with two callers:
+   `LocalBarsOverMedia` was a shared `Boolean` and every caller's `onDispose`
+   wrote `false` into it unconditionally, so when the immersive globe raised the
+   flag and the route detail underneath it then disposed — which is the order a
+   navigation transition disposes in — the outgoing screen cancelled the
+   incoming one's request. The immersive globe ran full-bleed satellite imagery
+   under dark glyphs, and coming back left the hero stuck dark too, until the
+   app was restarted. It is now a **count**, `BarsOverMediaRequests`: the
+   question the theme asks is "is anybody still asking", not "who wrote last".
+   Six pure-JVM tests, `oneCallerLoweringDoesNotClearAnother` among them.
 3. **The offline path.** Partly done: the cache now stores immutable tiles for a
    year and serves a real hit on `IOException`; `basePinned` was dead and is gone.
    Not verified in airplane mode yet.
@@ -1992,9 +2013,61 @@ something, with the state after *The overhaul*:
    bug.~~ Done: the pan target is held to the disc and the solve verified, one
    motion owner, cancel detected on the Initial pass and released with zero
    velocity — all under test.
-5. **`onTrimMemory`**, then the accessibility occlusion. Still open, both.
-6. **The two things that do not belong to this feature at all**: the `sharedExit()`
-   retune and the AGP bump. Still open.
+5. ~~**`onTrimMemory`**, then the accessibility occlusion.~~ Done, 2026-09-07.
+   `GlobeSession` now watches `ProcessLifecycleOwner`'s `ON_STOP` and a live
+   `ComponentCallbacks2.onTrimMemory` level (`TRIM_MEMORY_UI_HIDDEN` — the lower
+   of the two levels a throwaway probe found still non-deprecated in the pinned
+   SDK) and tears itself down immediately on either, rather than waiting on a
+   detach that backgrounding never causes. The route and camera it was showing
+   are carried through a memento and adopted by whichever session rebuilds next;
+   `GlobeCanvas` re-acquires on `ON_START` for a view that never detached, via a
+   new `GlobeSession.reacquireIfNeeded` that (deliberately) does not double-count
+   the view.
+
+   **That first build crashed the app on every Home press with a globe on
+   screen, and `/verify` caught it. Finished 2026-09-08.** Backgrounding
+   detaches nothing — which is the whole premise — so the surface's own
+   `RouteRibbon` was still alive, holding two `MaterialInstance`s of the
+   `globeOverlay` material, when `GlobeScene.destroy()` freed that material.
+   Filament refuses (`destroying material "globeOverlay" but 2 instances still
+   alive`) and the process dies. **Freeing ribbons inside `GlobeScene.destroy()`
+   would not have been enough**: the view would still hold a renderer, a view, a
+   camera and a swap chain pointing into an engine destroyed two lines later — a
+   second crash on the next resume.
+   So the teardown is now *ordered and coordinated*: `AttachedSurfaces` tracks
+   the attached surfaces, `forcedTeardown` releases every one of them before
+   anything shared is destroyed, `GlobeSurfaceView.releaseForBackground()` gives
+   up its whole Filament footprint without detaching, and `syncLoop()` rebuilds
+   it — through the same `buildAgainst` the first attach uses — the moment
+   anything wants a frame again. Six pure-JVM tests hold the ordering rule; one
+   instrumented test reproduces the crash directly and now passes.
+   **Two things this cost, worth knowing:** the instrumented test calls
+   `forceTeardown()` rather than backgrounding an activity, because neither
+   `ON_STOP` nor a trim callback is reliably delivered under instrumentation —
+   the version that waited for one passed against code that crashed on every
+   Home press. And `AndroidView`'s callbacks moved from `factory` to `update`:
+   `cameraState` and `firstImagery` are `remember(session)`-keyed, so a rebuilt
+   session left the `factory` closures writing to dead state — the globe came
+   back with imagery drawn but its chrome stuck in the "no imagery yet" look.
+   Separately, the input/semantics layer in
+   `GlobeCanvas` now paints *before* the limb and marker layers rather than
+   after, so an accessibility service's own overlap pruning no longer treats the
+   DEP/DEST plates as covered by it — the mechanism a Compose semantics-tree
+   query cannot exercise, so this is confirmed by existence/layout tests plus
+   `adb shell uiautomator dump` on a device, not proved by the JVM tests alone.
+6. **The two things that do not belong to this feature at all**: the
+   `sharedExit()` retune is fixed — `Destination.Plan`'s four transitions are now
+   gated on whether the other side of the navigation is `Destination.RouteDetail`
+   (`NavBackStackEntry.sharesRouteFace()`), so Settings, Fleet, Airports, Logbook
+   and Stats get the plain fade-through again and only the Plan↔RouteDetail pair
+   keeps the shared-element springs. Not covered by a unit test — constructing a
+   real, correctly-patterned `NavBackStackEntry` for a kotlinx-serialization route
+   outside the `composable<T>()` DSL was judged more machinery than the assertion
+   was worth; verify by navigating Plan→Settings and Plan→RouteDetail back to
+   back and confirming only the second one uses the fast fade. The AGP bump
+   (9.3.2 → 9.4.0) is kept rather than reverted: nothing in the globe needs it,
+   but it was already merged and green, and reverting a working toolchain for
+   tidiness costs a decision nobody would then own.
 7. **New, from the overhaul's own screenshots:** a label plate can sit under the
    camera stack on the hero (`GlobeLabels` fades a plate that rises into the top
    chrome and knows nothing about the bottom-right controls); the Esri offline-
@@ -2013,6 +2086,26 @@ Still outstanding from the first pass, unchanged:
 - **Nothing makes a stale `.filamat` fail a build.** The `.mat` sources are
   compiled by hand and no hash or manifest exists to catch a source newer than its
   blob. They are in sync today; nothing keeps them so.
+
+Found while fixing item 2 above, not fixed:
+
+- **Past roughly 8,200 km the top of the globe is `GlobeInk.space`, which *is*
+  `colorScheme.surface`.** `imageryCovers` answers "is the hero's imagery still
+  behind this strip", and at that range it correctly is — the still map or the
+  tile mesh genuinely reaches the top — but what is painted there is the ink's
+  own space colour, indistinguishable from the page in a light theme. Light
+  status glyphs are then wrong for a reason geometry, not scroll position,
+  would have to answer: whether the sphere's projected disc actually reaches
+  the status strip at the current camera. Needs `Limb`'s own projection, not a
+  height measurement, and is more than this item asked for.
+- **The Stats card's `GlobeSession` is rebuilt on an ordinary scroll.** It is a
+  `LazyColumn` item, so it is disposed the moment it leaves the viewport, and
+  the 2 s deferred-teardown window — sized for a navigation's compose-then-
+  dispose, not for a list scroll — routinely expires before the card scrolls
+  back into view. Item 5's fix does not touch this: `forceTeardown` and
+  `reacquireIfNeeded` exist for the *backgrounding* case, where the view never
+  detaches at all; here it genuinely does, and `release()`'s own timer is just
+  too short for how far a `LazyColumn` can move in under two seconds.
 
 ---
 

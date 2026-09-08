@@ -69,7 +69,7 @@ import com.google.android.filament.android.UiHelper
  * scene's per-frame update — see [GlobeScene.drivesUpdates] — and the other only
  * points its own camera and draws what the driver built.
  */
-internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
+internal class GlobeSurfaceView(context: Context) : SurfaceView(context), BackgroundReleasable {
 
     /** Called every frame with the camera to render from. */
     var cameraProvider: () -> GlobeCamera = { GlobeCamera() }
@@ -169,7 +169,25 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        attached = true
+        // Registered whether or not a session comes back: the registry is of
+        // *attached surfaces*, and a device with no renderer simply has nothing
+        // to release when one is asked for.
+        GlobeSession.registerSurface(this)
         val acquired = GlobeSession.acquire(context) ?: return
+        buildAgainst(acquired)
+        syncLoop()
+    }
+
+    /**
+     * Builds everything this surface owns against [acquired].
+     *
+     * Shared by the first attach and by the rebuild after [releaseForBackground],
+     * so the two cannot drift — a second copy of this block that forgot the
+     * ribbon's layer bit, or the update claim, would be a bug visible only on
+     * the path nobody exercises by hand.
+     */
+    private fun buildAgainst(acquired: GlobeSession) {
         session = acquired
         // Last attached drives: this is the surface the user is now looking at.
         acquired.scene.claimUpdates(this)
@@ -189,9 +207,58 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
             acquired.scene.configureView(this)
             setVisibleLayers(LAYER_MASK_ALL, LAYER_SHARED or ownRibbon.layerBit)
         }
+        // A rebuilt scene has drawn nothing yet, so G8's crossfade is owed its
+        // announcement again — otherwise the still map never fades back out.
+        announcedFirstImagery = false
+        appliedSpaceGeneration = -1
+        // **Last, and part of this block rather than the caller's.** The swap
+        // chain is created by the UiHelper's callback, so a rebuild that did not
+        // re-attach would leave `swapChain` null and `renderFrame` returning at
+        // its third line for the rest of the process — a globe that is black
+        // rather than one that crashed, which is harder to notice and no better.
         uiHelper.attachTo(this)
-        attached = true
-        syncLoop()
+    }
+
+    /**
+     * Gives up everything this surface owns, without detaching.
+     *
+     * Called by [GlobeSession] before it destroys the engine these objects point
+     * into — see [forcedTeardown]. The reason it exists at all is that
+     * backgrounding detaches nothing: `onDetachedFromWindow` is what used to
+     * free this surface's [RouteRibbon], and the ribbon holds two
+     * `MaterialInstance`s of a material `GlobeScene.destroy()` frees. Destroying
+     * the material first is a crash, not a leak.
+     *
+     * Deliberately **not** the detach half of [onDetachedFromWindow]: no
+     * `releaseUpdates`, no `GlobeSession.release()`, no unregistering. This view
+     * is still attached to its window and still counted; only its Filament
+     * objects are gone, and [syncLoop] builds them again the moment it needs to
+     * draw.
+     */
+    override fun releaseForBackground() {
+        val current = session ?: return
+        running = false
+        Choreographer.getInstance().removeFrameCallback(frameCallback)
+        // Frees the swap chain through the existing onDetachedFromSurface, which
+        // also flushAndWaits — so nothing is left in flight against the engine.
+        uiHelper.detach()
+
+        ribbon?.let { current.scene.destroyRibbon(it) }
+        ribbon = null
+
+        val engine = current.engine
+        filamentView?.let { engine.destroyView(it) }
+        renderer?.let { engine.destroyRenderer(it) }
+        filamentCamera?.let { engine.destroyCameraComponent(cameraEntity) }
+        if (cameraEntity != 0) {
+            EntityManager.get().destroy(cameraEntity)
+            cameraEntity = 0
+        }
+        filamentView = null
+        renderer = null
+        filamentCamera = null
+        displayHelper = null
+        session = null
     }
 
     override fun onVisibilityAggregated(isVisible: Boolean) {
@@ -217,14 +284,29 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
         }
 
     /**
-     * Starts or stops the frame callback to match [attached] and [visible].
+     * Starts or stops the frame callback to match [attached] and [visible], and
+     * rebuilds this surface's Filament objects if a forced teardown took them.
      *
      * Idempotent, because both signals can arrive in either order and more than
      * once. Starting also forgets the last rendered camera, so the first frame
      * back is always drawn rather than skipped as settled.
+     *
+     * **The rebuild lives here rather than in a lifecycle callback of its own**
+     * because this is already the one place that knows whether anything wants a
+     * frame: [onVisibilityAggregated] calls it when the app comes back, and
+     * [onScreen]'s setter calls it when a Compose scroll brings the box back.
+     * Both are exactly when a surface released for the background needs to
+     * exist again, and neither needs to know that is what it is asking for.
      */
     private fun syncLoop() {
-        val shouldRun = attached && windowVisible && onScreen && session != null
+        val wantsToRun = attached && windowVisible && onScreen
+        if (wantsToRun && session == null) {
+            // Null only after releaseForBackground, or when this device has no
+            // renderer at all — in which case this returns null every time and
+            // costs a cached lookup.
+            GlobeSession.reacquireIfNeeded(context)?.let { buildAgainst(it) }
+        }
+        val shouldRun = wantsToRun && session != null
         if (shouldRun == running) return
         running = shouldRun
         if (shouldRun) {
@@ -238,6 +320,9 @@ internal class GlobeSurfaceView(context: Context) : SurfaceView(context) {
     override fun onDetachedFromWindow() {
         attached = false
         running = false
+        // Unregistered first: from here on this surface has nothing for a forced
+        // teardown to release, and the teardown must not reach a half-detached one.
+        GlobeSession.unregisterSurface(this)
         Choreographer.getInstance().removeFrameCallback(frameCallback)
         uiHelper.detach()
 

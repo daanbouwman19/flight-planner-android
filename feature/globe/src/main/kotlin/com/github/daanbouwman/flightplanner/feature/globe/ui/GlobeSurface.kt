@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -38,6 +39,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
 import com.github.daanbouwman.flightplanner.feature.globe.R
@@ -211,6 +215,15 @@ fun GlobeSurface(
      * [globeGestures] for the compromise and its cone.
      */
     nestedVerticalScroll: Boolean = false,
+    /**
+     * Called with `true` once the globe's own imagery — not the still map — is
+     * the whole picture under [topChromeInset], and `false` the moment that
+     * stops being true: before the first tile, while there is no renderer, and
+     * on the way out. The host uses this, not [showGlobe]-style mode state, to
+     * decide what the *system* draws its status-bar glyphs in — see
+     * [com.github.daanbouwman.flightplanner.core.designsystem.theme.SystemBarsOverMedia].
+     */
+    onImageryVisible: (Boolean) -> Unit = {},
     /** Placed over the globe, inside the same box — controls, a title, chips. */
     overlay: @Composable BoxScope.() -> Unit = {},
     /** The still map: drawn over the globe until the first tiles land, then faded out; the whole picture where there is no renderer. */
@@ -246,6 +259,7 @@ fun GlobeSurface(
         controls = controls,
         interactive = interactive,
         nestedVerticalScroll = nestedVerticalScroll,
+        onImageryVisible = onImageryVisible,
         markers = { cameraState, viewport, primary, tertiary ->
             GlobeLabels(
                 departure = GlobeLabel(route.departureIcao, depWorld, primary),
@@ -283,6 +297,8 @@ fun GlobeNetworkSurface(
     interactive: Boolean = true,
     /** See [GlobeSurface]. The Stats band sits in a `LazyColumn`, which is what this is for. */
     nestedVerticalScroll: Boolean = false,
+    /** See [GlobeSurface]. */
+    onImageryVisible: (Boolean) -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit = {},
     content: @Composable () -> Unit = {},
 ) {
@@ -310,6 +326,7 @@ fun GlobeNetworkSurface(
         controls = controls,
         interactive = interactive,
         nestedVerticalScroll = nestedVerticalScroll,
+        onImageryVisible = onImageryVisible,
         markers = { cameraState, viewport, primary, _ ->
             GlobeNodes(
                 nodes = network.nodes,
@@ -356,10 +373,16 @@ private fun GlobeCanvas(
     controls: GlobeControlsHandle?,
     interactive: Boolean,
     nestedVerticalScroll: Boolean,
+    onImageryVisible: (Boolean) -> Unit,
     markers: @Composable (GlobeCameraState, GlobeViewport, Color, Color) -> Unit,
     overlay: @Composable BoxScope.() -> Unit,
     content: @Composable () -> Unit,
 ) {
+    // Read through a holder rather than closed over directly: the effects
+    // below key on other things, and a host that passes a fresh lambda every
+    // recomposition (every host here does) must not restart them for that
+    // reason alone.
+    val latestOnImageryVisible by rememberUpdatedState(onImageryVisible)
     val context = LocalContext.current
     // **Acquired in the effect, not in `remember`.** A `remember` runs during
     // composition and a `DisposableEffect` only when that composition is applied,
@@ -373,7 +396,34 @@ private fun GlobeCanvas(
     var held by remember(context) { mutableStateOf<GlobeSession?>(null) }
     DisposableEffect(context) {
         held = GlobeSession.acquire(context)
+
+        // This composable does not go away when the app is backgrounded — only
+        // GlobeSession's own memory does, forced by ProcessLifecycleOwner's
+        // `ON_STOP` or a live trim level (see that class's doc).
+        //
+        // **This half is the Compose side only.** It refreshes the session
+        // *this composition* reads — the camera state, the controls handle, the
+        // labels' projection, `zoomFloor`. The surface's own Filament objects
+        // are a separate matter with a separate owner: `GlobeSurfaceView` gives
+        // them up in `releaseForBackground` and builds them again from
+        // `syncLoop`, because they are its to hold. Both halves are needed, and
+        // neither substitutes for the other: without this one Compose drives a
+        // destroyed session object, and without that one the surface can never
+        // draw again.
+        //
+        // `reacquireIfNeeded` is a cheap no-op when the session was never
+        // actually lost — including the very first catch-up event `addObserver`
+        // replays synchronously below, for a process that is already started.
+        val processLifecycle = ProcessLifecycleOwner.get().lifecycle
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START && held?.isDestroyed != false) {
+                held = GlobeSession.reacquireIfNeeded(context)
+            }
+        }
+        processLifecycle.addObserver(observer)
+
         onDispose {
+            processLifecycle.removeObserver(observer)
             if (held != null) GlobeSession.release()
             held = null
         }
@@ -381,6 +431,9 @@ private fun GlobeCanvas(
 
     val session = held
     if (session == null) {
+        // No renderer, or acquisition has not landed yet: the still map is the
+        // whole picture, and it is never imagery.
+        SideEffect { latestOnImageryVisible(false) }
         Box(modifier = modifier.clipToBounds()) {
             content()
             overlay()
@@ -502,6 +555,16 @@ private fun GlobeCanvas(
         if (!firstImagery) return@LaunchedEffect
         // Reduce motion wants a swap, not a shorter fade.
         if (reduceMotion) globeAlpha.snapTo(1f) else globeAlpha.animateTo(1f, crossfade)
+        // Only once the still map is actually gone — not on entry, not on the
+        // hero/immersive carry, and not offline where firstImagery never
+        // becomes true. See onImageryVisible's own doc.
+        latestOnImageryVisible(true)
+    }
+
+    // The screen this surface was on is going away, or the session under it
+    // changed: either way it is no longer imagery under anyone's status bar.
+    DisposableEffect(session) {
+        onDispose { latestOnImageryVisible(false) }
     }
 
     // Binding rather than a side effect: the handle holds no state of its own,
@@ -517,14 +580,22 @@ private fun GlobeCanvas(
     // same reason. The globe owns its box and nothing it draws leaves it.
     Box(modifier = modifier.clipToBounds()) {
         AndroidView(
-            factory = { ctx ->
-                GlobeSurfaceView(ctx).apply {
-                    cameraProvider = { cameraState.camera }
-                    onFirstImagery = { firstImagery = true }
-                    onViewportChanged = { viewport = it }
-                }
+            factory = { ctx -> GlobeSurfaceView(ctx) },
+            // **Every callback is re-bound here, not once in `factory`.**
+            // `cameraState` and `firstImagery` are `remember(session)`-keyed, so
+            // a session rebuilt after a background teardown replaces both — and
+            // a `factory` closure, which runs exactly once, would go on writing
+            // to the state object nobody reads any more and reading the camera
+            // nobody drives. The visible form of that was a globe that came
+            // back after backgrounding with its imagery drawn but its chrome
+            // stuck in the "no imagery yet" state, because `onFirstImagery`
+            // was setting a dead flag.
+            update = { view ->
+                view.cameraProvider = { cameraState.camera }
+                view.onFirstImagery = { firstImagery = true }
+                view.onViewportChanged = { viewport = it }
+                view.onScreen = onScreen
             },
-            update = { it.onScreen = onScreen },
             modifier = Modifier
                 .fillMaxSize()
                 // A Compose scroll carrying the hero off the page leaves the
@@ -558,28 +629,18 @@ private fun GlobeCanvas(
             content()
         }
 
-        LimbOverlay(
-            cameraState = cameraState,
-            viewport = viewport,
-            ink = ink,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { alpha = globeAlpha.value },
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { alpha = globeAlpha.value },
-        ) {
-            markers(cameraState, viewport, ink.route, destinationInk)
-        }
-
-        // The input layer sits over the labels so the whole box is grabbable,
-        // including the parts of it a plate happens to cover. Without
-        // `interactive` there is no pointer handler at all — not a handler that
-        // ignores what it is given — so a touch falls straight through to the
-        // page underneath.
+        // **Drawn — and hit-tested — under the labels, not over them.** This
+        // used to be the last child in the box, on top of the marker layer,
+        // which grabs every touch a plate sits under: correct for input, but
+        // the same full-size node also carries the globe's semantics, and an
+        // accessibility service prunes a smaller node its own paint order
+        // says is fully covered. That made [GlobeLabels]' plates — "the only
+        // part of the globe TalkBack can read" per this file's own class doc —
+        // unreachable. Moving the whole box here changes nothing about touch:
+        // a pointer still lands on it first and `globeInput` still owns the
+        // gesture, because nothing painted after it consumes a pointer event.
+        // It only changes what paints *last*, which is what accessibility
+        // overlap goes by.
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -598,6 +659,23 @@ private fun GlobeCanvas(
                 )
                 .globeSemantics(description, cameraState, fitted, spatial, spatialFast),
         )
+
+        LimbOverlay(
+            cameraState = cameraState,
+            viewport = viewport,
+            ink = ink,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = globeAlpha.value },
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = globeAlpha.value },
+        ) {
+            markers(cameraState, viewport, ink.route, destinationInk)
+        }
 
         overlay()
     }

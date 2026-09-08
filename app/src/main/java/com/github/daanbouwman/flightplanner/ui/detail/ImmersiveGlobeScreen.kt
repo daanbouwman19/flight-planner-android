@@ -15,7 +15,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -26,6 +28,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.ValueChip
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.SystemBarsOverMedia
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeAttribution
 import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeCameraControls
@@ -75,6 +78,13 @@ fun ImmersiveGlobeScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val controls = rememberGlobeControls()
 
+    // Full-bleed photograph under the status bar the moment it exists — the
+    // one surface in the app that is edge-to-edge imagery throughout. Unlike
+    // the deep hero there is no scroll term: the sphere either has imagery or
+    // it does not.
+    var hasImagery by remember { mutableStateOf(false) }
+    SystemBarsOverMedia(active = hasImagery)
+
     val globeRoute = remember(state.arc, route) {
         state.arc?.let {
             GlobeRoute(
@@ -100,6 +110,7 @@ fun ImmersiveGlobeScreen(
             // fades rather than moving off its airport.
             topChromeInset = WindowInsets.safeDrawing.asPaddingValues()
                 .calculateTopPadding() + GlassGutter + ImmersiveControlSize,
+            onImageryVisible = { hasImagery = it },
             modifier = Modifier.fillMaxSize(),
             overlay = {
                 // Every control takes the safe-drawing inset itself rather than

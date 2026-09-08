@@ -17,8 +17,6 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -111,45 +109,28 @@ fun FlightPlannerTheme(
         ThemeChoice.CHART -> false
     }
     val context = LocalContext.current
-    val colorScheme: ColorScheme = when {
-        themeChoice == ThemeChoice.COCKPIT -> CockpitColorScheme
-        themeChoice == ThemeChoice.CHART -> ChartColorScheme
-        dynamicColor ->
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> BrandDarkColorScheme
-        else -> BrandLightColorScheme
-    }
-
-    val view = LocalView.current
-    // Whether some screen currently has a photograph under the status bar. Held
-    // here, next to the one place that writes the controller.
-    val overMedia = remember { mutableStateOf(false) }
-    // **Read here, in composition, and not inside the `SideEffect`.** A
-    // snapshot read inside an effect is not a composition dependency, so
-    // writing the flag never invalidated this function and the effect never
-    // re-ran — the override was inert and the bars kept whatever glyphs the
-    // theme had last set. Reading it here is what subscribes.
-    val barsOverMedia = overMedia.value
-    if (!view.isInEditMode) {
-        // A `SideEffect` rather than a `LaunchedEffect`: this is a write to a
-        // platform object that must agree with what was just composed, and it is two
-        // field writes, so re-applying it on a recomposition is cheaper than keying
-        // an effect correctly. `findActivity` is nullable rather than a cast because
-        // a Robolectric test or a dialog window need not have one.
-        SideEffect {
-            val window = view.context.findActivity()?.window ?: return@SideEffect
-            WindowCompat.getInsetsController(window, view).apply {
-                // Taking the flag from composition rather than letting a screen
-                // write the controller itself is what makes this the **only**
-                // writer. Two writers meant the theme won whenever it recomposed
-                // for a reason the override did not share — switching LIGHT to
-                // CHART leaves `dark` unchanged, so the bars flipped back to dark
-                // glyphs over a photograph and stayed there.
-                isAppearanceLightStatusBars = if (barsOverMedia) false else !dark
-                isAppearanceLightNavigationBars = !dark
-            }
+    // Remembered on its four inputs. `ColorScheme` has no `equals`, and
+    // `MaterialTheme`'s colour local is a `staticCompositionLocalOf`, so a
+    // freshly built instance on every recomposition of this function
+    // invalidated every consumer in the tree by identity alone — including on
+    // every recomposition [SystemBarsAppearance] below used to cause here,
+    // before it was split out.
+    val colorScheme: ColorScheme = remember(themeChoice, dynamicColor, dark, context) {
+        when {
+            themeChoice == ThemeChoice.COCKPIT -> CockpitColorScheme
+            themeChoice == ThemeChoice.CHART -> ChartColorScheme
+            dynamicColor ->
+                if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            dark -> BrandDarkColorScheme
+            else -> BrandLightColorScheme
         }
     }
+
+    // Which screens currently have a photograph under the status bar. Held here,
+    // next to [LocalBarsOverMedia] that carries it down to
+    // [SystemBarsOverMedia]'s callers. A count rather than a flag, because two
+    // of those callers overlap during a navigation — see [BarsOverMediaRequests].
+    val overMedia = remember { BarsOverMediaRequests() }
 
     // Scenery, unlike the flight-rules colours, varies per *theme* rather than per
     // tone mapping: Cockpit needs a dim warm sky to protect dark adaptation and
@@ -173,6 +154,12 @@ fun FlightPlannerTheme(
         // ContentObserver per component.
         LocalReduceMotion provides rememberReduceMotion(),
     ) {
+        // Split out so that raising or lowering [SystemBarsOverMedia]'s flag
+        // recomposes only this one small function rather than the whole of
+        // [FlightPlannerTheme] — which used to also rebuild [colorScheme] on
+        // every such step and invalidate the entire subtree by identity. See
+        // the doc on `colorScheme` above.
+        SystemBarsAppearance(dark = dark, overMedia = overMedia)
         MaterialExpressiveTheme(
             colorScheme = colorScheme,
             motionScheme = MotionScheme.expressive(),
@@ -180,6 +167,40 @@ fun FlightPlannerTheme(
             typography = FlightTypography,
             content = content,
         )
+    }
+}
+
+/**
+ * Writes the status- and navigation-bar appearance flags, and is the only
+ * reader of [overMedia] — see [FlightPlannerTheme]'s call site.
+ */
+@Composable
+private fun SystemBarsAppearance(dark: Boolean, overMedia: BarsOverMediaRequests) {
+    val view = LocalView.current
+    // **Read here, in composition, and not inside the `SideEffect`.** A
+    // snapshot read inside an effect is not a composition dependency, so
+    // writing the flag never invalidated this function and the effect never
+    // re-ran — the override was inert and the bars kept whatever glyphs the
+    // theme had last set. Reading it here is what subscribes.
+    val barsOverMedia = overMedia.isRaised
+    if (view.isInEditMode) return
+    // A `SideEffect` rather than a `LaunchedEffect`: this is a write to a
+    // platform object that must agree with what was just composed, and it is two
+    // field writes, so re-applying it on a recomposition is cheaper than keying
+    // an effect correctly. `findActivity` is nullable rather than a cast because
+    // a Robolectric test or a dialog window need not have one.
+    SideEffect {
+        val window = view.context.findActivity()?.window ?: return@SideEffect
+        WindowCompat.getInsetsController(window, view).apply {
+            // Taking the flag from composition rather than letting a screen
+            // write the controller itself is what makes this the **only**
+            // writer. Two writers meant the theme won whenever it recomposed
+            // for a reason the override did not share — switching LIGHT to
+            // CHART leaves `dark` unchanged, so the bars flipped back to dark
+            // glyphs over a photograph and stayed there.
+            isAppearanceLightStatusBars = if (barsOverMedia) false else !dark
+            isAppearanceLightNavigationBars = !dark
+        }
     }
 }
 
@@ -201,28 +222,37 @@ fun FlightPlannerTheme(
  * screen that uses this, so flipping it would make the gesture handle the harder
  * of the two to see rather than the easier.
  *
- * This does not touch the window. It raises a flag [FlightPlannerTheme] reads,
- * because the theme writes the insets controller on every one of its own
- * recompositions and a second writer simply loses the next one it does not share
- * a key with. The `DisposableEffect` lowers the flag again on the way out.
+ * This does not touch the window. It **registers a request** that
+ * [FlightPlannerTheme] reads, because the theme writes the insets controller on
+ * every one of its own recompositions and a second writer simply loses the next
+ * one it does not share a key with.
+ *
+ * A request rather than a flag, and that distinction is load-bearing: more than
+ * one screen calls this, and during a navigation their compositions overlap —
+ * the immersive globe is composed while the route detail underneath it is still
+ * there. The first build of this wrote `false` from every caller's `onDispose`,
+ * so the outgoing screen's teardown silently cancelled the incoming screen's
+ * request and the globe ran full-bleed satellite imagery under dark glyphs.
+ * [BarsOverMediaRequests] counts instead, so the answer is "is anybody still
+ * asking" rather than "who wrote last".
  */
 @Composable
 fun SystemBarsOverMedia(active: Boolean) {
     val overMedia = LocalBarsOverMedia.current
     DisposableEffect(overMedia, active) {
-        overMedia.value = active
-        onDispose { overMedia.value = false }
+        if (active) overMedia.raise()
+        onDispose { if (active) overMedia.lower() }
     }
 }
 
 /**
- * Set while a screen has imagery under the status bar. See [SystemBarsOverMedia].
+ * The live requests for light glyphs over media. See [SystemBarsOverMedia].
  *
- * A state rather than a call into the window, so that [FlightPlannerTheme] stays
- * the only thing that writes the insets controller and the two cannot race.
+ * Shared state rather than a call into the window, so that [FlightPlannerTheme]
+ * stays the only thing that writes the insets controller and the two cannot race.
  */
-private val LocalBarsOverMedia: ProvidableCompositionLocal<MutableState<Boolean>> =
-    staticCompositionLocalOf { mutableStateOf(false) }
+private val LocalBarsOverMedia: ProvidableCompositionLocal<BarsOverMediaRequests> =
+    staticCompositionLocalOf { BarsOverMediaRequests() }
 
 /**
  * The [Activity] a view belongs to, if any.

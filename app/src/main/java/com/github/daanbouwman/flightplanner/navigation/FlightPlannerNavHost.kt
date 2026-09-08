@@ -90,10 +90,18 @@ fun FlightPlannerNavHost(
             // it would need a second copy of the two writes and their reversal.
             navigation<Destination.PlanGraph>(startDestination = Destination.Plan) {
                 composable<Destination.Plan>(
-                    enterTransition = { sharedEnter },
-                    exitTransition = { sharedExit },
-                    popEnterTransition = { sharedEnter },
-                    popExitTransition = { sharedExit },
+                    // **Gated on the other side of the navigation, not applied
+                    // to all four unconditionally.** Plan shares an element
+                    // with exactly one destination — the route card growing
+                    // into RouteDetail's face — and `sharedExit`'s fast spring
+                    // was tuned entirely in terms of that element. Applied to
+                    // every navigation away from Plan it also retuned Settings,
+                    // Fleet, Airports, Logbook and Stats, none of which share
+                    // anything with it. See [sharesRouteFace].
+                    enterTransition = { if (initialState.sharesRouteFace()) sharedEnter else enter },
+                    exitTransition = { if (targetState.sharesRouteFace()) sharedExit else exit },
+                    popEnterTransition = { if (initialState.sharesRouteFace()) sharedEnter else enter },
+                    popExitTransition = { if (targetState.sharesRouteFace()) sharedExit else exit },
                 ) { entry ->
                     ProvideSharedRouteScopes(sharedTransitionScope, this) {
                         // `PlanRoute`, not `PlanScreen`: it is the one that decides
@@ -389,3 +397,14 @@ private fun NavHostController.routeDetailEntry(entry: NavBackStackEntry): NavBac
  */
 fun NavDestination?.isIn(destination: TopLevelDestination): Boolean =
     this?.hierarchy?.any { it.hasRoute(destination.route::class) } == true
+
+/**
+ * Whether this back-stack entry is [Destination.RouteDetail] — the only
+ * destination [Destination.Plan] shares an element with.
+ *
+ * Read from either side of a Plan transition: `targetState.sharesRouteFace()`
+ * decides Plan's own exit, `initialState.sharesRouteFace()` its own enter. See
+ * the KDoc on `composable<Destination.Plan>`'s transitions above.
+ */
+internal fun NavBackStackEntry.sharesRouteFace(): Boolean =
+    destination.hasRoute(Destination.RouteDetail::class)

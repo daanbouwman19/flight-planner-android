@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -70,6 +72,8 @@ import com.github.daanbouwman.flightplanner.feature.globe.R as GlobeR
 import com.github.daanbouwman.flightplanner.ui.detail.DeepGlobeHero
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailContent
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailViewModel
+import com.github.daanbouwman.flightplanner.ui.detail.heroHeight
+import com.github.daanbouwman.flightplanner.ui.detail.imageryCovers
 import com.github.daanbouwman.flightplanner.ui.plan.PlanPreviewData
 import com.github.daanbouwman.flightplanner.ui.plan.RouteRow
 
@@ -153,6 +157,10 @@ fun RouteDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    // Hoisted here, rather than created where it is scrolled, because the
+    // chrome above it — the app bar — needs the same offset to work out
+    // whether the hero's imagery is still behind it. See chromeOverImagery.
+    val scrollState = rememberScrollState()
 
     // **Outline first.** The globe is the better picture of a long leg and the
     // worse one of a short one, it costs a renderer and a network, and it puts a
@@ -162,18 +170,47 @@ fun RouteDetailScreen(
     var heroMode by rememberSaveable { mutableStateOf(HeroMode.Outline) }
     val showGlobe = heroMode == HeroMode.Globe && onOpenImmersiveGlobe != null
 
-    // True only while the sphere is the thing behind the clock. Once the page has
-    // scrolled up the bar is `surface` and everything on it is over the theme
-    // again, so the glass treatment has to end exactly where the imagery does.
-    // **`derivedStateOf`, because `overlappedFraction` is a function of
-    // `contentOffset`**, which the nested scroll rewrites every frame. Reading
-    // it directly made this screen — the densest one in the app, and the one
-    // hosting a live renderer — recompose wholesale on every scroll frame, to
-    // observe a value that only ever steps between two states.
-    val overImagery by remember(showGlobe) {
-        derivedStateOf { showGlobe && scrollBehavior.state.overlappedFraction < 0.01f }
+    // Whether the hero is actually showing imagery *right now* — not merely
+    // whether the screen is in globe mode. Reported by DeepGlobeHero, which
+    // reports it from GlobeSurface: false before the first tile, again after
+    // every re-entry past the session's 2 s teardown, and permanently offline.
+    // Gating the chrome on mode alone is what used to force light status
+    // glyphs over a near-white still map before any imagery existed.
+    var hasImagery by remember { mutableStateOf(false) }
+
+    val density = LocalDensity.current
+    val heroHeightPx = with(density) { heroHeight().toPx() }
+    // The status inset alone — shorter than the app bar that contains it — is
+    // the strip the *system* draws its own glyphs over.
+    val statusBarPx = WindowInsets.statusBars.getTop(density)
+    // The app bar's own measured height, insets included: what the app's own
+    // chrome sits on top of. Zero until the first layout pass, which is a safe
+    // default — before that this screen has not scrolled and the hero, if
+    // shown, is still full height.
+    var appBarHeightPx by remember { mutableStateOf(0f) }
+
+    // Whether the app's own chrome — the title plate, the buttons, the bar's
+    // colour — should be on glass. True only while imagery still reaches under
+    // the *whole* measured app bar. **`derivedStateOf`**: `scrollState.value`
+    // changes every scroll frame, and this — the densest screen in the app,
+    // hosting a live renderer — should recompose only at the two points this
+    // boolean actually steps, not on every frame in between.
+    val chromeOverImagery by remember(showGlobe, heroHeightPx) {
+        derivedStateOf {
+            showGlobe && hasImagery &&
+                imageryCovers(heroHeightPx, scrollState.value.toFloat(), appBarHeightPx)
+        }
     }
-    SystemBarsOverMedia(active = overImagery)
+    // What the *system* draws its status-bar glyphs in — a shorter strip than
+    // [chromeOverImagery]'s, because the status inset the system paints into
+    // is shallower than the app bar that contains it.
+    val barsOverImagery by remember(showGlobe, heroHeightPx, statusBarPx) {
+        derivedStateOf {
+            showGlobe && hasImagery &&
+                imageryCovers(heroHeightPx, scrollState.value.toFloat(), statusBarPx.toFloat())
+        }
+    }
+    SystemBarsOverMedia(active = barsOverImagery)
 
     Scaffold(
         modifier = modifier
@@ -181,13 +218,20 @@ fun RouteDetailScreen(
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
+                // Measured rather than assumed: chromeOverImagery compares the
+                // scroll offset against whatever this bar actually lays out
+                // to, insets included, not a guessed constant that a future
+                // token or a cutout would silently invalidate.
+                modifier = Modifier.onGloballyPositioned {
+                    appBarHeightPx = it.size.height.toFloat()
+                },
                 title = {
                     // On a plate over imagery, bare over the page. The plate is
                     // the same one the globe’s own labels and its credit sit on,
                     // and it is here for the same reason: a photograph cannot be
                     // relied on for contrast the way the theme’s surface can, and
                     // a colour that reads over ocean does not read over ice.
-                    if (overImagery) {
+                    if (chromeOverImagery) {
                         Surface(
                             // **The same height as the buttons beside it.** A row
                             // of glass over a photograph reads as one instrument
@@ -217,7 +261,7 @@ fun RouteDetailScreen(
                         iconRes = R.drawable.ic_arrow_back,
                         contentDescription = stringResource(R.string.action_back),
                         onClick = onBack,
-                        onGlass = overImagery,
+                        onGlass = chromeOverImagery,
                     )
                 },
                 actions = {
@@ -241,7 +285,7 @@ fun RouteDetailScreen(
                             onClick = {
                                 heroMode = if (showGlobe) HeroMode.Outline else HeroMode.Globe
                             },
-                            onGlass = overImagery,
+                            onGlass = chromeOverImagery,
                         )
                     }
                     // Full screen is about the globe, so it appears with it.
@@ -254,19 +298,33 @@ fun RouteDetailScreen(
                                 R.string.route_detail_open_globe,
                             ),
                             onClick = onOpenImmersiveGlobe,
-                            onGlass = overImagery,
+                            onGlass = chromeOverImagery,
                         )
                     }
                 },
-                // Transparent while the globe is under it, `surface` once the page
-                // has scrolled up. Both are what the empty-bars invariant asks
+                // Transparent while the globe's imagery is under it, `surface`
+                // once it is not. Both are what the empty-bars invariant asks
                 // for: over the hero the imagery runs unbroken past the clock,
                 // and over the page the bar is the same colour as the content
                 // behind it, so it is not a bar at all. A scrim in either state
                 // would be the opaque strip Phase B+ removed.
+                //
+                // **Both stops transparent while chromeOverImagery, not just
+                // the resting one.** `TopAppBarDefaults` lerps between
+                // `containerColor` and `scrolledContainerColor` by the bar's
+                // own scroll fraction, which reaches its threshold after about
+                // 0.6 dp of scroll — long before chromeOverImagery, which
+                // tracks the actual imagery, has any reason to change. Leaving
+                // `scrolledContainerColor` at `surface` painted an opaque slab
+                // across the status inset within the first frame of touch
+                // slop, with the photograph still full height underneath it.
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = if (chromeOverImagery) {
+                        Color.Transparent
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
                 ),
                 scrollBehavior = scrollBehavior,
             )
@@ -295,7 +353,7 @@ fun RouteDetailScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Full bleed, and outside the content padding: the globe takes the
@@ -312,6 +370,7 @@ fun RouteDetailScreen(
                     // The bar sits over the hero, and the Scaffold has already
                     // worked out how tall it plus the status bar is.
                     topChromeInset = contentPadding.calculateTopPadding(),
+                    onImageryVisible = { hasImagery = it },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
