@@ -160,10 +160,9 @@ internal data class GlobeCamera(
         val look = (n * -cT + upBase * sT).normalize()
         val up = (upBase * cT + n * sT).normalize()
 
-        // Camera position on the sphere of radius r. `t` is the camera-to-nadir
-        // distance, from solving |P| = r for P on the look ray through the nadir.
-        val r = distance
-        val t = -cT + sqrt(max(0f, r * r - sT * sT))
+        // Camera position on the sphere of radius r, placed along the look ray
+        // through the nadir at [nadirDistance].
+        val t = nadirDistance()
         val position = n * (1f + t * cT) + upBase * (-t * sT)
 
         return CameraBasis(
@@ -171,8 +170,26 @@ internal data class GlobeCamera(
             up = up,
             look = look,
             position = position,
-            facingUnit = position * (1f / r),
+            facingUnit = position * (1f / distance),
         )
+    }
+
+    /**
+     * How far the camera is from the point directly under it.
+     *
+     * Solved from `|P| = r` for `P` on the look ray through the nadir, which is
+     * also why the nadir is what lands at the centre of the screen at every tilt:
+     * [computeBasis] places the camera *on* that ray. Tilting therefore moves the
+     * camera genuinely further from the ground it is looking at — at altitude
+     * 0.01 this grows from 0.010 at nadir to 0.031 at `MAX_TILT` — which is real
+     * geometry rather than an artefact, and is the reason a tilt-versus-nadir
+     * detail comparison has to hold *this* constant rather than the altitude.
+     */
+    fun nadirDistance(): Float {
+        val sT = sin(tilt)
+        val cT = cos(tilt)
+        val r = distance
+        return -cT + sqrt(max(0f, r * r - sT * sT))
     }
 
     /** Focal length in pixels: half the viewport height over `tan(fovY / 2)`. */

@@ -72,14 +72,18 @@ internal object GlobeMesh {
      * holds one level down. What the traversal can actually produce is what
      * `GlobeMeshBudgetTest` re-derives from the live constants: over a sweep of
      * latitude, longitude, tilt and altitude at 1440×3120 and the two phone
-     * viewports, the reachable maximum is 13,230 vertices with every tile
+     * viewports, the reachable maximum is 16,672 vertices with every tile
      * carrying a coarse layer under its sharp one, which is the worst a sharpen
      * can do. Forty thousand is that three times over, and it stays well inside
      * a `ushort` index, which is the reason the bound is worth stating rather
      * than growing the buffer on demand.
      *
-     * It has to be re-measured whenever [substepsFor], the leaf cap or the
-     * atlas's budget changes, and the test is what makes sure it is.
+     * It has to be re-measured whenever [substepsFor], the leaf cap, the
+     * atlas's budget **or the traversal order** changes, and the test is what
+     * makes sure it is. The last of those is not obvious and is why it is named:
+     * spending the atlas near-field first moved the fine end of the leaf
+     * distribution from z11 to z12, which is more tiles at the finer substep
+     * counts even though the coarse end did not move.
      */
     const val MAX_TILE_VERTICES: Int = 40_000
 

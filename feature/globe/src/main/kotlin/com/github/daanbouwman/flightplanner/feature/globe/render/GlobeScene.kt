@@ -528,11 +528,17 @@ internal class GlobeScene(
      * A cheap identity for the visible set.
      *
      * Order-sensitive by construction, and that is harmless rather than wanted:
-     * the traversal returns its leaves in breadth-first order, which is
-     * deterministic for a given visible set, so this changes when the set does
-     * and not otherwise. The list used to be sorted back to front first, and the
-     * sort changed the order — and forced a rebuild — on 49 of 60 frames of a
-     * slow pan in which the set itself changed on 7.
+     * the traversal returns its leaves sorted by `(z, x, y)`, which is a pure
+     * function of the visible set, so this changes when the set does and not
+     * otherwise. The list used to be sorted back to front first, and the sort
+     * changed the order — and forced a rebuild — on 49 of 60 frames of a slow pan
+     * in which the set itself changed on 7.
+     *
+     * The key sort is load-bearing rather than tidy. Breadth-first order was a
+     * function of the set too, by accident; the priority order that replaced it is
+     * a function of continuous float priorities, so without the sort a sub-pixel
+     * camera move could reorder two near-ties and rebuild geometry that had not
+     * changed. See `Quadtree`'s note on order.
      */
     private fun signatureOf(tiles: List<VisibleTile>): Long {
         var hash = 1125899906842597L

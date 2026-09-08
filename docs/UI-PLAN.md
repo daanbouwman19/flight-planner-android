@@ -2087,8 +2087,7 @@ something, with the state after *The overhaul*:
    constants because the credit plate grows at font scale 2.0 and the stack
    grows a cell when the view is rotated. `cornerAlpha` is pure and tested
    (`GlobeLabelsAlphaTest`). Still open: the Esri offline-cache clause to
-   confirm in writing (PLAN.md §11); the 3 ms upload budget and `INCIDENCE_FLOOR`
-   unmeasured on hardware.
+   confirm in writing (PLAN.md §11); the 3 ms upload budget and `INCIDENCE_FLOOR` — which turned out to be the wrong knob entirely, see *Tilt destroyed the LOD* — unmeasured on hardware.
 
 ### A `SurfaceView` cannot be clipped, and that was the white flash
 
@@ -2141,6 +2140,94 @@ to the one surface that is a photograph.
 **Still owed:** the `TextureView`'s frame cost is unmeasured. It is a copy per
 frame on the UI thread's hardware canvas over a 260 dp band, very likely fine and
 not yet proved — `:macrobenchmark` over a Stats scroll, which H2 owes anyway.
+
+### Tilt destroyed the LOD, and the obvious fix made it worse
+
+Reported from the device: *"LOD also fails when using tilt and everything gets
+lower res the farther I tilt until everything is just a blob of pixels."*
+
+**The defect** was one multiplier, `Quadtree.kt:404`, scaling the screen-space
+error by the incidence at the tile's centre. At the screen centre that is exactly
+`cos(tilt)`, so at `MAX_TILT` it was 0.309 — two LOD levels, a four-fold blur,
+sweeping in from the horizon. The Rust reference has no such term and splits on
+raw `screen_px`; everything else in the arithmetic was already byte-for-byte the
+same, so this was the single divergence in the whole metric. `INCIDENCE_FLOOR`
+never engaged, so §9's open item about it was aimed at the wrong knob. The
+paragraph arguing for the term refuted itself in its own last sentence — it kept
+the *unscaled* estimate for the viewport margin "because that margin is about the
+tile's extent on screen, which incidence does not shrink", and a split test is
+equally an extent test.
+
+**Deleting it alone regresses**, which is the part worth remembering. The term was
+introduced as an atlas *demand reducer*, not a resolution feature. Without it a
+correct traversal at `MAX_TILT` wants ~1,960 non-pinned tiles against 235
+evictable slots, the breadth-first walk hits `withinAtlas`, and every remaining
+branch stops at the same level: median leaf z8 → **z7**, worse than the bug.
+
+**So the metric and the spend order changed together.** The split test is the
+reference's again — raw `screenPx`, which `chord` already takes as
+`max(ewArc, nsArc)` — and incidence moved from the *gate* to the *spend order*:
+the traversal is now a max-heap on `screenPx × max(INCIDENCE_FLOOR, incidence)`,
+so the scarce slots go to the near field and the horizon stays coarse. Incidence
+is a bad predictor of a tile's screen *extent*, which is what an SSE test
+measures, and a good predictor of its screen *area*, which is what a budget
+should ask. Culling moved from pop time to push time — load-bearing twice: a node
+carries its own priority rather than its parent's, and the budget gate stops
+over-charging for nodes that will never be spent.
+
+Leaves are now **sorted by `(z, x, y)`** before returning. Breadth-first order was
+a function of the visible set by accident, which is what `GlobeScene`'s mesh
+signature relies on; a priority order is a function of continuous float
+priorities, so without the sort a sub-pixel camera move could rebuild geometry
+that had not changed.
+
+**Measured, in Kotlin, not from a desk estimate:**
+
+| | before | after |
+| --- | --- | --- |
+| `TiltDetailTest` A — the metric, atlas out of the way | 8 of 25 cells fail | all 25 pass |
+| `TiltDetailTest` B — near field under the real budget | **4 levels** of blur | **2 levels** |
+| mesh worst case | — | 16,672 vertices / 73,512 indices against 40,000 / 192,000 |
+
+**Re-tuning: nothing changed, and that is a measurement.** Sweeping
+`evictableSlots` at the worst case gives z9 at 171, 235, 251, 470 *and* 4096 —
+dropping the pinned floor from z2 to z1 buys 16 slots and zero levels while
+costing the z2 fallback crop. `MAX_VISIBLE_TILES` stays 256 (worst leaf count 174)
+but its KDoc now records that it becomes the binding constraint the moment the
+atlas grows. A second 4096² atlas page is worth about one level at extreme tilt
+and is named as a deliberate deferral.
+
+**The test that was missing.** `QuadtreeTest` had eleven cases and none compared
+leaf depth under tilt against nadir — and one of them was *propped up by the bug*:
+the atlas-budget assertion passes more comfortably when the view coarsens, because
+coarsening reduces requests. Its KDoc now says the bound is a proof rather than a
+measurement, and says what used to be holding it up. `TiltDetailTest` is new and
+was written **against the unchanged traversal first**, where it failed on exactly
+the 8 cells and the 4-level deficit the analysis predicted. Neither existing test
+was deleted, ignored or weakened; two had their *rationale* rewritten because the
+reason they hold changed.
+
+Note also that a tilt-versus-nadir comparison cannot hold *altitude* constant:
+`GlobeCamera.nadirDistance()` (extracted for this) grows from 0.010 to 0.031
+between tilt 0 and `MAX_TILT`, so some of the centre deficit is correct geometry.
+Case A holds the camera-to-ground distance constant; case B probes the near field.
+
+**Verified on the device by the user**: tilting no longer drops the map's
+resolution. **Not verified:** frame timing on `benchmarkRelease`, and the atlas at
+its new operating point — occupancy moves 228/235 → **235/235**, so the slack that
+used to mask thrash is gone. It is structurally safe (the gate proves
+`requested + queued ≤ evictable` at every step) but wants a parked tilted camera
+and a look at `TileStats.pending` settling to zero and staying there.
+
+**A cost worth stating rather than burying:** over an 8,064-camera sweep, 74 cells
+regress by exactly one level — mid-field, at tilt ≥ 1.0, where the budget is
+genuinely zero-sum. The trade is mid-field for near-field, and near-field is what
+was reported.
+
+**Separable follow-up:** `TileQueue.pop` takes `pollLast` within a level, which
+with the new order systematically fetches the *least* important newly-appeared
+tile of each level first. Recording the visited nodes and issuing `request` in
+reverse after the traversal fixes it. Small, and independent of this change.
 
 Still outstanding from the first pass, unchanged:
 
