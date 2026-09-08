@@ -48,6 +48,13 @@ import com.github.daanbouwman.flightplanner.ui.chrome.NavigationReselect
  * **Only a bottom bar hides.** A rail costs width, not height, so hiding it would
  * take nothing back from a list that is already as tall as the window and would
  * leave a tablet with no navigation for the sake of nothing.
+ *
+ * ### Settings has no bar
+ *
+ * Settings is a top-level destination but has no slot in the bar, so on a phone
+ * the bar would sit under it with four sections and nothing selected. It is
+ * suppressed there outright — not animated away, just never shown. On a wide
+ * screen the rail stays, with Settings as one of its items.
  */
 @Composable
 fun FlightPlannerApp(
@@ -67,15 +74,30 @@ fun FlightPlannerApp(
     // same rail.
     val adaptiveType =
         NavigationSuiteScaffoldDefaults.navigationSuiteType(currentWindowAdaptiveInfoV2())
-    val navigationSuiteType = if (onTopLevel) adaptiveType else NavigationSuiteType.None
+
+    // Only the horizontal forms give height back. `NavigationSuiteType` is not an
+    // enum, so this is a comparison against the two bar types rather than a `when`
+    // the compiler can check — if a third bar type appears, it has to be added here.
+    val adaptiveIsBar = adaptiveType == NavigationSuiteType.ShortNavigationBarCompact ||
+        adaptiveType == NavigationSuiteType.ShortNavigationBarMedium
+
+    // Settings has no bar slot of its own (see `TopLevelDestination.inNavigationBar`),
+    // so on a phone the bar would sit under it showing four sections with none
+    // selected — chrome for a screen you only came to leave. Drop it there. A rail
+    // stays: it costs width the wide layout has to spare and keeps Settings a
+    // permanently visible, selectable home for the action.
+    val onSettings = currentDestination.isIn(TopLevelDestination.SETTINGS)
+
+    val navigationSuiteType = when {
+        !onTopLevel -> NavigationSuiteType.None
+        onSettings && adaptiveIsBar -> NavigationSuiteType.None
+        else -> adaptiveType
+    }
 
     val chrome = remember { AppChromeState() }
     val reselect = remember { NavigationReselect() }
     val suiteState = rememberNavigationSuiteScaffoldState()
 
-    // Only the horizontal forms give height back. `NavigationSuiteType` is not an
-    // enum, so this is a comparison against the two bar types rather than a `when`
-    // the compiler can check — if a third bar type appears, it has to be added here.
     val isBar = navigationSuiteType == NavigationSuiteType.ShortNavigationBarCompact ||
         navigationSuiteType == NavigationSuiteType.ShortNavigationBarMedium
 
