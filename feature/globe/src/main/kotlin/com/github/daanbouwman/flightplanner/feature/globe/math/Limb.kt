@@ -90,25 +90,4 @@ internal object Limb {
         return visible
     }
 
-    /**
-     * Whether the top of the projected disc reaches up past [statusStripPx].
-     *
-     * [points] and [visible] come straight from [projectInto]. A caller uses
-     * this to decide whether the *system* should draw its status-bar glyphs
-     * light: the imagery genuinely reaches under the clock only while the sphere
-     * does, and past a long-range camera the disc retreats and what is up there
-     * is the backdrop's space colour instead — which in a light theme is the
-     * page colour, where light glyphs are wrong.
-     */
-    fun discReachesTop(points: FloatArray, visible: Int, statusStripPx: Float): Boolean {
-        if (visible < 3 || statusStripPx <= 0f) return false
-        var topY = Float.MAX_VALUE
-        var i = 1
-        while (i < points.size) {
-            val y = points[i]
-            if (!y.isNaN() && y < topY) topY = y
-            i += 2
-        }
-        return topY <= statusStripPx
-    }
 }

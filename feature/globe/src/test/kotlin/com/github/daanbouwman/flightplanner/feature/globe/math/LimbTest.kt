@@ -65,29 +65,6 @@ class LimbTest {
         cyclicRuns { !out[it * 2].isNaN() } shouldBe 1
     }
 
-    @Test
-    fun `discReachesTop follows the sphere, not the box`() {
-        val strip = 64f
-
-        // Zoomed right in: the disc fills the view and its top is well above the
-        // status strip.
-        project(GlobeCamera(altitude = 0.05f, tilt = 0f))
-        Limb.discReachesTop(out, Limb.SAMPLES, strip) shouldBe true
-
-        // Zoomed out: the whole globe is a small disc in the middle of the view,
-        // nowhere near the clock — the case where the hero box still "covers"
-        // the strip but what is actually up there is space colour.
-        val farVisible = project(GlobeCamera(altitude = MAX_ALTITUDE, tilt = 0f))
-        Limb.discReachesTop(out, farVisible, strip) shouldBe false
-    }
-
-    @Test
-    fun `discReachesTop is false with nothing to measure`() {
-        project(GlobeCamera(altitude = 0.05f, tilt = 0f))
-        Limb.discReachesTop(out, visible = 2, statusStripPx = 64f) shouldBe false
-        Limb.discReachesTop(out, visible = Limb.SAMPLES, statusStripPx = 0f) shouldBe false
-    }
-
     private fun prev(i: Int) = (i + Limb.SAMPLES - 1) % Limb.SAMPLES
 
     /** How many maximal runs of samples satisfy [pred], walking the ring cyclically. */

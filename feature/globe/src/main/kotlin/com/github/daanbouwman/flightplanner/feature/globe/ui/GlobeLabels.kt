@@ -122,12 +122,13 @@ internal fun GlobeLabels(
     val depScreen = camera.worldToScreen(departure.world, viewport)
     val destScreen = camera.worldToScreen(destination.world, viewport)
     val plateReservePx = with(LocalDensity.current) { PlateReserve.toPx() }
+    val plateHalfWidthPx = with(LocalDensity.current) { PlateHalfWidth.toPx() }
     val depAlpha = limbAlpha(basis, departure.world, camera) *
         edgeAlpha(depScreen?.y, chromePx, fadePx, viewport.height, plateReservePx) *
-        cornerAlpha(depScreen, reservedCorners, plateReservePx)
+        cornerAlpha(depScreen, reservedCorners, plateReservePx, plateHalfWidthPx)
     val destAlpha = limbAlpha(basis, destination.world, camera) *
         edgeAlpha(destScreen?.y, chromePx, fadePx, viewport.height, plateReservePx) *
-        cornerAlpha(destScreen, reservedCorners, plateReservePx)
+        cornerAlpha(destScreen, reservedCorners, plateReservePx, plateHalfWidthPx)
 
     val separation = depScreen?.let { d ->
         destScreen?.let { hypot(it.x - d.x, it.y - d.y) }
@@ -267,21 +268,30 @@ internal fun edgeAlpha(
 /**
  * How a label fades out as its dot approaches a corner the host has covered.
  *
- * Only dots within a reserved rect's own horizontal span are affected — a plate
- * to the side of the camera stack is fine. Within that span the fade starts one
- * plate-height *above* the rect's top edge, because the plate hangs below its
- * dot: a dot level with the top of the stack still puts its code over the stack.
- * Zero once the dot is at or below that edge.
+ * Within a reserved rect's horizontal span the fade starts one plate-height
+ * *above* the rect's top edge, because the plate hangs below its dot: a dot level
+ * with the top of the stack still puts its code over the stack. Zero once the dot
+ * is at or below that edge.
+ *
+ * **The span is the rect widened by half a plate, not the rect.** [Plate] centres
+ * its content on the dot, so the code reaches [plateHalfWidthPx] either side of
+ * it; testing the dot x against the bare rect let a dot a few pixels outside
+ * the stack draw the inner half of its code straight over it — the exact overlap
+ * this fade exists to prevent. [edgeAlpha] already gives the same kind of slack
+ * vertically through `plateReservePx`; this is its horizontal twin.
  */
 internal fun cornerAlpha(
     point: ScreenPoint?,
     reserved: List<Rect>,
     plateReservePx: Float,
+    plateHalfWidthPx: Float,
 ): Float {
     if (point == null || reserved.isEmpty()) return 1f
     var alpha = 1f
     for (rect in reserved) {
-        if (rect.isEmpty || point.x < rect.left || point.x > rect.right) continue
+        if (rect.isEmpty) continue
+        if (point.x < rect.left - plateHalfWidthPx) continue
+        if (point.x > rect.right + plateHalfWidthPx) continue
         val above = rect.top - point.y
         alpha = minOf(alpha, (above / plateReservePx).coerceIn(0f, 1f))
     }
@@ -290,6 +300,15 @@ internal fun cornerAlpha(
 
 /** How much room below its dot a plate needs. A dot and a line of code. */
 private val PlateReserve = 40.dp
+
+/**
+ * How far a plate reaches either side of its dot.
+ *
+ * Sized from the same measurement [MergeDistancePx] cites — two four-character
+ * codes at `labelMedium` are about 44 dp wide — halved, plus the plate's own 6 dp
+ * of horizontal padding.
+ */
+private val PlateHalfWidth = 28.dp
 
 /** How far below the chrome a label is fully in. Roughly one plate. */
 private val ChromeFadeSpan = 28.dp

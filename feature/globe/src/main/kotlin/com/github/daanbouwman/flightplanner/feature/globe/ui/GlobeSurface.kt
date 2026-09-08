@@ -614,20 +614,18 @@ private fun GlobeCanvas(
         }
     }
 
-    // **Does the sphere's projected disc actually reach the status strip?**
+    // **Does the sphere actually cover the status strip?**
     // The host's own `imageryCovers` is box geometry — true whenever the hero is
     // tall enough — but past a long-range camera the sphere retreats from the
     // top of that box and what is painted under the clock is `GlobeInk.space`,
     // which is `colorScheme.surface` in a light theme. Light status glyphs are
-    // then wrong. This answers the geometric question the host cannot: it
-    // projects the limb (gap-aware — see [Limb]) on a *settled* camera and
-    // reports whether the top of the disc is above [statusStripPx]. Only the
-    // Boolean crosses back to `:app`, so a fling never lands a per-frame float
-    // in the host's recomposition. Unconditionally composed — the `remember`
-    // slot count must not depend on [statusStripPx], which is zero for hosts
-    // that do not care and can change on a rotation; `discReachesTop` is false
-    // for a zero strip anyway.
-    val limbScratch = remember { FloatArray(Limb.SAMPLES * 2) }
+    // then wrong. `coversStatusStrip` answers the geometric question the host
+    // cannot, with the ray the camera already casts, on a *settled* camera.
+    // Only the Boolean crosses back to `:app`, so a fling never lands a
+    // per-frame float in the host recomposition. Unconditionally composed - the
+    // `remember` slot count must not depend on [statusStripPx], which is zero
+    // for hosts that do not care and can change on a rotation; the predicate is
+    // false for a zero strip anyway.
     LaunchedEffect(cameraState, statusStripPx) {
         if (statusStripPx <= 0f) {
             latestOnImageryReachesTop(false)
@@ -643,10 +641,7 @@ private fun GlobeCanvas(
                     latestOnImageryReachesTop(false)
                     return@collectLatest
                 }
-                val valid = Limb.projectInto(cam, cam.computeBasis(), vp, limbScratch)
-                latestOnImageryReachesTop(
-                    Limb.discReachesTop(limbScratch, valid, statusStripPx),
-                )
+                latestOnImageryReachesTop(cam.coversStatusStrip(vp, statusStripPx))
             }
     }
 

@@ -56,10 +56,16 @@ android {
 // matc ships only in the Filament release archive, not in filament-android and not
 // on any developer machine by default, so there is no Gradle task that can
 // recompile them. A .mat edited without its .filamat regenerated would ship the
-// old shader with nothing to say so. verifyFilamatFreshness closes that: it hashes
-// each pair against src/main/materials/checksums.txt and fails `check` on any
-// drift. After a legitimate recompile, run updateFilamatChecksums and commit the
-// manifest alongside the new blob.
+// old shader with nothing to say so.
+//
+// verifyFilamatFreshness catches the *forgotten* case: it hashes each pair against
+// src/main/materials/checksums.txt and fails `check` on any drift. On its own that
+// is only file identity, not proof that the blob was compiled from the source next
+// to it — so updateFilamatChecksums refuses to bless a pair whose .mat changed
+// while its .filamat did not, which is exactly the shape of "I forgot to run matc,
+// then regenerated the manifest". A real matc run on a changed source produces a
+// different blob; a comment-only edit that genuinely compiles to the same bytes is
+// the one false positive, and -PallowUnchangedFilamat=true is its escape hatch.
 val materialsDirFile: File = layout.projectDirectory.dir("src/main/materials").asFile
 val filamatDirFile: File = layout.projectDirectory.dir("src/main/assets/materials").asFile
 
@@ -131,6 +137,10 @@ tasks.register("updateFilamatChecksums") {
 
     val materials = materialsDirFile
     val filamats = filamatDirFile
+    // Read at configuration time: touching `providers` inside the task action
+    // captures the Project, which the configuration cache refuses to serialise.
+    val allowUnchanged = providers.gradleProperty("allowUnchangedFilamat")
+        .map { it.toBoolean() }.getOrElse(false)
 
     doLast {
         fun sha256(file: File): String =
@@ -138,14 +148,56 @@ tasks.register("updateFilamatChecksums") {
                 .joinToString("") { "%02x".format(it) }
 
         val manifestFile = File(materials, "checksums.txt")
+
+        val recorded: Map<String, Pair<String, String>> = manifestFile.readLines()
+            .map { it.substringBefore('#').trim() }
+            .filter { it.isNotEmpty() }
+            .associate { line ->
+                val parts = line.split(Regex("\\s+"))
+                parts[0] to (parts[1] to parts[2])
+            }
+
         val header = manifestFile.readLines().takeWhile { it.startsWith("#") || it.isBlank() }
+        val stale = mutableListOf<String>()
         val lines = materials.listFiles { f -> f.extension == "mat" }
             .orEmpty().sortedBy { it.name }.map { mat ->
                 val name = mat.nameWithoutExtension
                 val filamat = File(filamats, "$name.filamat")
                 require(filamat.isFile) { "no compiled $name.filamat to hash" }
-                "$name  ${sha256(mat)}  ${sha256(filamat)}"
+                val matHash = sha256(mat)
+                val filamatHash = sha256(filamat)
+                val was = recorded[name]
+                // The source moved and the blob did not: that is a forgotten
+                // matc run, and blessing it would make the guard permanently
+                // blind to this material.
+                if (was != null && was.first != matHash && was.second == filamatHash) {
+                    stale += name
+                }
+                "$name  $matHash  $filamatHash"
             }
+
+        if (stale.isNotEmpty() && !allowUnchanged) {
+            throw GradleException(
+                buildString {
+                    appendLine("Refusing to record a .mat change with an unchanged .filamat:")
+                    stale.forEach { appendLine("  - $it") }
+                    appendLine()
+                    appendLine("Recompile it first:")
+                    stale.forEach {
+                        appendLine(
+                            "  matc --platform=mobile --api=opengl --api=vulkan " +
+                                "-o feature/globe/src/main/assets/materials/$it.filamat " +
+                                "feature/globe/src/main/materials/$it.mat",
+                        )
+                    }
+                    appendLine()
+                    append(
+                        "If the edit genuinely compiles to identical bytes (a comment, say), " +
+                            "re-run with -PallowUnchangedFilamat=true.",
+                    )
+                },
+            )
+        }
         manifestFile.writeText((header + lines).joinToString("\n") + "\n")
         logger.lifecycle("Wrote src/main/materials/checksums.txt")
     }

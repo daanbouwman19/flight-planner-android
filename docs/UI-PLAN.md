@@ -1789,7 +1789,9 @@ matc --platform=mobile --api=opengl --api=vulkan -o <out>.filamat <in>.mat
 
 `matc` ships in the Filament release archive (`filament-<version>-windows.tgz`),
 not in the AAR, so it is not on any developer machine by default and there is no
-Gradle task that recompiles them. **What is closed** is the silent part:
+Gradle task that recompiles them. **What is closed** is the forgotten-recompile
+path — and it took two halves, because a checksum manifest on its own attests
+file identity rather than the compile relationship:
 `:feature:globe:verifyFilamatFreshness` (wired into `check`, so `./gradlew build`
 runs it) hashes each `.mat` and each `.filamat` against a committed manifest,
 `src/main/materials/checksums.txt`, and fails the build naming any pair that has
@@ -1797,9 +1799,20 @@ drifted — a `.mat` edited without its `.filamat` regenerated, or either file
 changed out from under the manifest. After a legitimate `matc` recompile,
 `./gradlew :feature:globe:updateFilamatChecksums` rewrites the manifest and it is
 committed with the new blob — the same regenerate-and-commit shape the baseline
-profile already has. A checksum manifest rather than a `matc` integration because
-`matc` cannot be assumed present; wiring `matc` itself into the build is still
-outstanding but no longer load-bearing.
+profile already has.
+
+**And `updateFilamatChecksums` refuses to bless a lie.** Regenerating the manifest
+after editing a `.mat` *without* recompiling would otherwise record the new source
+hash beside the unchanged blob and leave the guard permanently blind to that
+material — the exact hole a review found. A real `matc` run on a changed source
+produces a different blob, so the task fails when a `.mat` moved and its
+`.filamat` did not, printing the `matc` line; `-PallowUnchangedFilamat=true` is
+the escape hatch for an edit that genuinely compiles to identical bytes. All three
+behaviours are verified by planting the violation, per CLAUDE.md.
+
+A checksum manifest rather than a `matc` integration because `matc` cannot be
+assumed present; wiring `matc` itself into the build is still outstanding but no
+longer load-bearing.
 
 ### Chrome over a photograph
 
@@ -2228,6 +2241,48 @@ was reported.
 with the new order systematically fetches the *least* important newly-appeared
 tile of each level first. Recording the visited nodes and issuing `request` in
 reverse after the traversal fixes it. Small, and independent of this change.
+
+### Five review findings against the fixes themselves
+
+`/code-review` over the Phase G cleanup returned five, and two were real
+behavioural defects of the same shape: **a predicate that uses a point but ignores
+an extent.**
+
+- **The status-glyph predicate scanned the limb for its minimum `y`.** A minimum
+  over `y` says nothing about `x`, and the disc reaches the top of the window well
+  before it is wide enough to span it — so an apex above the strip was read as the
+  strip being covered, which is the same false positive one layer down from the
+  one it replaced. It also had a silent cliff at fewer than three visible samples.
+  Both dissolve into `GlobeCamera.coversStatusStrip`, which asks the question with
+  the ray `screenToWorld` already casts: exact at any tilt and bearing, no
+  polygon, no cliff, and conservative on purpose — every sample must hit, because
+  a wrongly-dark glyph is slightly less contrasty while a wrongly-light one is
+  invisible. `Limb.discReachesTop` is deleted; the NaN-gap fix it sat beside
+  stays, since that one is for the rim.
+
+  **A correction to the review, and to my own repetition of it.** It described the
+  case as a tilted, rotated ellipse whose apex swings off-axis. A sweep of
+  altitudes 0.6–2 × bearings 0.5–2.2 × tilts 0.4–`MAX_TILT` found no such camera;
+  what makes the defect reachable is the plain narrow-disc case at altitude 1.
+  Recorded because the fix is the same either way and the reason for it should be
+  the true one. `StatusStripCoverageTest` measures the real case, and also pins
+  something counter-intuitive found while writing it: leaning toward the horizon
+  *uncovers* the strip even 0.05 above the surface, because the horizon is then
+  inside the window and the top of the screen really is sky.
+
+- **`cornerAlpha` tested the label dot against the bare rect.** `Plate` centres a
+  code on its dot, so a dot just outside the camera stack still drew the inner half
+  of that code over it — the exact overlap the fade exists to prevent. The span is
+  now the rect widened by `PlateHalfWidth`, the horizontal twin of the
+  `plateReservePx` slack `edgeAlpha` already had. **One existing case in
+  `GlobeLabelsAlphaTest` asserted the defect** — "a dot beside the stack is
+  untouched" — and was changed deliberately rather than quietly, with the reason
+  in its KDoc.
+
+- **The `.filamat` guard's docs overstated it**; see *The material toolchain* above
+  for the two halves that closed it.
+- **A silent cliff** in the same predicate, and **a duplicated bounds-reporting
+  modifier** in `GlobeControls`, both folded in.
 
 Still outstanding from the first pass, unchanged:
 

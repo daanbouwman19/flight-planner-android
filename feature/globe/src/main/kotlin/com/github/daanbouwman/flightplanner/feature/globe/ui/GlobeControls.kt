@@ -107,17 +107,7 @@ fun GlobeCameraControls(
      */
     boundsReporter: ((Rect) -> Unit)? = null,
 ) {
-    GlassPlate(
-        modifier = modifier
-            .width(ControlSize)
-            .then(
-                if (boundsReporter != null) {
-                    Modifier.onGloballyPositioned { boundsReporter(it.boundsInParent()) }
-                } else {
-                    Modifier
-                },
-            ),
-    ) {
+    GlassPlate(modifier = modifier.width(ControlSize).reportBoundsInParent(boundsReporter)) {
         PlateCell(
             onClick = onZoomIn,
             contentDescription = stringResource(R.string.globe_zoom_in),
@@ -224,6 +214,18 @@ private fun HeadingCell(bearingDegrees: Float, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Reports this node's bounds in its parent whenever they change, if anyone asked.
+ *
+ * The globe fades a label plate that would otherwise draw its code behind the
+ * chrome, and the chrome is the only thing that knows where it ended up — at what
+ * font scale, and with or without the heading cell. Null reporter, no modifier at
+ * all: the immersive screen folds its own controls into `topChromeInset` instead
+ * and has nothing to say here.
+ */
+private fun Modifier.reportBoundsInParent(reporter: ((Rect) -> Unit)?): Modifier =
+    if (reporter == null) this else onGloballyPositioned { reporter(it.boundsInParent()) }
+
 /** The translucent plate every mark this app makes over imagery is made on. */
 @Composable
 private fun GlassPlate(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
@@ -297,13 +299,7 @@ fun GlobeAttribution(
 ) {
     Column(
         modifier = modifier
-            .then(
-                if (boundsReporter != null) {
-                    Modifier.onGloballyPositioned { boundsReporter(it.boundsInParent()) }
-                } else {
-                    Modifier
-                },
-            )
+            .reportBoundsInParent(boundsReporter)
             .clearAndSetSemantics { }
             .background(
                 color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = PlateAlpha),

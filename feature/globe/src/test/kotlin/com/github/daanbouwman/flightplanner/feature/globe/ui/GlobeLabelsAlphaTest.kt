@@ -21,37 +21,55 @@ class GlobeLabelsAlphaTest {
     private val stack = Rect(left = 744f, top = 620f, right = 800f, bottom = 800f)
     private val reserve = 40f
 
+    /** Half a plate, as [GlobeLabels] measures it. */
+    private val halfW = 28f * 3f
+
+    private fun alpha(x: Float, y: Float, rects: List<Rect>) =
+        cornerAlpha(ScreenPoint(x, y), rects, reserve, halfW)
+
     @Test
     fun `a dot clear of every corner is untouched`() {
-        cornerAlpha(ScreenPoint(400f, 400f), listOf(stack), reserve) shouldBe 1f
+        alpha(400f, 400f, listOf(stack)) shouldBe 1f
     }
 
     @Test
     fun `no point, or no reserved corners, is untouched`() {
-        cornerAlpha(null, listOf(stack), reserve) shouldBe 1f
-        cornerAlpha(ScreenPoint(760f, 700f), emptyList(), reserve) shouldBe 1f
+        cornerAlpha(null, listOf(stack), reserve, halfW) shouldBe 1f
+        alpha(760f, 700f, emptyList()) shouldBe 1f
     }
 
     @Test
     fun `a dot over the stack is gone`() {
-        cornerAlpha(ScreenPoint(760f, 700f), listOf(stack), reserve) shouldBe 0f
+        alpha(760f, 700f, listOf(stack)) shouldBe 0f
         // Level with the top edge: the plate still hangs down over the stack.
-        cornerAlpha(ScreenPoint(760f, stack.top), listOf(stack), reserve) shouldBe 0f
+        alpha(760f, stack.top, listOf(stack)) shouldBe 0f
     }
 
     @Test
     fun `the fade is one plate-height above the stack`() {
-        val half = cornerAlpha(ScreenPoint(760f, stack.top - reserve / 2f), listOf(stack), reserve)
+        val half = alpha(760f, stack.top - reserve / 2f, listOf(stack))
         half shouldBeGreaterThan 0f
         half shouldBeLessThan 1f
 
-        cornerAlpha(ScreenPoint(760f, stack.top - reserve - 1f), listOf(stack), reserve) shouldBe 1f
+        alpha(760f, stack.top - reserve - 1f, listOf(stack)) shouldBe 1f
+    }
+
+    /**
+     * **This case changed, and deliberately.** It used to assert that a dot one
+     * pixel left of the stack was untouched, which was the defect written down as
+     * an expectation: `Plate` centres its code on the dot, so a dot just outside
+     * the stack still draws the inner half of that code over it. A dot is only
+     * clear once it is a plate-half-width outside.
+     */
+    @Test
+    fun `a dot just outside the stack still fades, because its plate is not`() {
+        alpha(stack.left - 1f, 700f, listOf(stack)) shouldBe 0f
+        alpha(stack.left - halfW + 1f, 700f, listOf(stack)) shouldBe 0f
     }
 
     @Test
-    fun `a dot beside the stack, in its own column, is untouched`() {
-        // Same height as inside the stack, but left of its left edge.
-        cornerAlpha(ScreenPoint(stack.left - 1f, 700f), listOf(stack), reserve) shouldBe 1f
+    fun `a dot a whole plate clear of the stack is untouched`() {
+        alpha(stack.left - halfW - 1f, 700f, listOf(stack)) shouldBe 1f
     }
 
     @Test
@@ -59,6 +77,6 @@ class GlobeLabelsAlphaTest {
         val credit = Rect(left = 0f, top = 500f, right = 240f, bottom = 560f)
         val wide = Rect(left = 0f, top = 700f, right = 800f, bottom = 800f)
         // Inside `credit` (which starts higher) and inside `wide`.
-        cornerAlpha(ScreenPoint(120f, 540f), listOf(credit, wide), reserve) shouldBe 0f
+        alpha(120f, 540f, listOf(credit, wide)) shouldBe 0f
     }
 }
