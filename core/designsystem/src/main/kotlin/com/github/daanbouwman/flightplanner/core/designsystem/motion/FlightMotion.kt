@@ -21,6 +21,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -35,6 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import kotlin.math.roundToInt
 
 /**
@@ -168,6 +172,43 @@ object FlightMotion {
     @Composable
     fun navExit(): ExitTransition =
         fadeOut(animationSpec = effects()) + scaleOut(animationSpec = spatial(), targetScale = 1.04f)
+
+    /**
+     * A full-screen destination pushed in from the side and slid back off the
+     * same edge — Settings, reached from a section's app bar.
+     *
+     * Neither of the other two entrances fits it. [navEnter] is a fade-through
+     * for screens that replace each other in place; [sharedEnter] is for a screen
+     * that grows out of an element on the one before it. Settings does neither: it
+     * is a self-contained page you open and leave as a unit, and a lateral slide
+     * is what gives that trip a direction. Predictive back then falls out for
+     * free — `NavHost` seeks this same transition to the gesture's progress, so
+     * the screen tracks the finger back across the edge it entered from.
+     *
+     * The slide is off the **trailing** edge, so it reads as "forward" in either
+     * writing direction: the page arrives from the side the eye travels toward and
+     * departs back across it. Spatial spring for the movement, effects spring for
+     * the fade — the same split as [navEnter].
+     */
+    @Composable
+    fun lateralEnter(): EnterTransition {
+        val trailing = trailingEdgeSign()
+        return slideInHorizontally(animationSpec = spatial()) { it * trailing } +
+            fadeIn(animationSpec = effects())
+    }
+
+    /** The mirror of [lateralEnter]: back out across the trailing edge. */
+    @Composable
+    fun lateralExit(): ExitTransition {
+        val trailing = trailingEdgeSign()
+        return slideOutHorizontally(animationSpec = spatial()) { it * trailing } +
+            fadeOut(animationSpec = effects())
+    }
+
+    /** +1 when the trailing edge is on the right (LTR), -1 in RTL. */
+    @Composable
+    private fun trailingEdgeSign(): Int =
+        if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
 
     /**
      * Screen entrance for a pair of screens that share an element.

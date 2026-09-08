@@ -56,6 +56,14 @@ fun FlightPlannerNavHost(
     val enter = FlightMotion.navEnter()
     val exit = FlightMotion.navExit()
 
+    // Settings is opened and left as a unit from a section's app bar, so it slides
+    // in from the trailing edge and — the part the design asks for — slides back
+    // out across it. Only the Plan→Settings and Settings→Plan slots get this; the
+    // Settings→Licences pair stays on the fade, which is the direction the slide
+    // would point the wrong way.
+    val lateralEnter = FlightMotion.lateralEnter()
+    val lateralExit = FlightMotion.lateralExit()
+
     // Plan and its detail share elements, so they get the un-scaled pair. See
     // FlightMotion.sharedEnter: an overlay-rendered shared element does not
     // inherit the container's scale, so the two disagree while both are running.
@@ -272,7 +280,10 @@ fun FlightPlannerNavHost(
                     },
                 )
             }
-            composable<Destination.Settings> {
+            composable<Destination.Settings>(
+                enterTransition = { lateralEnter },
+                popExitTransition = { lateralExit },
+            ) {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
                     onOpenSelfCheck = { navController.navigate(Destination.SelfCheck) },
