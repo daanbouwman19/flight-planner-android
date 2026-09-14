@@ -67,7 +67,18 @@ sealed interface PlanStatus {
     /** Rows are on screen and more are being appended beneath them. */
     data object Appending : PlanStatus
 
+    /** Rows are on screen and another batch may be appended. */
     data object Ready : PlanStatus
+
+    /**
+     * Rows are on screen and the list will not grow any further.
+     *
+     * The list is capped — see `PlanViewModel.MAX_ROUTE_ROWS` — and this is
+     * what the cap looks like from the screen: the same rows as [Ready], a
+     * footer instead of the loading indicator, and a `loadMore` that is
+     * declined. A refresh starts a new list and lifts it.
+     */
+    data object EndReached : PlanStatus
 
     data class Failed(val reason: PlanFailure) : PlanStatus
 }

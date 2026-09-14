@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,6 +61,18 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 private const val TAG = "PlanViewModel"
+
+/**
+ * The most rows one list will hold: six batches of [DEFAULT_ROUTE_BATCH].
+ *
+ * A row is a few hundred bytes of airport text plus two `DoubleArray`s of arc
+ * samples, which is small — and was unbounded, since the list only ever grew
+ * until the next refresh. Six batches is more than anyone reads before
+ * refreshing, and it bounds the entered-row set and the visible-station
+ * bookkeeping along with it. `internal` so the test can name the cap it is
+ * asserting rather than restate it.
+ */
+internal const val MAX_ROUTE_ROWS = 6 * DEFAULT_ROUTE_BATCH
 
 /**
  * Drives the Plan screen: what to generate, what was generated, and what
@@ -455,7 +468,13 @@ class PlanViewModel @Inject constructor(
         selection.update { it.copy(generation = it.generation + 1) }
     }
 
-    /** Appends another batch beneath the current one. Ignored while one is already in flight. */
+    /**
+     * Appends another batch beneath the current one.
+     *
+     * Ignored while one is already in flight, and ignored once the list has
+     * reached [MAX_ROUTE_ROWS] — both are states other than `Ready`, which is
+     * what makes one comparison cover both.
+     */
     fun loadMore() {
         if (status.value != PlanStatus.Ready) return
         appendRequests.tryEmit(Unit)
@@ -729,8 +748,15 @@ class PlanViewModel @Inject constructor(
                 .onFailure { Log.w(TAG, "Appending a batch failed; keeping what is shown", it) }
                 .getOrNull()
                 .orEmpty()
-            routes.update { it + more }
-            status.value = PlanStatus.Ready
+            val grown = routes.updateAndGet { it + more }
+            // The list is bounded. Every row holds two sampled arcs, and an
+            // infinite scroll that is never refreshed would keep them all for
+            // the session — a fling of a few minutes was a few thousand rows
+            // nobody would scroll back to. Past the cap the append is declined
+            // at `loadMore` and the screen says so; the rows on screen are
+            // untouched, because dropping from the head would shift every
+            // index under the user's thumb.
+            status.value = if (grown.size >= MAX_ROUTE_ROWS) PlanStatus.EndReached else PlanStatus.Ready
         }
     }
 

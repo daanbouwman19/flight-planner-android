@@ -480,6 +480,40 @@ class PlanViewModelTest {
     }
 
     @Test
+    fun `the list stops growing at the cap and says so, until a refresh`() = planTest { model ->
+        val batch = model.uiState.value.routes.size
+
+        // Up to the cap, every request is honoured.
+        while (model.uiState.value.routes.size + batch <= MAX_ROUTE_ROWS) {
+            model.loadMore()
+            advanceUntilIdle()
+            model.uiState.value.status shouldBe if (model.uiState.value.routes.size >= MAX_ROUTE_ROWS) {
+                PlanStatus.EndReached
+            } else {
+                PlanStatus.Ready
+            }
+        }
+        val capped = model.uiState.value
+        capped.status shouldBe PlanStatus.EndReached
+        capped.routes shouldHaveSize MAX_ROUTE_ROWS
+        // Not an empty result: the predicate the "nothing in range" state
+        // hangs off must not fire for a full list that merely stopped.
+        capped.isEmptyResult shouldBe false
+
+        // Past it, a request is declined rather than queued.
+        model.loadMore()
+        advanceUntilIdle()
+        model.uiState.value.routes shouldHaveSize MAX_ROUTE_ROWS
+        model.uiState.value.status shouldBe PlanStatus.EndReached
+
+        // A refresh is a new list, and the cap starts over with it.
+        model.generate()
+        advanceUntilIdle()
+        model.uiState.value.status shouldBe PlanStatus.Ready
+        model.uiState.value.routes shouldHaveSize batch
+    }
+
+    @Test
     fun `this-aircraft mode with no airframe waits instead of generating nothing`() = planTest { model ->
         model.generate()
         advanceUntilIdle()

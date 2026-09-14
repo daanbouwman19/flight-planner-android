@@ -18,6 +18,8 @@
     <string name="plan_no_matches_title">Nothing in range</string>
     <string name="plan_no_matches_message">No route fits the current aircraft, departure and runway
         requirements. Try clearing the departure or choosing a longer-range aircraft.</string>
+    <!-- Footer under the last card once the list has reached its cap (six batches). -->
+    <string name="plan_end_reached">That is the end of this list. Pull down to refresh for more.</string>
 
     <string name="plan_pick_aircraft_title">Which aircraft?</string>
     <string name="plan_pick_aircraft_message">Choose an airframe and every route will be planned for it.</string>

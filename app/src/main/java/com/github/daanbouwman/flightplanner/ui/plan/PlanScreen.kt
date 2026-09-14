@@ -65,6 +65,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -787,6 +788,24 @@ private fun RouteList(
                 }
             }
         }
+
+        // The list is capped, and the cap has to be said. Scrolling to the end
+        // of an infinite list and finding it merely stops reads as a load that
+        // failed; one line saying what happened and what to do turns a limit
+        // into a state. Refresh is pull-to-refresh, which the user already has.
+        if (state.status == PlanStatus.EndReached) {
+            item(key = EndReachedKey) {
+                Text(
+                    text = stringResource(R.string.plan_end_reached),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                )
+            }
+        }
     }
 }
 
@@ -1181,6 +1200,8 @@ private const val PlanRouteListTag = "plan:routeList"
 
 private const val AppendingKey = "appending"
 
+private const val EndReachedKey = "endReached"
+
 private const val HeaderKey = "header"
 
 /** How far a row rises into place. Small: this is a hint of arrival, not a slide-in. */
@@ -1282,6 +1303,13 @@ private fun PlanWithFiltersPreview() {
             status = PlanStatus.Ready,
         ),
     )
+}
+
+/** The footer a capped list ends on, in place of the loading indicator. */
+@LightDarkPreview
+@Composable
+private fun PlanEndReachedPreview() {
+    PreviewPlan(PlanUiState(routes = PlanPreviewData.batch, status = PlanStatus.EndReached))
 }
 
 @LightDarkPreview
