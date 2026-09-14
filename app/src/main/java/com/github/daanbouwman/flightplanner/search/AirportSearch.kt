@@ -7,7 +7,7 @@ import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.AirportSlotSearch
 import com.github.daanbouwman.flightplanner.ui.plan.SearchScope
-import kotlinx.coroutines.CancellationException
+import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -114,15 +114,6 @@ private suspend fun searchAirports(
 private fun suggestionSlots(index: AirportIndex): IntArray {
     val count = minOf(AirportSlotSearch.DEFAULT_LIMIT, index.size)
     return IntArray(count) { index.size - 1 - it }
-}
-
-/** [runCatching] that lets cancellation through — see `PlanViewModel` for why. */
-private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
-    Result.success(block())
-} catch (cancellation: CancellationException) {
-    throw cancellation
-} catch (failure: Throwable) {
-    Result.failure(failure)
 }
 
 /**

@@ -16,8 +16,8 @@ import com.github.daanbouwman.flightplanner.search.airportSearchScope
 import com.github.daanbouwman.flightplanner.search.rankedAircraftResults
 import com.github.daanbouwman.flightplanner.search.rankedAirportResults
 import com.github.daanbouwman.flightplanner.ui.plan.SearchScope
+import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -228,13 +228,4 @@ sealed interface LogbookEvent {
     data object FlightDeleted : LogbookEvent
     data class FlightAdded(val departureIcao: String, val destinationIcao: String) : LogbookEvent
     data object FlightAddFailed : LogbookEvent
-}
-
-/** [runCatching] that lets cancellation through. See [com.github.daanbouwman.flightplanner.ui.plan.PlanViewModel] for why. */
-private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
-    Result.success(block())
-} catch (cancellation: CancellationException) {
-    throw cancellation
-} catch (failure: Throwable) {
-    Result.failure(failure)
 }

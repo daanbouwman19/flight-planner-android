@@ -26,9 +26,9 @@ import com.github.daanbouwman.flightplanner.search.airportSearchScope
 import com.github.daanbouwman.flightplanner.search.rankedAircraftResults
 import com.github.daanbouwman.flightplanner.search.rankedAirportResults
 import com.github.daanbouwman.flightplanner.settings.SettingsRepository
+import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -886,20 +886,4 @@ class PlanViewModel @Inject constructor(
         /** NOAA's documented ceiling per request; also what docs/PLAN.md's "chunk by 50" specifies. */
         const val WEATHER_BATCH_SIZE = 50
     }
-}
-
-/**
- * [runCatching] that lets cancellation through.
- *
- * `runCatching` swallows `CancellationException` along with everything else,
- * which quietly breaks structured concurrency: a cancelled generation would be
- * reported to the user as a failure, and the coroutine would carry on running
- * code after the point it was supposed to stop.
- */
-private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
-    Result.success(block())
-} catch (cancellation: CancellationException) {
-    throw cancellation
-} catch (failure: Throwable) {
-    Result.failure(failure)
 }

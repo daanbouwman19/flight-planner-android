@@ -15,11 +15,13 @@ import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.weather.WeatherRepository
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldHaveSize
 import com.github.daanbouwman.flightplanner.routing.RouteArc
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -78,13 +80,18 @@ private val boeing = AircraftSpec(
 private class FakeAirportRepository(
     private val airports: List<Airport>,
     private val runways: Map<Int, List<Runway>> = emptyMap(),
+    /** When set, every read throws it — a corrupt or mid-install database. */
+    private val failure: Throwable? = null,
 ) : AirportRepository {
     var runwayQueries = 0
         private set
 
     override val nameIndexState: StateFlow<NameIndexState> = MutableStateFlow(NameIndexState.Idle)
 
-    override suspend fun findByIcao(icao: String): Airport? = airports.firstOrNull { it.icao == icao }
+    override suspend fun findByIcao(icao: String): Airport? {
+        failure?.let { throw it }
+        return airports.firstOrNull { it.icao == icao }
+    }
     override suspend fun findById(id: Int): Airport? = airports.firstOrNull { it.id == id }
     override suspend fun airportsByIds(ids: List<Int>): List<Airport> = airports.filter { it.id in ids }
     override suspend fun airportsByIdMap(ids: List<Int>): Map<Int, Airport> =
@@ -96,6 +103,7 @@ private class FakeAirportRepository(
 
     override suspend fun runwaysFor(airportId: Int): List<Runway> {
         runwayQueries++
+        failure?.let { throw it }
         return runways[airportId].orEmpty()
     }
 
@@ -216,6 +224,55 @@ class RouteDetailLoaderTest {
         loader.withRunways(loader.load(route))
 
         repository.runwayQueries shouldBe 1
+    }
+
+    @Test
+    fun `a repository that throws during the first load degrades to an empty detail, not a crash`() = runTest {
+        // Both ViewModels assign this straight into a StateFlow inside a bare
+        // `launch`; before the guard, this exception was the process going down.
+        val broken = FakeAirportRepository(listOf(eham, kjfk), failure = IllegalStateException("database mid-install"))
+        val (_, _, loader) = loader(repository = broken)
+
+        val state = loader.load(route)
+
+        state.departure.shouldBeNull()
+        state.destination.shouldBeNull()
+        state.arc.shouldBeNull()
+        // The reads that did not fail still land: the airframe and the distance.
+        state.aircraft shouldBe boeing
+        state.distanceNm shouldBe route.distanceNm
+        // And the skeleton resolves rather than spinning forever.
+        state.loading shouldBe false
+    }
+
+    @Test
+    fun `a runway read that throws leaves the state it was asked to extend`() = runTest {
+        val (_, _, loader) = loader()
+        val loaded = loader.load(route)
+        val broken = FakeAirportRepository(listOf(eham, kjfk), failure = IllegalStateException("runway table gone"))
+        val brokenLoader = RouteDetailLoader(
+            airportRepository = broken,
+            fleetRepository = FakeFleetRepository(listOf(boeing)),
+            worldOutlineLoader = { WorldOutline.Empty },
+            weatherRepository = FakeWeatherRepository(),
+        )
+
+        val state = brokenLoader.withRunways(loaded)
+
+        state shouldBe loaded
+        // Both ends were asked; both failed independently rather than the first
+        // failure short-circuiting the second.
+        broken.runwayQueries shouldBe 2
+    }
+
+    @Test
+    fun `cancellation is not a failure to degrade from`() = runTest {
+        // The guard must let CancellationException through, or a cancelled pane
+        // selection would carry on loading the route the user just left.
+        val cancelling = FakeAirportRepository(listOf(eham, kjfk), failure = CancellationException("selection changed"))
+        val (_, _, loader) = loader(repository = cancelling)
+
+        shouldThrow<CancellationException> { loader.load(route) }
     }
 
     @Test

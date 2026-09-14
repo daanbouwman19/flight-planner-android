@@ -11,8 +11,8 @@ import com.github.daanbouwman.flightplanner.routing.RandomAirportSample
 import com.github.daanbouwman.flightplanner.search.airportSearchScope
 import com.github.daanbouwman.flightplanner.search.rankedAirportResults
 import com.github.daanbouwman.flightplanner.ui.plan.SearchScope
+import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -129,13 +129,4 @@ class AirportsViewModel @Inject constructor(
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
     }
-}
-
-/** [runCatching] that lets cancellation through. See [com.github.daanbouwman.flightplanner.ui.plan.PlanViewModel] for why. */
-private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
-    Result.success(block())
-} catch (cancellation: CancellationException) {
-    throw cancellation
-} catch (failure: Throwable) {
-    Result.failure(failure)
 }

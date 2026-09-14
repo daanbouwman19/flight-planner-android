@@ -10,9 +10,9 @@ import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.navigation.Destination
+import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
 import com.github.daanbouwman.flightplanner.weather.WeatherRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -80,20 +80,3 @@ class AirportDetailViewModel @Inject constructor(
 }
 
 private const val TAG = "AirportDetailViewModel"
-
-/**
- * `runCatching`, minus the part that swallows cancellation.
- *
- * The same helper `PlanViewModel` and the other ViewModels carry, file-private in
- * each for the same reason: `runCatching` catches `Throwable`, which includes
- * `CancellationException`, and swallowing that breaks structured concurrency — a
- * cancelled load would be reported as a failure and the coroutine would carry on
- * running past the point it was told to stop.
- */
-private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
-    Result.success(block())
-} catch (cancellation: CancellationException) {
-    throw cancellation
-} catch (failure: Throwable) {
-    Result.failure(failure)
-}

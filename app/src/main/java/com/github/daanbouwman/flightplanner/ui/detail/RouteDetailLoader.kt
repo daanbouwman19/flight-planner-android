@@ -7,9 +7,10 @@ import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.routing.GreatCircle
 import com.github.daanbouwman.flightplanner.routing.RouteArc
+import com.github.daanbouwman.flightplanner.routing.WorldOutline
+import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
 import com.github.daanbouwman.flightplanner.weather.WeatherRepository
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
-import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
@@ -32,6 +33,17 @@ import kotlin.math.roundToInt
  * a third, later step still: it is the network-bound one, so it is published
  * last, after the two on-device queries, and behind the weather panel's own
  * reserved height so nothing reflows when it lands.
+ *
+ * ### Nothing here throws
+ *
+ * All three steps degrade rather than propagate. Both ViewModels assign the
+ * result straight into a `MutableStateFlow` inside a bare `launch`, so anything
+ * thrown here takes the process down — and every one of these reads can throw:
+ * Room on a corrupt or mid-install database, the outline loader on a missing
+ * asset, the weather fetch on a malformed URL. Each read is guarded on its own,
+ * so a failing outline still leaves the airports, and a failing runway read
+ * still leaves the state it was asked to extend. [withWeather] had this shape
+ * already; [load] and [withRunways] were the two the review found bare.
  */
 class RouteDetailLoader @Inject constructor(
     private val airportRepository: AirportRepository,
@@ -40,11 +52,21 @@ class RouteDetailLoader @Inject constructor(
     private val weatherRepository: WeatherRepository,
 ) {
 
-    /** Everything the screen leads with. Two indexed lookups and the fleet row. */
+    /**
+     * Everything the screen leads with. Two indexed lookups and the fleet row.
+     *
+     * A read that fails leaves its field absent — the same rendering the screen
+     * already has for an airport missing from the dataset — and `loading` is
+     * false either way, because a skeleton that never resolves is the one state
+     * worse than an empty card.
+     */
     suspend fun load(route: Destination.RouteDetail): RouteDetailUiState {
-        val departure = airportRepository.findByIcao(route.departureIcao)
-        val destination = airportRepository.findByIcao(route.destinationIcao)
-        val aircraft = fleetRepository.byId(route.aircraftId)
+        val departure = guarded("departure ${route.departureIcao}") { airportRepository.findByIcao(route.departureIcao) }
+        val destination = guarded("destination ${route.destinationIcao}") {
+            airportRepository.findByIcao(route.destinationIcao)
+        }
+        val aircraft = guarded("aircraft ${route.aircraftId}") { fleetRepository.byId(route.aircraftId) }
+        val outline = guarded("world outline") { worldOutlineLoader.load() } ?: WorldOutline.Empty
 
         val arc = if (departure != null && destination != null) {
             RouteArc.sampleGeographic(
@@ -67,7 +89,7 @@ class RouteDetailLoader @Inject constructor(
                 GreatCircle.flightTime(route.distanceNm.toDouble(), it.cruiseSpeedKt)
             },
             arc = arc,
-            outline = worldOutlineLoader.load(),
+            outline = outline,
             initialBearingDeg = bearing(departure, destination, GreatCircle::initialBearingDeg),
             finalBearingDeg = bearing(departure, destination, GreatCircle::finalBearingDeg),
             requiredRunwayFt = aircraft?.requiredRunwayFt ?: 0,
@@ -75,11 +97,26 @@ class RouteDetailLoader @Inject constructor(
         )
     }
 
-    /** The runway lists for both ends of an already-loaded [state]. */
+    /**
+     * The runway lists for both ends of an already-loaded [state].
+     *
+     * A failed read leaves that end's list as it was — empty, which the blocks
+     * already render by falling back to the denormalised longest figure.
+     */
     suspend fun withRunways(state: RouteDetailUiState): RouteDetailUiState = state.copy(
-        departureRunways = state.departure?.let { airportRepository.runwaysFor(it.id) }.orEmpty(),
-        destinationRunways = state.destination?.let { airportRepository.runwaysFor(it.id) }.orEmpty(),
+        departureRunways = state.departure
+            ?.let { airport -> guarded("runways for ${airport.icao}") { airportRepository.runwaysFor(airport.id) } }
+            ?: state.departureRunways,
+        destinationRunways = state.destination
+            ?.let { airport -> guarded("runways for ${airport.icao}") { airportRepository.runwaysFor(airport.id) } }
+            ?: state.destinationRunways,
     )
+
+    /** One read, logged and absent on failure. Cancellation passes through. */
+    private inline fun <T> guarded(what: String, read: () -> T?): T? =
+        runCatchingCancellable(read)
+            .onFailure { Log.w(TAG, "Reading $what failed; the route detail will show without it", it) }
+            .getOrNull()
 
     /**
      * Weather for both ends of an already-loaded [state]. A missing station is
@@ -130,20 +167,3 @@ private fun bearing(
 }
 
 private const val TAG = "RouteDetailLoader"
-
-/**
- * `runCatching`, minus the part that swallows cancellation.
- *
- * The same helper `PlanViewModel` and four other ViewModels carry, and it is
- * file-private in each of them for the same reason: `runCatching` catches
- * `Throwable`, which includes `CancellationException`, and swallowing that breaks
- * structured concurrency — a cancelled load would be reported as a failure and the
- * coroutine would carry on running past the point it was told to stop.
- */
-private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
-    Result.success(block())
-} catch (cancellation: CancellationException) {
-    throw cancellation
-} catch (failure: Throwable) {
-    Result.failure(failure)
-}

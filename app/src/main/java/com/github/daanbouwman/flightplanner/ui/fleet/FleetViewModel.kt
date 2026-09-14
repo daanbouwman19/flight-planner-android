@@ -5,8 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.di.DefaultDispatcher
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
+import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -93,13 +93,4 @@ class FleetViewModel @Inject constructor(
         /** Matches [com.github.daanbouwman.flightplanner.ui.logbook.LogbookViewModel]'s own constant. */
         const val STOP_TIMEOUT_MILLIS = 5_000L
     }
-}
-
-/** [runCatching] that lets cancellation through. See [com.github.daanbouwman.flightplanner.ui.plan.PlanViewModel] for why. */
-private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
-    Result.success(block())
-} catch (cancellation: CancellationException) {
-    throw cancellation
-} catch (failure: Throwable) {
-    Result.failure(failure)
 }
