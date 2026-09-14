@@ -355,6 +355,14 @@
     -->
     <string name="route_detail_bearing_label">BRG</string>
 
+    <!--
+        The immersive globe with nothing to draw: one of the route's airports is
+        not in the dataset, so there is no arc. The screen has no other chrome,
+        so this — and the collapse control beside it — is all that is shown.
+    -->
+    <string name="immersive_globe_unavailable_title">No globe for this route</string>
+    <string name="immersive_globe_unavailable">One of these airports is not in the dataset, so there is no leg to draw.</string>
+
     <!-- Opens the globe with the window to itself. -->
     <!--
         The route hero has two drawings of the same leg: the flat outline, which

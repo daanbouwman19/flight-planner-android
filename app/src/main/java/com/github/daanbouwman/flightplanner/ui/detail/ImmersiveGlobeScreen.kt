@@ -1,6 +1,8 @@
 package com.github.daanbouwman.flightplanner.ui.detail
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -28,8 +30,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.tooling.preview.Preview
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
+import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.ValueChip
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.SystemBarsOverMedia
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeAttribution
@@ -106,7 +112,18 @@ fun ImmersiveGlobeScreen(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surface,
     ) {
-        if (globeRoute == null) return@Surface
+        if (globeRoute == null) {
+            // No arc yet, or no arc at all. Either way the one control that
+            // must exist is the way out: this screen has no app bar and no
+            // bottom bar, so an early `return` here used to leave a blank
+            // surface with nothing on it but the system's back gesture.
+            ImmersiveGlobeUnavailable(
+                stage = immersiveGlobeStage(state),
+                onCollapse = onCollapse,
+                modifier = Modifier.fillMaxSize(),
+            )
+            return@Surface
+        }
 
         GlobeSurface(
             route = globeRoute,
@@ -121,23 +138,7 @@ fun ImmersiveGlobeScreen(
             onImageryReachesTop = { imageryReachesTop = it },
             modifier = Modifier.fillMaxSize(),
             overlay = {
-                // Every control takes the safe-drawing inset itself rather than
-                // the container taking it once. A container that outlives its
-                // children and carries an inset padding paints a bar-height
-                // strip of its own background — which over a globe is exactly
-                // the opaque status bar this app spent Phase B+ removing.
-                GlobeControlButton(
-                    iconRes = com.github.daanbouwman.flightplanner.feature.globe.R.drawable
-                        .ic_globe_fullscreen_exit,
-                    contentDescription = stringResource(
-                        com.github.daanbouwman.flightplanner.feature.globe.R.string.globe_collapse,
-                    ),
-                    onClick = onCollapse,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(GlassGutter),
-                )
+                CollapseControl(onCollapse = onCollapse)
 
                 GlobeCameraControls(
                     onZoomIn = controls::zoomIn,
@@ -171,6 +172,83 @@ fun ImmersiveGlobeScreen(
             },
         )
     }
+}
+
+/** Which of its three states the immersive globe is in for a given detail. */
+internal enum class ImmersiveGlobeStage {
+    /** The airports are still being read; there will be an arc shortly. */
+    Loading,
+
+    /** The read finished and there is no arc — an airport is missing from the dataset. */
+    Unavailable,
+
+    /** There is an arc to draw. */
+    Globe,
+}
+
+/**
+ * The stage for a loaded [state].
+ *
+ * Kept as a function of the state rather than an `if` inside the composable so
+ * the distinction it draws is testable: a null arc during the load is a moment
+ * of nothing, and a null arc after it is a screen that has to say so. Before
+ * this existed both were one early `return`, and the second left the user on a
+ * blank full-screen surface with no control on it.
+ */
+internal fun immersiveGlobeStage(state: RouteDetailUiState): ImmersiveGlobeStage = when {
+    state.arc != null -> ImmersiveGlobeStage.Globe
+    state.loading -> ImmersiveGlobeStage.Loading
+    else -> ImmersiveGlobeStage.Unavailable
+}
+
+/**
+ * What the immersive screen shows when there is no globe to show.
+ *
+ * The collapse control is here unconditionally, in the same corner it occupies
+ * over the globe, so the way out never moves and never disappears. The empty
+ * state appears only once the load has finished with nothing to draw; during
+ * the load itself the surface stays quiet rather than flashing "unavailable"
+ * for the few milliseconds the airports take to read.
+ */
+@Composable
+internal fun ImmersiveGlobeUnavailable(
+    stage: ImmersiveGlobeStage,
+    onCollapse: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        if (stage == ImmersiveGlobeStage.Unavailable) {
+            EmptyState(
+                title = stringResource(R.string.immersive_globe_unavailable_title),
+                message = stringResource(R.string.immersive_globe_unavailable),
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+        CollapseControl(onCollapse = onCollapse)
+    }
+}
+
+/**
+ * The way back to the route detail, top-start over whatever the screen shows.
+ *
+ * Every control takes the safe-drawing inset itself rather than the container
+ * taking it once. A container that outlives its children and carries an inset
+ * padding paints a bar-height strip of its own background — which over a globe
+ * is exactly the opaque status bar this app spent Phase B+ removing.
+ */
+@Composable
+private fun BoxScope.CollapseControl(onCollapse: () -> Unit) {
+    GlobeControlButton(
+        iconRes = com.github.daanbouwman.flightplanner.feature.globe.R.drawable.ic_globe_fullscreen_exit,
+        contentDescription = stringResource(
+            com.github.daanbouwman.flightplanner.feature.globe.R.string.globe_collapse,
+        ),
+        onClick = onCollapse,
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(GlassGutter),
+    )
 }
 
 /**
@@ -252,4 +330,19 @@ private val PlateBottomGutter: Dp = 24.dp
 private const val PlateAlpha = 0.78f
 
 private const val ChipAlpha = 0.5f
+
+@LightDarkPreview
+@Preview(name = "Compact", widthDp = 360, heightDp = 640)
+@Composable
+private fun ImmersiveGlobeUnavailablePreview() {
+    FlightPlannerTheme(dynamicColor = false) {
+        Surface(color = MaterialTheme.colorScheme.surface) {
+            ImmersiveGlobeUnavailable(
+                stage = ImmersiveGlobeStage.Unavailable,
+                onCollapse = {},
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
 
