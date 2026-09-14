@@ -101,6 +101,3 @@ private fun LogbookRow.toDestination(): Destination.RouteDetail = Destination.Ro
     aircraftId = aircraftId,
     distanceNm = distanceNm ?: 0,
 )
-
-private fun Destination.RouteDetail.key(): String =
-    "$departureIcao>$destinationIcao@$aircraftId"

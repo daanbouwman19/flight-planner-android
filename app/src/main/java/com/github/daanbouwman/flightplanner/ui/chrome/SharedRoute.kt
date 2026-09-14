@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
+import com.github.daanbouwman.flightplanner.navigation.Destination
 
 /**
  * The two scopes a shared element needs, carried to wherever draws one.
@@ -174,7 +175,7 @@ object SharedRouteKeys {
         "route-destination:${route(departureIcao, destinationIcao, aircraftId)}"
 
     private fun route(departureIcao: String, destinationIcao: String, aircraftId: Int): String =
-        "$departureIcao>$destinationIcao@$aircraftId"
+        Destination.RouteDetail.key(departureIcao, destinationIcao, aircraftId)
 }
 
 /** Provides both scopes to everything beneath. Used once, around the navigation graph. */

@@ -16,6 +16,7 @@ import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,8 +61,31 @@ fun PlanRoute(
     val navigator = rememberListDetailPaneScaffoldNavigator<String>()
     val paneViewModel: RouteDetailPaneViewModel = hiltViewModel()
     val detail by paneViewModel.state.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val paneSnackbarHostState = remember { SnackbarHostState() }
+
+    // The selection lives in two places with two lifetimes, and this keeps them
+    // agreeing. The navigator's content key is saveable, so it comes back after
+    // process death; the pane ViewModel's state does not, so a restored key used
+    // to sit over an empty pane until the user tapped something. And the list
+    // regenerates under the pane on every mode, departure or airframe change,
+    // so a pane could keep showing a route that no longer existed in the batch
+    // beside it — marking it flown would then fail with "no longer in the list"
+    // for a route the user was looking at. Re-selecting from the list when the
+    // key is there and the pane is empty covers the first; clearing when the
+    // shown route has left the list covers the second. Keyed on the route, not
+    // the whole pane state, which republishes three times per selection.
+    val selectedKey = navigator.currentDestination?.contentKey
+    val shownRoute = detail?.route
+    LaunchedEffect(selectedKey, shownRoute, uiState.routes) {
+        if (shownRoute != null) {
+            if (uiState.routes.none { it.toDestination().key() == shownRoute.key() }) paneViewModel.clear()
+        } else if (selectedKey != null) {
+            uiState.routes.firstOrNull { it.toDestination().key() == selectedKey }
+                ?.let { paneViewModel.select(it.toDestination()) }
+        }
+    }
 
     CompositionLocalProvider(
         LocalSharedTransitionScope provides null,
@@ -114,6 +138,3 @@ private fun RouteRow.toDestination(): Destination.RouteDetail = Destination.Rout
     aircraftId = aircraft.id,
     distanceNm = distanceNm,
 )
-
-private fun Destination.RouteDetail.key(): String =
-    "$departureIcao>$destinationIcao@$aircraftId"

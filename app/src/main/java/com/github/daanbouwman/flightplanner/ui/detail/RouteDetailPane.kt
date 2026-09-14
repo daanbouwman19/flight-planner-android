@@ -211,12 +211,6 @@ private fun RouteDetailPaneContent(
     }
 }
 
-/**
- * A stable identity for the scaffold navigator.
- */
-private fun Destination.RouteDetail.key(): String =
-    "$departureIcao>$destinationIcao@$aircraftId"
-
 @LightDarkPreview
 @DevicePreviews
 @Composable
