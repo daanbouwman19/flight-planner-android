@@ -254,7 +254,8 @@ data class StatTile(val label: String, val value: Int,
     val hasDirection: Boolean
 }
 
-@Composable fun RunwayDiagram(runways: List<Runway>, modifier: Modifier = Modifier,
+@Composable fun RunwayDiagram(runways: List<Runway>, contentDescription: String,
+                              modifier: Modifier = Modifier,
                               wind: DiagramWind? = null,
                               hardColor: Color = MaterialTheme.colorScheme.onSurface,
                               softColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -327,6 +328,15 @@ Notes that are easy to get wrong:
   off-window coastline had the whole screen to draw on. The crop is a `clipRect`
   inside the draw scope rather than `Modifier.clipToBounds()`, which is a
   `graphicsLayer` and would put an offscreen layer on every card in the list.
+- **`RunwayDiagram` and `SkyProfile` take a required `contentDescription`.**
+  Both are one childless canvas node, and both used to be silent to a screen
+  reader — the diagram cleared its semantics and set nothing, the scene set
+  nothing at all. The sentence that stands in for a drawing is the caller's to
+  compose: only `AirportDetailContent` knows which ends are drawn and which the
+  wind favours, and only the weather panel knows the reader's units for a ceiling.
+  Required rather than defaulted so a new host cannot forget it. `FlightRulesBadge`
+  merges its descendants for the same reason: "VFR" folds into "Visual Flight
+  Rules" instead of being announced again after it.
 - **`RunwayDiagram` draws a true plan when the data has one, and a compass when
   it does not.** OurAirports publishes real threshold coordinates for every end
   of most well-documented fields and for very few small ones, so there are two
@@ -473,7 +483,8 @@ enum class SkyPhase { DAY, TWILIGHT, NIGHT }
 
 object SkyProfileHeight { val AirportDetail: Dp = 220.dp; val RouteDetail: Dp = 168.dp }
 
-@Composable fun SkyProfile(metar: Metar?, modifier: Modifier = Modifier,
+@Composable fun SkyProfile(metar: Metar?, contentDescription: String,
+                           modifier: Modifier = Modifier,
                            celestial: CelestialState? = null,
                            phase: SkyPhase = SkyPhase.DAY,
                            height: Dp = SkyProfileHeight.AirportDetail,

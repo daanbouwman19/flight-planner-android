@@ -429,7 +429,7 @@ private fun FleetHeader(
 }
 
 @Composable
-private fun FleetRowCard(
+internal fun FleetRowCard(
     aircraft: AircraftSpec,
     onClick: () -> Unit,
     onToggleFlown: () -> Unit,

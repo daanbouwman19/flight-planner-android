@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.R
@@ -24,6 +25,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigur
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.model.Runway
+import com.github.daanbouwman.flightplanner.routing.SurfaceWind
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
@@ -35,6 +37,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.Compact
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.ui.plan.PlanPreviewData
+import kotlin.math.roundToInt
 
 /**
  * Everything the Airport detail screen says, with no opinion about where it
@@ -95,20 +98,34 @@ private fun AirportDetailBody(
         }
     }
 
+    // The wind belongs on the diagram, not only in the weather panel below:
+    // a direction in degrees has to be compared against a runway heading, and
+    // in the same frame as the runways that comparison stops being arithmetic.
+    val wind = metar?.let {
+        val speed = it.windSpeedKt
+        if (speed == null) null else DiagramWind(
+            directionFromDeg = it.windDirectionDeg,
+            speedKt = speed,
+            gustKt = it.windGustKt,
+            variable = it.windVariable,
+        )
+    }
+    // The ends the diagram draws, and the one the wind favours among them —
+    // the same call the diagram itself makes, so the words and the picture
+    // cannot name different ends.
+    val diagrammed = remember(runways) { runways.filter { it.trueHeadingDeg != null } }
+    val favouredIdent = remember(diagrammed, wind) {
+        SurfaceWind.favouredEnd(
+            runwayHeadingsDeg = diagrammed.map { requireNotNull(it.trueHeadingDeg).roundToInt() },
+            windFromDeg = wind?.directionFromDeg?.takeIf { wind.hasDirection },
+            windSpeedKt = wind?.speedKt,
+        )?.let { diagrammed[it].ident }
+    }
+
     RunwayDiagram(
         runways = runways,
-        // The wind belongs on the diagram, not only in the weather panel below:
-        // a direction in degrees has to be compared against a runway heading, and
-        // in the same frame as the runways that comparison stops being arithmetic.
-        wind = metar?.let {
-            val speed = it.windSpeedKt
-            if (speed == null) null else DiagramWind(
-                directionFromDeg = it.windDirectionDeg,
-                speedKt = speed,
-                gustKt = it.windGustKt,
-                variable = it.windVariable,
-            )
-        },
+        contentDescription = runwayDiagramDescription(diagrammed, favouredIdent),
+        wind = wind,
         modifier = Modifier.fillMaxWidth(),
     )
 
@@ -130,6 +147,28 @@ private fun AirportDetailBody(
 
     Button(onClick = onFlyFromHere, modifier = Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.airport_detail_fly_from_here))
+    }
+}
+
+/**
+ * The runway diagram in words, for the screen reader the drawing cannot reach:
+ * which ends are drawn and, when the wind decides one, which end it favours.
+ * Ends with no published heading are not named — they are not in the picture,
+ * and the runway list below names them.
+ */
+@Composable
+private fun runwayDiagramDescription(diagrammed: List<Runway>, favouredIdent: String?): String {
+    if (diagrammed.isEmpty()) return stringResource(R.string.airport_runway_diagram_empty)
+    val ends = pluralStringResource(
+        R.plurals.airport_runway_diagram_description,
+        diagrammed.size,
+        diagrammed.size,
+        diagrammed.joinToString(", ") { it.ident },
+    )
+    return if (favouredIdent == null) {
+        ends
+    } else {
+        stringResource(R.string.airport_runway_diagram_favoured, ends, favouredIdent)
     }
 }
 

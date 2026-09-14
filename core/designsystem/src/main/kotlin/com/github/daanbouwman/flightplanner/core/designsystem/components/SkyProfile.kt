@@ -31,6 +31,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -120,10 +122,19 @@ enum class SkyPhase { DAY, TWILIGHT, NIGHT }
  * Everything that moves — the sun and moon at true positions, deck drift,
  * precipitation, the windsock and its drag — arrives separately. This draws the
  * parts that hold still.
+ *
+ * **It also says nothing to a screen reader on its own.** The scene is one
+ * childless node, and it used to carry no description at all — the largest
+ * element on the weather card was silent. [contentDescription] is required
+ * because the scene is a rendering of *this report*, and the sentence that
+ * stands in for it — the category, the ceiling, the visibility — is the
+ * caller's to compose in the reader's units and language.
  */
 @Composable
 fun SkyProfile(
     metar: Metar?,
+    /** The scene in words: the flight category and the ceiling and visibility it was drawn from. */
+    contentDescription: String,
     modifier: Modifier = Modifier,
     /**
      * Where the Sun and the Moon stood at the moment of the observation, or null
@@ -276,6 +287,7 @@ fun SkyProfile(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
+            .clearAndSetSemantics { this.contentDescription = contentDescription }
             .drawWithCache {
                 if (size.minDimension <= 0f) return@drawWithCache onDrawBehind { }
 

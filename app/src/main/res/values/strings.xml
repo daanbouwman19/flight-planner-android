@@ -251,6 +251,14 @@
     <string name="stats_aircraft_rank_format">%1$d. %2$s</string>
     <!-- %2$s already carries its own unit suffix (distanceText in Figures.kt). -->
     <string name="stats_aircraft_flights_format">%1$d flights · %2$s</string>
+    <!-- Spoken for one top-aircraft row: the two lines above as one sentence. -->
+    <string name="stats_aircraft_row_description">%1$s, %2$s</string>
+    <!-- Spoken for one bar of the activity chart. %1$s is the month label, %2$d the count / %2$s the distance with unit. -->
+    <plurals name="stats_activity_month_flights">
+        <item quantity="one">%1$s: %2$d flight</item>
+        <item quantity="other">%1$s: %2$d flights</item>
+    </plurals>
+    <string name="stats_activity_month_distance">%1$s: %2$s</string>
     <string name="stats_airport_count_format">%1$s · %2$d</string>
 
     <!-- Logbook (D1): the summary strip's three captions. Short and aviation-terse,
@@ -486,6 +494,15 @@
     <string name="weather_wind_speed">%1$s kt</string>
     <!-- An affirmative reading of a clear sky, not a missing figure. -->
     <string name="weather_ceiling_unlimited">Unlimited</string>
+    <!--
+        Spoken for the sky profile, a drawing a screen reader cannot read.
+        %1$s is the station, %2$s the flight category in words, %3$s the ceiling
+        and %4$s the visibility, each already in the reader's units or
+        weather_figure_not_reported.
+    -->
+    <string name="weather_scene_description">Sky profile for %1$s: %2$s. Ceiling %3$s, visibility %4$s.</string>
+    <string name="weather_scene_no_report">Sky profile for %1$s: no report.</string>
+    <string name="weather_figure_not_reported">not reported</string>
 
     <!-- Spoken by the accessibility service for the whole weather card, which
          toggles the raw report text. -->
@@ -524,5 +541,16 @@
     <string name="airport_detail_not_found_title">Airport not found</string>
     <string name="airport_detail_not_found_message">This airport may have been removed from the dataset.</string>
     <string name="airport_detail_fly_from_here">Fly from here</string>
+    <!--
+        Spoken for the runway diagram, which draws nothing a screen reader can
+        read. %1$d is the number of ends drawn, %2$s their idents, comma-separated.
+    -->
+    <plurals name="airport_runway_diagram_description">
+        <item quantity="one">Runway diagram: %1$d runway end, %2$s.</item>
+        <item quantity="other">Runway diagram: %1$d runway ends, %2$s.</item>
+    </plurals>
+    <string name="airport_runway_diagram_empty">Runway diagram: no runway headings are published for this airport.</string>
+    <!-- %1$s is the sentence above, %2$s the ident of the end the wind favours. -->
+    <string name="airport_runway_diagram_favoured">%1$s Favoured for the current wind: %2$s.</string>
 
 </resources>

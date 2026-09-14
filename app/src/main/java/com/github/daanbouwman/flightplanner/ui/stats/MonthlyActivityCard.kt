@@ -25,7 +25,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.daanbouwman.flightplanner.R
@@ -33,6 +36,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotio
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.ui.LocalUnitSystem
 import com.github.daanbouwman.flightplanner.ui.asFigure
+import com.github.daanbouwman.flightplanner.ui.distanceText
 import com.github.daanbouwman.flightplanner.ui.nmToDisplayDistance
 
 /**
@@ -116,11 +120,29 @@ fun MonthlyActivityCard(
                         animationSpec = effectsSpec,
                         label = "bar_height",
                     )
+                    // A bar is a month and a figure. Merged, it is announced as
+                    // "Aug: 3 flights" rather than as an abbreviated label, a bare
+                    // figure and a coloured rectangle in between.
+                    val barDescription = if (selectedMetric == ChartMetric.FLIGHTS) {
+                        pluralStringResource(
+                            R.plurals.stats_activity_month_flights,
+                            currentVal,
+                            monthItem.monthLabel,
+                            currentVal,
+                        )
+                    } else {
+                        stringResource(
+                            R.string.stats_activity_month_distance,
+                            monthItem.monthLabel,
+                            distanceText(currentVal),
+                        )
+                    }
 
                     Column(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .width(36.dp),
+                            .width(36.dp)
+                            .semantics(mergeDescendants = true) { contentDescription = barDescription },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(

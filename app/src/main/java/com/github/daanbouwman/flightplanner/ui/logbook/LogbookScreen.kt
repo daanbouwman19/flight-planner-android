@@ -484,7 +484,7 @@ private fun YearMonth.monthLabel(): String =
     format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()))
 
 @Composable
-private fun LogbookRowCard(
+internal fun LogbookRowCard(
     row: LogbookRow,
     onClick: () -> Unit,
     onDelete: () -> Unit,
