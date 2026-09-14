@@ -2100,7 +2100,7 @@ something, with the state after *The overhaul*:
    constants because the credit plate grows at font scale 2.0 and the stack
    grows a cell when the view is rotated. `cornerAlpha` is pure and tested
    (`GlobeLabelsAlphaTest`). Still open: the Esri offline-cache clause to
-   confirm in writing (PLAN.md §11); the 3 ms upload budget and `INCIDENCE_FLOOR` — which turned out to be the wrong knob entirely, see *Tilt destroyed the LOD* — unmeasured on hardware.
+   confirm in writing (PLAN.md §11). ~~The 3 ms upload budget and `INCIDENCE_FLOOR` — which turned out to be the wrong knob entirely, see *Tilt destroyed the LOD* — unmeasured on hardware.~~ Measured 2026-09-14, see *The frame callback, measured*: uploads are 0.1 ms at P90 against their 3 ms budget.
 
 ### A `SurfaceView` cannot be clipped, and that was the white flash
 
@@ -2237,10 +2237,11 @@ regress by exactly one level — mid-field, at tilt ≥ 1.0, where the budget is
 genuinely zero-sum. The trade is mid-field for near-field, and near-field is what
 was reported.
 
-**Separable follow-up:** `TileQueue.pop` takes `pollLast` within a level, which
+~~**Separable follow-up:** `TileQueue.pop` takes `pollLast` within a level, which
 with the new order systematically fetches the *least* important newly-appeared
-tile of each level first. Recording the visited nodes and issuing `request` in
-reverse after the traversal fixes it. Small, and independent of this change.
+tile of each level first.~~ Fixed 2026-09-14: a level is a FIFO now, so the
+queue hands the workers the traversal's own order — no reversal pass needed. See
+*The frame callback, measured* below for the trace that went with it.
 
 ### Five review findings against the fixes themselves
 
@@ -2291,8 +2292,9 @@ Still outstanding from the first pass, unchanged:
   Compose `clip` does not reach a below-window `SurfaceView` — so it does not
   round the corners, *and it does not bound the position either*. See **A
   SurfaceView cannot be clipped** below.
-- **H2's extension of `:macrobenchmark` to the globe**, and a check that nothing
-  in the globe path has moved into `Application.onCreate`.
+- ~~**H2's extension of `:macrobenchmark` to the globe**~~ — `GlobeSpinBenchmark`,
+  2026-09-14, see *The frame callback, measured* below. Still owed: a check that
+  nothing in the globe path has moved into `Application.onCreate`.
 - **The Esri question above**, unchanged.
 - ~~**Nothing makes a stale `.filamat` fail a build.**~~ Fixed 2026-09-08.
   `:feature:globe:verifyFilamatFreshness`, wired into `check`, hashes each
@@ -2330,6 +2332,54 @@ Found while fixing item 2 above, not fixed:
   4096² allocation. JVM-tested at the `graceFor` boundary; the timer itself is a
   device check (`adb logcat -s GlobeSession Filament`).
 
+### The frame callback, measured
+
+The one number Phase G had never taken on hardware was its own frame loop's:
+whether the quadtree traversal plus the mesh rebuild fits in a frame, or wants
+the carry-over budget the uploads already have (`UPLOAD_BUDGET_NANOS`). It is
+taken now. `GlobeScene.update` and `GlobeRenderHost.renderFrame` carry
+`androidx.tracing` sections — `globe:upload`, `globe:update` (traversal and
+rebuild together), `globe:traversal` and `globe:mesh` inside it, `globe:ribbon`,
+`globe:render` — and `:macrobenchmark`'s `GlobeSpinBenchmark` opens the first
+route, takes its globe full screen, and spins it through six flung drags per
+iteration, five iterations, reading each section off the Perfetto trace as a
+**distribution** (`TraceSectionSamplesMetric`) rather than the library's own
+per-iteration sum, because the frame a user sees is the P90 and not the mean.
+SM-S942B, `benchmarkRelease`, keyless GIBS imagery, 2026-09-14:
+
+| section (ms) | baseline profile, no warm-up — P50 / P90 / P99 | `Partial()` warmed — P50 / P90 / P99 |
+| --- | --- | --- |
+| `globe:update` (traversal + rebuild) | **0.8 / 1.1 / 1.5** | 0.9 / 1.2 / 1.7 |
+| `globe:traversal` | 0.4 / 0.6 / 0.9 | 0.4 / 0.6 / 0.8 |
+| `globe:mesh` (only frames that rebuild) | 0.5 / 0.6 / 0.9 | 0.6 / 0.8 / 1.1 |
+| `globe:ribbon` | 0.1 / 0.3 / 0.6 | 0.1 / 0.3 / 0.6 |
+| `globe:render` (Filament submit) | 0.3 / 0.5 / 0.7 | 0.3 / 0.4 / 0.6 |
+| `globe:upload` | 0.0 / 0.1 / 0.2 | 0.0 / 0.1 / 0.2 |
+| `frameDurationCpuMs` | 7.6 / 9.4 / 11.5 | 7.6 / 10.1 / 13.0 |
+
+**Decision: no traversal budget.** Traversal plus rebuild is 1.1 ms at P90 and
+1.5 ms at P99 on the first launch after an install, a quarter of the ~4 ms that
+would have justified carrying work over to the next frame; a budget would be
+machinery for a cost that is not there. The `Partial()` column is no faster —
+these sections are `FloatArray` arithmetic the JIT has little to add to — so the
+first-use case is not hiding a warm-up cliff either.
+
+**What the trace says instead, and is left open:** the whole globe callback is
+under 2 ms of a `frameDurationCpuMs` that sits at 7.6 ms P50 and ~10 ms P90
+against the 120 Hz panel's 8.3 ms — `frameOverrunMs` is 2.7 ms at P50. The
+frame's cost is therefore in the Compose glass over the sphere during a fling —
+the label plates re-laid out per projected pixel, the limb path rebuilt per
+draw — not in the renderer. That is a different investigation, with the same
+benchmark already in place to run it against.
+
+Two things about the instrument itself, for whoever runs it next: the
+`.perfetto-trace` files are not pulled to the host (`adb pull` refuses the
+`SM-S942B - 17` output directory AGP names, spaces and all — the JSON and the
+summary above still land), and the journey drives the app by content
+descriptions that are the app's own TalkBack strings, so a wording change on
+"Show the globe", "Open the globe full screen" or the route card sentence stops
+it at a named timeout rather than measuring the wrong screen.
+
 ---
 
 ## 10. Phase H — Polish and ship
@@ -2337,7 +2387,7 @@ Found while fixing item 2 above, not fixed:
 | ID | Task | Notes |
 | --- | --- | --- |
 | **H1** | ~~Baseline profile~~ | **Moved to P1.** It is the instrument, not the polish |
-| **H2** | ~~Macrobenchmark~~ | **Done as P2.** `:macrobenchmark` exists and reports. What stays in H is extending it to the globe, once there is a globe |
+| **H2** | ~~Macrobenchmark~~ | **Done as P2**, and extended to the globe on 2026-09-14 (`GlobeSpinBenchmark`, §9 *The frame callback, measured*) |
 | **H3** | Glance widget | "Today's challenge" — one route seeded by `LocalDate.toEpochDay()`, deterministic across the day. Nearly free given the seeded RNG |
 | **H4** | Shortcuts | Generate route, log a flight, last route |
 | **H5** | Screenshot goldens | Roborazzi across light/dark, LTR/RTL, font scale 1.0/2.0, three window sizes. The globe is stubbed — it is covered by G1's math tests plus a device smoke check |
