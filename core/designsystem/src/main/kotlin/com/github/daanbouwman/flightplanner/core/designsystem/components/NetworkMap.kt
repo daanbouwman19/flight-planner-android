@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.routing.GeoArc
 import com.github.daanbouwman.flightplanner.routing.MapFrame
+import com.github.daanbouwman.flightplanner.routing.NetworkFraming
 import com.github.daanbouwman.flightplanner.routing.RouteArc
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import kotlin.math.hypot
@@ -83,7 +84,10 @@ class NetworkNode(
  * poleward of its endpoints, and fitting the arcs would frame empty ocean
  * north of a transatlantic network to hold the top of the bow. The 12 % of
  * padding [MapFrame.forRoute] keeps clear covers the overshoot on every leg
- * the app draws.
+ * the app draws. The nodes' longitudes are unwrapped as a set first
+ * ([NetworkFraming]), so fields either side of the antimeridian frame the ten
+ * degrees between them rather than the 350° around the other way, and each
+ * leg is brought into the same turn before it is projected.
  *
  * Semantics are cleared: the section heading beside this already states how
  * many airports and how many routes, and a screen reader has no use for the
@@ -108,7 +112,10 @@ fun NetworkMap(
                 if (nodes.isEmpty() || size.minDimension <= 0f) return@drawWithCache onDrawBehind { }
 
                 val lats = DoubleArray(nodes.size) { nodes[it].latitude }
-                val lons = DoubleArray(nodes.size) { nodes[it].longitude }
+                // Unwrapped as a set, not fitted raw: Fiji at +177° and Samoa at
+                // −172° are 10° apart, and a frame fitted to the raw values
+                // spans the other 350°. See NetworkFraming.
+                val lons = NetworkFraming.unwrapLongitudes(DoubleArray(nodes.size) { nodes[it].longitude })
                 val frame = MapFrame.forRoute(
                     lats = lats,
                     lons = lons,
@@ -132,20 +139,27 @@ fun NetworkMap(
                 val arrowPaths = ArrayList<Path>(legs.size)
                 for (leg in legs) {
                     if (leg.size < 2) continue
-                    val projected = frame.project(leg.lats, leg.lons)
-                    legPaths += Path().apply {
-                        moveTo(projected[0] * size.width, projected[1] * size.height)
-                        for (i in 1 until projected.size / 2) {
-                            lineTo(projected[i * 2] * size.width, projected[i * 2 + 1] * size.height)
+                    // An arc is unwrapped from its own departure, which the frame
+                    // may hold a turn away; each end is brought into the frame's
+                    // turn, and a leg whose ends fall in different turns is drawn
+                    // at both so it leaves one edge and enters the other.
+                    for (shift in NetworkFraming.arcShifts(leg, frame.centreLon)) {
+                        val legLons = if (shift == 0.0) leg.lons else DoubleArray(leg.size) { leg.lons[it] + shift }
+                        val projected = frame.project(leg.lats, legLons)
+                        legPaths += Path().apply {
+                            moveTo(projected[0] * size.width, projected[1] * size.height)
+                            for (i in 1 until projected.size / 2) {
+                                lineTo(projected[i * 2] * size.width, projected[i * 2 + 1] * size.height)
+                            }
                         }
-                    }
-                    val chord = hypot(
-                        (projected[projected.size - 2] - projected[0]) * size.width,
-                        (projected[projected.size - 1] - projected[1]) * size.height,
-                    )
-                    if (chord >= minArrowChord) {
-                        arrowPath(projected, projected.size / 4, size.width, size.height, arrowLength)
-                            ?.let(arrowPaths::add)
+                        val chord = hypot(
+                            (projected[projected.size - 2] - projected[0]) * size.width,
+                            (projected[projected.size - 1] - projected[1]) * size.height,
+                        )
+                        if (chord >= minArrowChord) {
+                            arrowPath(projected, projected.size / 4, size.width, size.height, arrowLength)
+                                ?.let(arrowPaths::add)
+                        }
                     }
                 }
 
@@ -154,7 +168,7 @@ fun NetworkMap(
                 val maxRadius = NodeMaxRadiusDp.dp.toPx()
                 val centres = Array(nodes.size) { i ->
                     Offset(
-                        x = frame.x(nodes[i].longitude) * size.width,
+                        x = frame.x(lons[i]) * size.width,
                         y = frame.y(nodes[i].latitude) * size.height,
                     )
                 }

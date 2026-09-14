@@ -361,9 +361,15 @@ Notes that are easy to get wrong:
   globe's node layer does, so the dot's area is the count; every leg's casing
   before any leg's line, so crossings read as one drawing. The frame is fitted to
   the nodes, not the arcs, because a great circle bows poleward of its endpoints
-  and framing the bow frames empty ocean. It takes `NetworkNode`, a geometry
-  type, rather than the app's `VisitedAirport` — this module knows shapes and
-  nothing about where they were read from.
+  and framing the bow frames empty ocean — and to the nodes' longitudes
+  **unwrapped as a set** by `NetworkFraming` in `:core:routing`: Fiji at +177°
+  and Samoa at −172° are ten degrees apart, and a frame fitted to the raw values
+  spanned the other 350° with the leg between them leaving one edge of the card
+  as a diagonal and re-entering at the other. Each leg is brought into the
+  frame's turn before projection, and a leg whose ends fall in different turns
+  (a network wider than a hemisphere) is drawn at both, as a wall map does. It
+  takes `NetworkNode`, a geometry type, rather than the app's `VisitedAirport` —
+  this module knows shapes and nothing about where they were read from.
 - **`RunwayDiagram` draws a true plan when the data has one, and a compass when
   it does not.** OurAirports publishes real threshold coordinates for every end
   of most well-documented fields and for very few small ones, so there are two
