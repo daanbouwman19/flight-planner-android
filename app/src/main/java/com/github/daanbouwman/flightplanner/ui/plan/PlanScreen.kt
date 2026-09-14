@@ -45,9 +45,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -203,6 +205,7 @@ fun PlanScreen(
 
     InfiniteScroll(listState = listState, itemCount = state.routes.size, onLoadMore = viewModel::loadMore)
     VisibleWeatherStations(listState = listState, routes = state.routes, onVisible = viewModel::setVisibleIcaos)
+    ScrollToTopOnNewList(listState = listState, listGeneration = state.listGeneration)
 
     // Tapping Plan in the navigation bar while already on Plan comes back here. It
     // matters more than usual on this screen: the controls are the list's first
@@ -1112,6 +1115,41 @@ private fun VisibleWeatherStations(
         }
             .distinctUntilChanged()
             .collect(onVisible)
+    }
+}
+
+/**
+ * Puts the list back at the top whenever it is a *new* list.
+ *
+ * Nothing else did. The ViewModel empties the rows on every mode, departure or
+ * airframe change and on refresh, `PlanContent` swaps the `LazyColumn` out for
+ * the skeletons while the batch generates, and `listState` — which lives above
+ * both — kept the old offset the whole time. So changing the mode from row forty
+ * reattached the list forty rows into a batch the user had not seen a single
+ * card of, with the controls they had just used scrolled off the top.
+ *
+ * Keyed on the generation and not on the routes: an appended batch, a swiped
+ * row and a replacement all change the list without making it a new one.
+ *
+ * The last generation acted on is **saved**, not remembered. On a phone the Plan
+ * screen leaves composition when a route is opened, and `rememberLazyListState`
+ * restores the offset when it comes back — which is exactly the offset a
+ * first-composition effect keyed on the generation would throw away. Saving it
+ * makes "back from a route" and "same list" the same thing. The one scroll it
+ * does issue on first composition is the ViewModel's own first batch arriving,
+ * against a list already at the top.
+ *
+ * `scrollToItem` is safe to call while the skeletons are up and no `LazyColumn`
+ * is attached: it records the position and remeasures only if there is a
+ * layout to remeasure, so the list reattaches at the top when the batch lands.
+ */
+@Composable
+private fun ScrollToTopOnNewList(listState: LazyListState, listGeneration: Long) {
+    var seenGeneration by rememberSaveable { mutableLongStateOf(listGeneration) }
+    LaunchedEffect(listGeneration) {
+        if (listGeneration == seenGeneration) return@LaunchedEffect
+        seenGeneration = listGeneration
+        listState.scrollToItem(0)
     }
 }
 

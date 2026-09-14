@@ -162,6 +162,17 @@ class PlanViewModel @Inject constructor(
     private val routes = MutableStateFlow<List<RouteRow>>(emptyList())
     private val status = MutableStateFlow<PlanStatus>(PlanStatus.Idle)
 
+    /**
+     * Ticks every time [runSelection] throws the list away, so the screen can
+     * tell "a new list" from "the same list with more rows in it".
+     *
+     * Not [Selection.generation], which is a different question: that counts
+     * explicit refreshes and stays put across a mode, departure or airframe
+     * change, all of which replace the list just as thoroughly. The screen
+     * needs the union, and this is it.
+     */
+    private val listGeneration = MutableStateFlow(0L)
+
     /** ICAOs currently on screen, fed by [PlanScreen]'s `LazyListState`. See [setVisibleIcaos]. */
     private val visibleIcaos = MutableStateFlow<Set<String>>(emptySet())
 
@@ -257,7 +268,16 @@ class PlanViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), WorldOutline.Empty)
 
     val uiState: StateFlow<PlanUiState> =
-        combine(selection, routes, status, notFlownCount, weatherByStation) { selected, rows, phase, notFlown, weather ->
+        combine(
+            // Paired first because `combine` takes five typed flows and this is
+            // the sixth; the selection and the list generation change together
+            // anyway, since every selection change starts a new list.
+            combine(selection, listGeneration) { selected, generation -> selected to generation },
+            routes,
+            status,
+            notFlownCount,
+            weatherByStation,
+        ) { (selected, generation), rows, phase, notFlown, weather ->
             PlanUiState(
                 mode = selected.mode,
                 lockedDeparture = selected.lockedDeparture,
@@ -266,6 +286,7 @@ class PlanViewModel @Inject constructor(
                 routes = rows,
                 status = phase,
                 weatherByStation = weather,
+                listGeneration = generation,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), PlanUiState())
 
@@ -673,6 +694,10 @@ class PlanViewModel @Inject constructor(
 
     private suspend fun runSelection(selected: Selection, icaoOnly: Boolean) {
         batch = null
+        // Every path below empties the list, including the two early returns,
+        // so the tick is unconditional: whatever the screen was scrolled to
+        // belonged to a list that no longer exists.
+        listGeneration.update { it + 1 }
         if (selected.generation == 0L) {
             routes.value = emptyList()
             status.value = PlanStatus.Idle

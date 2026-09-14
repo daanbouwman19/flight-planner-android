@@ -433,6 +433,35 @@ class PlanViewModelTest {
         grown.routes.first().id shouldBe firstId
     }
 
+    /**
+     * The screen resets its scroll on this and on nothing else, so it has to
+     * tick for every way a list is replaced and for no way a list is merely
+     * changed — an append must not send the user back to the top of a list
+     * they were half way down.
+     */
+    @Test
+    fun `the list generation ticks when the list is replaced and not when it grows`() = planTest { model ->
+        val opened = model.uiState.value.listGeneration
+
+        model.loadMore()
+        advanceUntilIdle()
+        model.uiState.value.listGeneration shouldBe opened
+
+        model.replace(model.uiState.value.routes[1])
+        advanceUntilIdle()
+        model.uiState.value.listGeneration shouldBe opened
+
+        // A mode change replaces the list without touching the refresh count.
+        model.setMode(PlanMode.NotFlown)
+        advanceUntilIdle()
+        val afterMode = model.uiState.value.listGeneration
+        (afterMode > opened) shouldBe true
+
+        model.generate()
+        advanceUntilIdle()
+        (model.uiState.value.listGeneration > afterMode) shouldBe true
+    }
+
     @Test
     fun `load more is dropped while a batch is already in flight`() = planTest { model ->
         model.generate()
