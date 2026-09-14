@@ -293,7 +293,9 @@ fun FlightPlannerNavHost(
 
             // Kept whole rather than restyled: it is a diagnostic, and its value is
             // that it reports exactly what it reported before the UI existed.
-            composable<Destination.SelfCheck> { StartupCheckScreen() }
+            composable<Destination.SelfCheck> {
+                StartupCheckScreen(onBack = { navController.popBackStack() })
+            }
 
             composable<Destination.Licences> {
                 LicencesScreen(onBack = { navController.popBackStack() })

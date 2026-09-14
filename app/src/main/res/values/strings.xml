@@ -345,6 +345,24 @@
 
     <!-- Opens the Sky Profile gallery: every weather state the scene can draw, one per tap. -->
     <string name="settings_self_check_action">Run on-device self-check</string>
+    <!--
+        The self-check screen itself, behind Settings. Its old subtitle promised
+        "the real interface arrives in the next milestone", a sentence written
+        before the app had one. The headline is built here rather than in the
+        state class so it can be plural-aware and translated.
+    -->
+    <string name="self_check_title">Self-check</string>
+    <string name="self_check_description">Diagnostics for the bundled data, index, fleet, routing and renderer.</string>
+    <string name="self_check_headline_checking">Checking…</string>
+    <plurals name="self_check_headline_failed">
+        <item quantity="one">%1$d check failed</item>
+        <item quantity="other">%1$d checks failed</item>
+    </plurals>
+    <plurals name="self_check_headline_notes">
+        <item quantity="one">Working, with %1$d note</item>
+        <item quantity="other">Working, with %1$d notes</item>
+    </plurals>
+    <string name="self_check_headline_ok">Everything works</string>
 
     <string name="licences_open_source_title">OPEN-SOURCE SOFTWARE</string>
     <string name="licences_open_source_body">AndroidX and Jetpack Compose, Material Components, Kotlin and

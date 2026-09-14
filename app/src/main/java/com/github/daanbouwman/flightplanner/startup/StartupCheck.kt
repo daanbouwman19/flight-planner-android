@@ -9,18 +9,15 @@ data class CheckResult(
     enum class Status { PASS, WARN, FAIL, RUNNING }
 }
 
+/**
+ * The self-check's progress. The headline that summarises it is the screen's
+ * to compose — it is a translated, plural-aware string resource, and a state
+ * class has no resources.
+ */
 data class StartupUiState(
     val checks: List<CheckResult> = emptyList(),
     val finished: Boolean = false,
 ) {
     val failures: Int get() = checks.count { it.status == CheckResult.Status.FAIL }
     val warnings: Int get() = checks.count { it.status == CheckResult.Status.WARN }
-
-    val headline: String
-        get() = when {
-            !finished -> "Checking…"
-            failures > 0 -> "$failures check${if (failures == 1) "" else "s"} failed"
-            warnings > 0 -> "Working, with $warnings note${if (warnings == 1) "" else "s"}"
-            else -> "Everything works"
-        }
 }
