@@ -1,0 +1,74 @@
+# Runs the full verification suite CLAUDE.md asks a human to run before calling a
+# change done: compile everything, run every unit test, run lint, and run
+# `checkInvariants` (wired into `check` by the convention plugins, so `build`
+# already covers it).
+#
+# `debug-apk.yml` in this directory proves the app *assembles*; it never runs a
+# test or a lint check, so a change could break `:core:routing:test` or trip
+# `checkInvariants` and still merge green. This job is what actually catches that.
+#
+# See `debug-apk.yml`'s own comments for the setup-gradle caching notes — they
+# apply unchanged here, this is the same runner shape running a bigger task.
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Same reasoning as `debug-apk.yml`: a superseded commit's verification run is
+# not worth finishing, and this keeps a push and its pull_request run sharing
+# one group rather than racing each other for the cache.
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # `build` compiles every module, runs every unit test suite and lint — a
+    # materially bigger task than `debug-apk.yml`'s single `assembleDebug`.
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: Build
+        run: ./gradlew build --no-daemon
+
+      # Only on failure: a green run's reports are not worth the upload time,
+      # and lint's HTML report is per-module (`lint-results-debug.html` etc.),
+      # hence the glob rather than one fixed path.
+      - name: Upload lint reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-reports-${{ github.event.pull_request.head.sha || github.sha }}
+          path: '**/build/reports/lint-results-*.html'
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            **/build/reports/tests/**
+            **/build/test-results/**/*.xml
+          if-no-files-found: ignore
+          retention-days: 14
