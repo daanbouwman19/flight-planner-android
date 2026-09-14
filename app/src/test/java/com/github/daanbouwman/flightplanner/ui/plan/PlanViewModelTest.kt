@@ -479,6 +479,37 @@ class PlanViewModelTest {
         model.uiState.value.routes.size shouldBe before * 2
     }
 
+    /**
+     * The entrance memory has to outlive the screen — that is why it is here —
+     * and has to forget a list that was thrown away, so a fresh batch arrives
+     * as one rather than appearing fully formed because an old id was kept.
+     */
+    @Test
+    fun `an entered row stays entered until the list is replaced`() = planTest { model ->
+        val row = model.uiState.value.routes.first()
+        model.hasEntered(row.id) shouldBe false
+
+        model.markEntered(row.id)
+        model.hasEntered(row.id) shouldBe true
+
+        // An append is the same list: what has entered stays entered.
+        model.loadMore()
+        advanceUntilIdle()
+        model.hasEntered(row.id) shouldBe true
+
+        // A swipe that is undone puts the same id back, and it must not rise
+        // into place again — it never left, as far as the user is concerned.
+        model.markFlown(row)
+        advanceUntilIdle()
+        model.undoMarkFlown()
+        advanceUntilIdle()
+        model.hasEntered(row.id) shouldBe true
+
+        model.generate()
+        advanceUntilIdle()
+        model.hasEntered(row.id) shouldBe false
+    }
+
     @Test
     fun `the list stops growing at the cap and says so, until a refresh`() = planTest { model ->
         val batch = model.uiState.value.routes.size

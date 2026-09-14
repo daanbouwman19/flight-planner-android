@@ -333,6 +333,8 @@ fun PlanScreen(
                 onOpenRoute = onOpenRoute,
                 onMarkFlown = viewModel::markFlown,
                 onReplace = viewModel::replace,
+                hasEntered = viewModel::hasEntered,
+                markEntered = viewModel::markEntered,
                 onGenerate = viewModel::generate,
                 onPickAircraft = {
                     query = ""
@@ -592,6 +594,8 @@ private fun PlanContent(
     onOpenRoute: (RouteRow) -> Unit,
     onMarkFlown: (RouteRow) -> Unit,
     onReplace: (RouteRow) -> Unit,
+    hasEntered: (Long) -> Boolean,
+    markEntered: (Long) -> Unit,
     onGenerate: () -> Unit,
     onPickAircraft: () -> Unit,
 ) {
@@ -650,6 +654,8 @@ private fun PlanContent(
             onOpenRoute = onOpenRoute,
             onMarkFlown = onMarkFlown,
             onReplace = onReplace,
+            hasEntered = hasEntered,
+            markEntered = markEntered,
         )
     }
 }
@@ -725,17 +731,20 @@ private fun RouteList(
     onOpenRoute: (RouteRow) -> Unit,
     onMarkFlown: (RouteRow) -> Unit,
     onReplace: (RouteRow) -> Unit,
+    hasEntered: (Long) -> Boolean,
+    markEntered: (Long) -> Unit,
 ) {
-    // Which rows have already played their entrance.
+    // Which rows have already played their entrance is the ViewModel's to
+    // remember, and the two callbacks are how the rows ask.
     //
     // A `LaunchedEffect` inside a lazy item runs again every time that item is
     // recomposed, and scrolling an item off screen and back destroys and rebuilds
     // it — so an entrance animation driven from inside the item replays every
     // time the user scrolls past it, which is the single most common way to make
-    // a list feel broken. This set lives outside the items and outlives their
-    // composition, so a row animates exactly once.
-    val entered = remember { mutableSetOf<Long>() }
-
+    // a list feel broken. The memory has to live outside the items; it lived
+    // here first, in a `remember`, and that was still one lifetime too short —
+    // opening a route on a phone takes this whole screen out of composition,
+    // and coming back rebuilt the set empty and replayed every entrance.
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().testTag(PlanRouteListTag),
@@ -772,7 +781,7 @@ private fun RouteList(
                         fadeOutSpec = null,
                         placementSpec = FlightMotion.spatial(),
                     )
-                    .rowEntrance(index = index, row = row, entered = entered),
+                    .rowEntrance(index = index, row = row, hasEntered = hasEntered, markEntered = markEntered),
             )
         }
 
@@ -851,7 +860,12 @@ private fun RouteList(
  * than rely on Compose shortening it.
  */
 @Composable
-private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<Long>): Modifier {
+private fun Modifier.rowEntrance(
+    index: Int,
+    row: RouteRow,
+    hasEntered: (Long) -> Boolean,
+    markEntered: (Long) -> Unit,
+): Modifier {
     val rowId = row.id
     val replacing = row.arrivedAsReplacement
     val reduceMotion = LocalReduceMotion.current
@@ -861,7 +875,7 @@ private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<
     // away; a mutation inside `remember` would mark a row as entered in a
     // composition that never reached the screen, and the row would then never
     // animate. Effects run only for compositions that were applied.
-    val alreadyEntered = remember(rowId) { rowId in entered }
+    val alreadyEntered = remember(rowId) { hasEntered(rowId) }
 
     // Only the first screenful of a batch animates.
     //
@@ -876,7 +890,7 @@ private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<
 
     var visible by remember(rowId) { mutableStateOf(alreadyEntered || reduceMotion || !animates) }
     LaunchedEffect(rowId) {
-        entered.add(rowId)
+        markEntered(rowId)
         if (!visible) {
             if (!replacing) delay(FlightMotion.enterDelayMillis(index).toLong())
             visible = true
@@ -1270,6 +1284,10 @@ private fun PreviewPlan(state: PlanUiState) {
                 onOpenRoute = {},
                 onMarkFlown = {},
                 onReplace = {},
+                // Already entered, so the preview renders the rows at rest
+                // rather than at the first frame of a fade.
+                hasEntered = { true },
+                markEntered = {},
                 onGenerate = {},
                 onPickAircraft = {},
             )

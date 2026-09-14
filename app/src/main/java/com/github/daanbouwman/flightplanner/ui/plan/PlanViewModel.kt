@@ -237,6 +237,25 @@ class PlanViewModel @Inject constructor(
     private var weatherRetry: Job? = null
 
     /**
+     * Which rows have already played their entrance, by id.
+     *
+     * Held here rather than in the screen because the screen does not live as
+     * long as the list does. On a phone, opening a route takes Plan out of
+     * composition and returning rebuilds it, and a `remember`ed set rebuilt
+     * empty meant every row on screen rose into place a second time — an
+     * arrival animation for a list that had never left. The ViewModel outlives
+     * that trip, so the set does too.
+     *
+     * A plain `HashSet`, not state, for the reason [weatherAskedAt] is: nothing
+     * observes it. It is read during composition through [hasEntered] and
+     * written from an effect through [markEntered], both on the main thread,
+     * and an observable set would recompose the list every time a row arrived.
+     * Cleared with the list in [runSelection]: ids are minted once and never
+     * reused, so an id from a discarded list can never be asked about again.
+     */
+    private val enteredRows = HashSet<Long>()
+
+    /**
      * One-shot events, as a channel rather than as state.
      *
      * A snackbar is not a property of the screen — replaying "flight logged" on
@@ -432,6 +451,14 @@ class PlanViewModel @Inject constructor(
     /** The ICAOs currently visible in the list, from [PlanScreen]'s `LazyListState`. */
     fun setVisibleIcaos(icaos: Set<String>) {
         visibleIcaos.value = icaos
+    }
+
+    /** Whether the row with this id has already played its entrance. See [enteredRows]. */
+    fun hasEntered(rowId: Long): Boolean = rowId in enteredRows
+
+    /** Records that the row with this id has been shown, so it never animates in again. */
+    fun markEntered(rowId: Long) {
+        enteredRows += rowId
     }
 
     /**
@@ -717,6 +744,7 @@ class PlanViewModel @Inject constructor(
         // so the tick is unconditional: whatever the screen was scrolled to
         // belonged to a list that no longer exists.
         listGeneration.update { it + 1 }
+        enteredRows.clear()
         if (selected.generation == 0L) {
             routes.value = emptyList()
             status.value = PlanStatus.Idle
