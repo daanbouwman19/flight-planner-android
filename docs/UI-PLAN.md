@@ -986,6 +986,41 @@ this document that came from an install is only as good as the install, and the
 one check that would have caught it — reading the `DEBUGGABLE` flag out of
 `dumpsys package` — takes one line.
 
+### The measurement, delivered — and the fade was not free
+
+Run on 14 September 2026 as part of the review fixes, the way P2 said it would
+have to be: `flingBaselineProfile` three times on the SM-S942B, one APK per run,
+the installed package's `pkgFlags` polled every twenty seconds through each run
+and read back afterwards — `HAS_CODE`, never `DEBUGGABLE`, ten samples a run.
+Same code otherwise (the rest of the Plan-scroll fixes were already in), runs
+minutes apart, the phone idle between them.
+
+| `fadeUnderStatusBar` | CPU P50 / P90 / P95 / P99 | overrun P50 / P90 / P95 / P99 |
+| --- | --- | --- |
+| Offscreen layer over the whole list — as shipped | 4.4 / 6.6 / 7.8 / 11.3 | 0.3 / 4.2 / 4.8 / 7.6 |
+| No fade at all | 4.2 / 6.2 / 7.1 / 10.9 | −0.8 / 2.8 / 3.5 / 5.9 |
+| **Layer the height of the inset, content drawn twice** | 4.5 / 6.5 / 7.2 / 10.5 | −0.3 / 3.5 / 4.0 / 7.1 |
+
+**The whole-list layer cost 1.4 ms of overrun at P90 and 1.7 ms at P99**, against
+a 0.4 ms move in CPU time. That split is the tell: an offscreen compositing layer
+is GPU work — every frame of a fling rendered to a full-screen texture and
+composited back — and `frameDurationCpu` does not see it, which is why the README
+says to read overrun. It is also why the void A/B would have been wrong even had
+its installs worked: it read `dumpsys gfxinfo`'s CPU-side buckets.
+
+What shipped is the third row. Erasing still needs a layer (`DstIn` against the
+window blends with the ground), so the layer is now bounded to the strip under
+the status bar: the content is drawn once straight to the window below the strip
+and once, clipped, into a `saveLayer` the strip's size, where the gradient erases
+it. That halves the bill — 0.7 ms at P90 over no fade — and pays a little CPU for
+recording the list's commands twice. The other half is the price of the effect,
+and the effect stays: a card parked under the clock with its ETE under the
+battery icon was a finding, not a preference. The bars remain empty; nothing is
+painted behind them, the strip is erased rather than covered.
+
+The retraction above is closed. What it said still stands as a method note; what
+it could not say — the number — is in the table.
+
 ## 4d. Phase P — Performance, before the next feature ✅ CLOSED
 
 **Closed after P1, P2 and P3. P4 is deferred deliberately — see the tasks table.**
@@ -2121,7 +2156,8 @@ is why logcat was silent and why the absent `FEngine` line proved nothing.
 
 Two hypotheses were tested on the device and **both refuted**: it is not
 `fadeUnderStatusBar`'s `CompositingStrategy.Offscreen` layer (the spill is
-identical with it gone) and not the `Card`'s rounded clip (identical with a
+identical with it gone; that whole-list layer has since been measured and
+replaced, see §4c) and not the `Card`'s rounded clip (identical with a
 `RectangleShape`). Nor is it reachable from app code:
 `SurfaceView.setClipBounds` is inert without the `@hide`
 `setEnableSurfaceClipping`, and `setCornerRadius` is `@hide` *and* disables the
