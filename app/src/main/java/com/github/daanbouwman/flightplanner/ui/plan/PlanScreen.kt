@@ -753,9 +753,19 @@ private fun RouteList(
     ) {
         // Keyed, so it survives the list being regenerated under it and does not
         // get rebuilt every time a batch arrives.
-        item(key = HeaderKey) { header() }
+        // Typed as well as keyed. A lazy list reuses the composition of an item
+        // that scrolled out for one scrolling in *of the same type*; with no
+        // type everything is one type, and the slot a header or a footer left
+        // behind is offered to a card, whose entire subtree then has to be
+        // torn down and rebuilt in it. Three literals keep cards recycling into
+        // cards, which is the only reuse that saves anything.
+        item(key = HeaderKey, contentType = HeaderType) { header() }
 
-        itemsIndexed(state.routes, key = { _, row -> row.id }) { index, row ->
+        itemsIndexed(
+            items = state.routes,
+            key = { _, row -> row.id },
+            contentType = { _, _ -> RouteType },
+        ) { index, row ->
             SwipeableRoute(
                 row = row,
                 outline = outline,
@@ -786,7 +796,7 @@ private fun RouteList(
         }
 
         if (state.status == PlanStatus.Appending) {
-            item(key = AppendingKey) {
+            item(key = AppendingKey, contentType = FooterType) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -803,7 +813,7 @@ private fun RouteList(
         // failed; one line saying what happened and what to do turns a limit
         // into a state. Refresh is pull-to-refresh, which the user already has.
         if (state.status == PlanStatus.EndReached) {
-            item(key = EndReachedKey) {
+            item(key = EndReachedKey, contentType = FooterType) {
                 Text(
                     text = stringResource(R.string.plan_end_reached),
                     style = MaterialTheme.typography.bodyMedium,
@@ -1240,6 +1250,15 @@ private const val PlanRouteListTag = "plan:routeList"
 private const val AppendingKey = "appending"
 
 private const val EndReachedKey = "endReached"
+
+/*
+ * Content types, so the lazy list recycles like with like. The two footers
+ * share one: neither is ever on screen with the other, and both are a single
+ * centred composable in a padded box.
+ */
+private const val HeaderType = "header"
+private const val RouteType = "route"
+private const val FooterType = "footer"
 
 private const val HeaderKey = "header"
 
