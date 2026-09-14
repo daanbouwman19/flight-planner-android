@@ -746,7 +746,7 @@ class PlanViewModel @Inject constructor(
             slots += route.destinationSlot
         }
         val slotList = slots.toIntArray()
-        val ids = slotList.map { current.index.ids[it] }
+        val ids = slotList.map { current.index.idOf(it) }
         val airportsById = airportRepository.airportsByIdMap(ids)
 
         val bySlot = HashMap<Int, Airport>(slotList.size)

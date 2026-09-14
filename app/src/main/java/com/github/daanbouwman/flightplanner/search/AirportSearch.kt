@@ -95,8 +95,7 @@ private suspend fun searchAirports(
         withContext(defaultDispatcher) {
             AirportSlotSearch.rank(
                 query = query,
-                codes = index.codes,
-                size = index.size,
+                index = index,
                 names = names?.names,
                 municipalities = names?.municipalities,
             )

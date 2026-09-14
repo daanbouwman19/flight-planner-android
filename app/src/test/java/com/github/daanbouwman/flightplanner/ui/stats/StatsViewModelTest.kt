@@ -112,7 +112,7 @@ private class FakeAirportRepository(private val airports: List<Airport>) : Airpo
         return airports.filter { it.icao.uppercase() in set }
     }
     override suspend fun airportsForSlots(index: AirportIndex, slots: IntArray): List<Airport> =
-        airportsByIds(slots.map { index.ids[it] })
+        airportsByIds(slots.map { index.idOf(it) })
     override suspend fun runwaysFor(airportId: Int): List<Runway> = emptyList()
     override fun prepareNameIndex(index: AirportIndex) = Unit
     override fun nameIndexOrNull(): AirportNameIndex? = null

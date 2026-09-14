@@ -159,7 +159,7 @@ private class FakeAirportRepository : AirportRepository {
         icaos.mapNotNull { code -> airports.firstOrNull { it.icao == code } }
 
     override suspend fun airportsForSlots(index: AirportIndex, slots: IntArray): List<Airport> =
-        airportsByIds(slots.map { index.ids[it] })
+        airportsByIds(slots.map { index.idOf(it) })
 
     override suspend fun runwaysFor(airportId: Int): List<Runway> = emptyList()
     override fun prepareNameIndex(index: AirportIndex) = Unit

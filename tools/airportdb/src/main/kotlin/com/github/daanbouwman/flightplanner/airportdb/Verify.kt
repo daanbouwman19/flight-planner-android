@@ -177,9 +177,9 @@ private fun smokeTestRouteGeneration(
         failures += "prebuilt index holds ${index.size} airports but the database yields ${fromDatabase.size}"
     } else {
         val mismatched = (0 until index.size).count {
-            index.codes[it] != fromDatabase.codes[it] ||
-                index.longestRunwayFt[it] != fromDatabase.longestRunwayFt[it] ||
-                index.flags[it] != fromDatabase.flags[it]
+            index.codeOf(it) != fromDatabase.codeOf(it) ||
+                index.longestRunwayFt(it) != fromDatabase.longestRunwayFt(it) ||
+                index.flagsOf(it) != fromDatabase.flagsOf(it)
         }
         if (mismatched > 0) failures += "$mismatched index entries disagree with the database"
     }
