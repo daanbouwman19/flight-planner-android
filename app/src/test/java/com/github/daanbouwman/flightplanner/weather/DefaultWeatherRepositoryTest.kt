@@ -10,7 +10,9 @@ import com.github.daanbouwman.flightplanner.settings.AppSettings
 import com.github.daanbouwman.flightplanner.settings.SettingsRepository
 import com.github.daanbouwman.flightplanner.settings.UnitSystem
 import com.github.daanbouwman.flightplanner.settings.WeatherProvider
+import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
@@ -47,9 +49,24 @@ private class FakeAvwxMetarClient : AvwxMetarClient {
     val requestedKeys = mutableListOf<String>()
     var response: (String) -> Metar? = { null }
 
+    /** How long each request "takes"; zero means answer immediately. */
+    var latencyMillis = 0L
+
+    /** The most requests ever observed in flight at the same time. */
+    var peakInFlight = 0
+        private set
+    private var inFlight = 0
+
     override suspend fun fetchMetar(stationIcao: String, apiKey: String): Metar? {
         requestedKeys += apiKey
-        return response(stationIcao)
+        inFlight++
+        peakInFlight = maxOf(peakInFlight, inFlight)
+        try {
+            if (latencyMillis > 0) delay(latencyMillis)
+            return response(stationIcao)
+        } finally {
+            inFlight--
+        }
     }
 }
 
@@ -132,6 +149,28 @@ class DefaultWeatherRepositoryTest {
         result.keys shouldBe setOf("EHAM")
         avwx.requestedKeys shouldBe listOf("secret")
         noaa.lastRequest shouldBe null
+    }
+
+    @Test
+    fun `the AVWX fan-out never has more than four requests in flight`() = runTest {
+        // Twenty stations, each "taking" a while, so that without the bound all
+        // twenty would be in flight at once. The fake counts its own peak.
+        val settings = FakeSettingsRepository(AppSettings(weatherProvider = WeatherProvider.AVWX, avwxApiKey = "secret"))
+        val avwx = FakeAvwxMetarClient().apply {
+            response = { station -> metar(station) }
+            latencyMillis = 100
+        }
+        val stations = (1..20).map { "ST%02d".format(it) }
+
+        val result = repository(avwx = avwx, settings = settings).fetch(stations)
+
+        // Every station still resolves — the bound queues, it does not drop.
+        result.keys shouldBe stations.toSet()
+        avwx.requestedKeys.size shouldBe 20
+        avwx.peakInFlight shouldBeLessThanOrEqual DefaultWeatherRepository.AVWX_MAX_IN_FLIGHT
+        // And the bound was actually reached, so this is not passing because the
+        // fake serialised everything on its own.
+        avwx.peakInFlight shouldBe DefaultWeatherRepository.AVWX_MAX_IN_FLIGHT
     }
 
     @Test
