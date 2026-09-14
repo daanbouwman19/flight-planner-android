@@ -5,7 +5,6 @@ import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.model.FlightRecord
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.nulls.shouldNotBeNull
 import java.time.LocalDate
 import java.time.YearMonth
 import kotlin.test.Test
@@ -183,50 +182,9 @@ class StatsGroupingTest {
         top[2].aircraft.id shouldBe 3
     }
 
-    @Test
-    fun airportHighlights_breaksTiesByAlphabeticalIcao() {
-        val records = listOf(
-            FlightRecord(1, "KJFK", "EGLL", 3, "2026-01-10", 3000),
-            FlightRecord(2, "EHAM", "EGLL", 1, "2026-01-11", 200),
-        )
-
-        val (favDep, favArr, mostVisited) = StatsGrouping.computeAirportHighlights(records, testAirports)
-        // Departures: EHAM (1), KJFK (1) -> EHAM wins alphabetically
-        favDep.shouldNotBeNull()
-        favDep.icao shouldBe "EHAM"
-        favDep.count shouldBe 1
-
-        // Arrivals: EGLL (2)
-        favArr.shouldNotBeNull()
-        favArr.icao shouldBe "EGLL"
-        favArr.count shouldBe 2
-
-        // Most visited: EGLL (2 visits), EHAM (1 visit), KJFK (1 visit)
-        mostVisited.shouldNotBeNull()
-        mostVisited.icao shouldBe "EGLL"
-        mostVisited.count shouldBe 2
-    }
-
-    @Test
-    fun longestAndShortest_asymmetryPreserved() {
-        val records = listOf(
-            FlightRecord(1, "EHAM", "EGLL", 1, "2026-01-10", 200), // First min
-            FlightRecord(2, "EGLL", "EHAM", 2, "2026-01-11", 200), // Second min
-            FlightRecord(3, "EHAM", "KJFK", 3, "2026-01-12", 3160), // First max
-            FlightRecord(4, "KJFK", "EHAM", 3, "2026-01-13", 3160), // Second max
-        )
-
-        val shortest = StatsGrouping.computeShortestFlight(records)
-        val longest = StatsGrouping.computeLongestFlight(records)
-
-        // Shortest keeps first minimum (EHAM -> EGLL)
-        shortest?.departureIcao shouldBe "EHAM"
-        shortest?.arrivalIcao shouldBe "EGLL"
-
-        // Longest keeps last maximum (KJFK -> EHAM)
-        longest?.departureIcao shouldBe "KJFK"
-        longest?.arrivalIcao shouldBe "EHAM"
-    }
+    // The airport-highlight and longest/shortest tie-break cases that used to
+    // sit here moved to FlightStatisticsCalculatorDetailedTest in :core:routing
+    // when the dashboard started reading those figures from the calculator.
 
     @Test
     fun visitedNetwork_buildsDeduplicatedLegsAndAirports() {

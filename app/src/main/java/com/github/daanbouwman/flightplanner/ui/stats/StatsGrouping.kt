@@ -9,7 +9,16 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Pure grouping and ranking logic behind the Stats Dashboard. See [StatsUiState] for the shapes it produces. */
+/**
+ * Pure grouping and ranking logic behind the Stats Dashboard. See [StatsUiState] for the shapes it produces.
+ *
+ * Only figures with no desktop-app precedent live here: the timeframe filter,
+ * the monthly chart, the top-aircraft ranking and the visited network. Totals,
+ * the longest and shortest flight and the favourite airports come from
+ * `FlightStatisticsCalculator` in `:core:routing`, which carries the desktop's
+ * tie-break rules — they used to be duplicated here and the two copies could
+ * drift.
+ */
 object StatsGrouping {
 
     private val MonthLabelFormatter = DateTimeFormatter.ofPattern("MMM", Locale.US)
@@ -131,108 +140,6 @@ object StatsGrouping {
                     .thenBy { it.aircraft.id },
             )
             .take(limit)
-    }
-
-    /**
-     * Computes favorite departure, favorite arrival, and most visited airport.
-     * Ties broken by alphabetically-first ICAO code.
-     */
-    fun computeAirportHighlights(
-        records: List<FlightRecord>,
-        airportMap: Map<String, Airport>,
-    ): Triple<AirportCount?, AirportCount?, AirportCount?> {
-        if (records.isEmpty()) return Triple(null, null, null)
-
-        val departureCounts = HashMap<String, Int>()
-        val arrivalCounts = HashMap<String, Int>()
-        val totalVisits = HashMap<String, Int>()
-
-        for (record in records) {
-            val dep = record.departureIcao.trim().uppercase()
-            val arr = record.arrivalIcao.trim().uppercase()
-
-            departureCounts[dep] = (departureCounts[dep] ?: 0) + 1
-            arrivalCounts[arr] = (arrivalCounts[arr] ?: 0) + 1
-            totalVisits[dep] = (totalVisits[dep] ?: 0) + 1
-            totalVisits[arr] = (totalVisits[arr] ?: 0) + 1
-        }
-
-        fun bestAirport(counts: Map<String, Int>): AirportCount? {
-            var bestIcao: String? = null
-            var bestCount = 0
-            for ((icao, count) in counts) {
-                val current = bestIcao
-                if (current == null || count > bestCount || (count == bestCount && icao < current)) {
-                    bestIcao = icao
-                    bestCount = count
-                }
-            }
-            return bestIcao?.let { icao ->
-                AirportCount(
-                    icao = icao,
-                    name = airportMap[icao]?.name,
-                    count = bestCount,
-                )
-            }
-        }
-
-        val favDeparture = bestAirport(departureCounts)
-        val favArrival = bestAirport(arrivalCounts)
-        val mostVisited = bestAirport(totalVisits)
-
-        return Triple(favDeparture, favArrival, mostVisited)
-    }
-
-    /**
-     * Finds the longest flight, keeping the last encounter on equal distance.
-     */
-    fun computeLongestFlight(records: List<FlightRecord>): LegStat? {
-        if (records.isEmpty()) return null
-        var maxDistance = Int.MIN_VALUE
-        var longest: FlightRecord? = null
-
-        for (record in records) {
-            val distance = record.distanceNm ?: 0
-            if (distance >= maxDistance) {
-                maxDistance = distance
-                longest = record
-            }
-        }
-
-        return longest?.let {
-            LegStat(
-                departureIcao = it.departureIcao,
-                arrivalIcao = it.arrivalIcao,
-                aircraftId = it.aircraftId,
-                distanceNm = it.distanceNm ?: 0,
-            )
-        }
-    }
-
-    /**
-     * Finds the shortest flight, keeping the first encounter on equal distance.
-     */
-    fun computeShortestFlight(records: List<FlightRecord>): LegStat? {
-        if (records.isEmpty()) return null
-        var minDistance = Int.MAX_VALUE
-        var shortest: FlightRecord? = null
-
-        for (record in records) {
-            val distance = record.distanceNm ?: 0
-            if (distance < minDistance) {
-                minDistance = distance
-                shortest = record
-            }
-        }
-
-        return shortest?.let {
-            LegStat(
-                departureIcao = it.departureIcao,
-                arrivalIcao = it.arrivalIcao,
-                aircraftId = it.aircraftId,
-                distanceNm = it.distanceNm ?: 0,
-            )
-        }
     }
 
     /**

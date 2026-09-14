@@ -6,6 +6,10 @@ import com.github.daanbouwman.flightplanner.core.database.repository.AirportRepo
 import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.LogbookRepository
 import com.github.daanbouwman.flightplanner.di.DefaultDispatcher
+import com.github.daanbouwman.flightplanner.model.Airport
+import com.github.daanbouwman.flightplanner.model.FlightRecord
+import com.github.daanbouwman.flightplanner.routing.AirportTally
+import com.github.daanbouwman.flightplanner.routing.FlightStatisticsCalculator
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -81,10 +85,10 @@ class StatsViewModel @Inject constructor(
         val today = LocalDate.now()
         val filtered = StatsGrouping.filterByTimeframe(records, selectedTimeframe, today)
 
-        val totalFlights = filtered.size
-        val totalDistanceNm = filtered.sumOf { it.distanceNm ?: 0 }
-        val averageDistanceNm = if (totalFlights > 0) totalDistanceNm.toDouble() / totalFlights else 0.0
-        val earthCircumferences = totalDistanceNm / EARTH_CIRCUMFERENCE_NM
+        // Totals, extremes and favourites come from the ported calculator so the
+        // desktop's tie-breaks exist in one place; see its KDoc for the rules.
+        val statistics = FlightStatisticsCalculator.calculateDetailed(filtered)
+        val earthCircumferences = statistics.totalDistanceNm / EARTH_CIRCUMFERENCE_NM
 
         val neededIcaos = filtered.flatMap { listOf(it.departureIcao, it.arrivalIcao) }
             .map { it.trim().uppercase() }
@@ -94,24 +98,21 @@ class StatsViewModel @Inject constructor(
 
         val monthlyActivity = StatsGrouping.buildMonthlyActivity(filtered, selectedTimeframe, today)
         val topAircraft = StatsGrouping.computeTopAircraft(filtered, fleet)
-        val (favDep, favArr, mostVisited) = StatsGrouping.computeAirportHighlights(filtered, airportMap)
-        val longest = StatsGrouping.computeLongestFlight(filtered)
-        val shortest = StatsGrouping.computeShortestFlight(filtered)
         val (visitedAirports, visitedLegs) = StatsGrouping.buildVisitedNetwork(filtered, airportMap)
 
         DashboardResult.Data(
             timeframe = selectedTimeframe,
-            totalDistanceNm = totalDistanceNm,
+            totalDistanceNm = statistics.totalDistanceNm,
             earthCircumferences = earthCircumferences,
-            totalFlights = totalFlights,
-            averageDistanceNm = averageDistanceNm,
-            longestFlight = longest,
-            shortestFlight = shortest,
+            totalFlights = statistics.totalFlights,
+            averageDistanceNm = statistics.averageFlightDistanceNm,
+            longestFlight = statistics.longestFlight?.toLegStat(),
+            shortestFlight = statistics.shortestFlight?.toLegStat(),
             monthlyActivity = monthlyActivity,
             topAircraft = topAircraft,
-            favoriteDeparture = favDep,
-            favoriteArrival = favArr,
-            mostVisitedAirport = mostVisited,
+            favoriteDeparture = statistics.favoriteDepartureAirport?.toAirportCount(airportMap),
+            favoriteArrival = statistics.favoriteArrivalAirport?.toAirportCount(airportMap),
+            mostVisitedAirport = statistics.mostVisitedAirport?.toAirportCount(airportMap),
             visitedAirports = visitedAirports,
             visitedLegs = visitedLegs,
         )
@@ -150,3 +151,23 @@ class StatsViewModel @Inject constructor(
         _chartMetric.value = metric
     }
 }
+
+/** A missing distance reads as `0`, the same as the calculator counted it. */
+private fun FlightRecord.toLegStat() = LegStat(
+    departureIcao = departureIcao,
+    arrivalIcao = arrivalIcao,
+    aircraftId = aircraftId,
+    distanceNm = distanceNm ?: 0,
+)
+
+/**
+ * Airport names are a database concern and stay out of `:core:routing`, so the
+ * tally is named here. The lookup key is normalised the same way the
+ * repository query above was, so a name is found for any record the query
+ * found an airport for.
+ */
+private fun AirportTally.toAirportCount(airportMap: Map<String, Airport>) = AirportCount(
+    icao = icao,
+    name = airportMap[icao.trim().uppercase()]?.name,
+    count = count,
+)
