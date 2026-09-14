@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.feature.globe.tile
 
+import com.github.daanbouwman.flightplanner.model.UserAgent
 import okhttp3.Cache
 import okhttp3.CacheControl
 import okhttp3.Interceptor
@@ -50,16 +51,6 @@ import java.util.concurrent.TimeUnit
 internal object TileHttp {
 
     /**
-     * Identifies this app to the providers, mirroring what
-     * `core/network`'s `NetworkModule` sends to the weather services. The same
-     * string rather than a shared constant because `:feature:globe` does not
-     * depend on `:core:network`, and a dependency edge for one string is worse
-     * than a copy with a comment. A repo URL, not the user's own contact details.
-     */
-    private const val USER_AGENT =
-        "FlightPlannerAndroid/1.0 (+https://github.com/daanbouwman19/flight-planner-android)"
-
-    /**
      * Disk cache for tiles.
      *
      * Sized to hold the pinned base levels many times over, so airplane mode
@@ -100,9 +91,17 @@ internal object TileHttp {
             .addNetworkInterceptor(ImmutableCachePolicyInterceptor)
             .build()
 
+    /**
+     * Identifies this app to the providers with the same string
+     * `core/network`'s `NetworkModule` sends to the weather services — one
+     * constant in `:core:model`, which both modules already depend on. The
+     * clients themselves stay separate on purpose; see the class note.
+     */
     private object UserAgentInterceptor : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response =
-            chain.proceed(chain.request().newBuilder().header("User-Agent", USER_AGENT).build())
+            chain.proceed(
+                chain.request().newBuilder().header(UserAgent.HEADER, UserAgent.VALUE).build(),
+            )
     }
 
     /**
