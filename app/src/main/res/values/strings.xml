@@ -552,5 +552,12 @@
     <string name="airport_runway_diagram_empty">Runway diagram: no runway headings are published for this airport.</string>
     <!-- %1$s is the sentence above, %2$s the ident of the end the wind favours. -->
     <string name="airport_runway_diagram_favoured">%1$s Favoured for the current wind: %2$s.</string>
+    <!--
+        The visible legend under the diagram, shown only when there is a wind to
+        decide by. The diagram already says it twice — a halo under the strip
+        and the end's ident in bold sock orange — but neither is a convention a
+        first-time reader knows; this line is the key to them. %1$s is the ident.
+    -->
+    <string name="airport_runway_favoured_caption">Favoured for current wind: %1$s</string>
 
 </resources>

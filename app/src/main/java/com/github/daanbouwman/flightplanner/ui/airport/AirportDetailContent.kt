@@ -11,6 +11,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -23,6 +24,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.Skeleto
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SkyProfileHeight
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.model.Airport
+import com.github.daanbouwman.flightplanner.model.FlightRules
 import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.routing.SurfaceWind
@@ -122,12 +124,35 @@ private fun AirportDetailBody(
         )?.let { diagrammed[it].ident }
     }
 
-    RunwayDiagram(
-        runways = runways,
-        contentDescription = runwayDiagramDescription(diagrammed, favouredIdent),
-        wind = wind,
+    Column(
         modifier = Modifier.fillMaxWidth(),
-    )
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        // The diagram is a square of its own width, and its detail stops
+        // improving well before a phone's. Uncapped it was 328 dp on a compact
+        // window -- a third of the screen for a drawing that reads fully at
+        // 280 -- and 840 dp on a wide one, where this column is allowed to be
+        // that wide. Capped and centred, it is the same size everywhere.
+        RunwayDiagram(
+            runways = runways,
+            contentDescription = runwayDiagramDescription(diagrammed, favouredIdent),
+            wind = wind,
+            modifier = Modifier
+                .widthIn(max = RunwayDiagramMaxSize)
+                .fillMaxWidth(),
+        )
+        // The legend for the halo and the bold ident: both are conventions the
+        // diagram invented, and a reader who has not met them sees a strip lit
+        // for no stated reason. Absent, not blank, when the wind decides nothing.
+        if (favouredIdent != null) {
+            Text(
+                text = stringResource(R.string.airport_runway_favoured_caption, favouredIdent),
+                style = MaterialTheme.typography.bodySmall.asChartFigure(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 
     if (runways.isEmpty()) {
         Text(
@@ -196,6 +221,13 @@ private fun AirportWeatherBlock(icao: String, metar: Metar?) {
     }
 }
 
+/**
+ * Where the diagram stops growing. Chosen by eye against Schiphol's six
+ * runways: the idents are still legible at `labelSmall` and the lanes still
+ * separate, and past it the drawing only gets emptier.
+ */
+private val RunwayDiagramMaxSize = 280.dp
+
 @LightDarkPreview
 @CompactWidthPreview
 @Composable
@@ -205,6 +237,32 @@ private fun AirportDetailContentPreview() {
             state = AirportDetailUiState(
                 airport = PlanPreviewData.schiphol,
                 runways = PlanPreviewData.schipholRunways,
+                loading = false,
+            ),
+            onFlyFromHere = {},
+            snackbarHostState = remember { SnackbarHostState() },
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+/** With a wind: the halo, the bold ident and the caption that explains them. */
+@LightDarkPreview
+@CompactWidthPreview
+@Composable
+private fun AirportDetailContentWindPreview() {
+    FlightPlannerTheme(dynamicColor = false) {
+        AirportDetailContent(
+            state = AirportDetailUiState(
+                airport = PlanPreviewData.schiphol,
+                runways = PlanPreviewData.schipholRunways,
+                metar = Metar(
+                    station = "EHAM",
+                    raw = "EHAM 121325Z 27012KT 9999 FEW040 18/09 Q1015",
+                    flightRules = FlightRules.VFR,
+                    windDirectionDeg = 270,
+                    windSpeedKt = 12,
+                ),
                 loading = false,
             ),
             onFlyFromHere = {},
