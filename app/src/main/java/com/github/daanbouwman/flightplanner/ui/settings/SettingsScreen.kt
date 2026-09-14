@@ -53,7 +53,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeImagery
-import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeStatus
+import com.github.daanbouwman.flightplanner.feature.globe.GlobeStatus
 import com.github.daanbouwman.flightplanner.feature.globe.ui.rememberGlobeStatus
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.ThemeChoice

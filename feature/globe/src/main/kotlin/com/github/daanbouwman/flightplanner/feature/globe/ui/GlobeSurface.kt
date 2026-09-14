@@ -47,6 +47,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
+import com.github.daanbouwman.flightplanner.feature.globe.GlobeStatus
 import com.github.daanbouwman.flightplanner.feature.globe.R
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeBandFit
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
@@ -58,7 +59,6 @@ import com.github.daanbouwman.flightplanner.feature.globe.math.Vec3
 import com.github.daanbouwman.flightplanner.feature.globe.math.latLonToWorld
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeInk
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSession
-import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSupport
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeHostView
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSurfaceView
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeTextureView
@@ -124,32 +124,13 @@ fun rememberGlobeAvailable(): Boolean = rememberGlobeStatus() == GlobeStatus.Ava
 /**
  * Why the globe is or is not available, for the one place that says so out loud.
  *
- * The globe itself never explains itself — 3B is explicit that a device without
- * a renderer shows the still map and *nothing drawn to say so*, because that is
- * the app working rather than the app failing. This exists for Settings, where
- * somebody who has gone looking can find one line about it.
+ * The session's own verdict, remembered — see [GlobeStatus] for why there is one
+ * type for this and not a UI copy of it.
  */
-enum class GlobeStatus {
-    /** A renderer came up and there is memory for the atlas. */
-    Available,
-
-    /** Filament could not create an engine on any backend. */
-    NoRenderer,
-
-    /** The platform reports a low-RAM device; 32 MB of atlas is not affordable. */
-    LowMemory,
-}
-
 @Composable
 fun rememberGlobeStatus(): GlobeStatus {
     val context = LocalContext.current
-    return remember(context) {
-        when (GlobeSession.support(context)) {
-            GlobeSupport.Available -> GlobeStatus.Available
-            GlobeSupport.NoRenderer -> GlobeStatus.NoRenderer
-            GlobeSupport.LowMemory -> GlobeStatus.LowMemory
-        }
-    }
+    return remember(context) { GlobeSession.support(context) }
 }
 
 /**

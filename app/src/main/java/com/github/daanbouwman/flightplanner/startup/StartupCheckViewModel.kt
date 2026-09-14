@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.startup
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.daanbouwman.flightplanner.core.database.airport.AirportDao
@@ -10,6 +11,7 @@ import com.github.daanbouwman.flightplanner.core.database.user.AircraftDao
 import com.github.daanbouwman.flightplanner.core.database.user.FleetSeeder
 import com.github.daanbouwman.flightplanner.core.database.user.toSpec
 import com.github.daanbouwman.flightplanner.feature.globe.FilamentProbe
+import com.github.daanbouwman.flightplanner.feature.globe.GlobeStatus
 import com.github.daanbouwman.flightplanner.model.DatasetMetaKeys
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.RouteGenerator
@@ -18,6 +20,7 @@ import com.github.daanbouwman.flightplanner.routing.RouteRequest
 import com.github.daanbouwman.flightplanner.startup.CheckResult.Status
 import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,6 +44,8 @@ import kotlin.system.measureTimeMillis
  */
 @HiltViewModel
 class StartupCheckViewModel @Inject constructor(
+    /** For the Filament probe, which asks the platform what it declares before building anything. */
+    @ApplicationContext private val context: Context,
     /**
      * `Lazy`, so that opening the database is something this screen *does*
      * rather than something it needs in order to exist. Providing a DAO
@@ -202,10 +207,16 @@ class StartupCheckViewModel @Inject constructor(
      * Reported as a warning rather than a failure when Vulkan is unavailable:
      * Filament's OpenGL backend is a perfectly good fallback for this workload,
      * so it is information, not breakage.
+     *
+     * A device the globe itself has ruled out — `FilamentReport.support` other
+     * than `Available` — is a failure whatever the backend fields say, because
+     * that is the device on which the globe's controls are absent. The probe
+     * asks the session first, so this line and Settings' one cannot disagree.
      */
     private suspend fun checkFilament() {
-        val probe = withContext(Dispatchers.Default) { FilamentProbe.run() }
+        val probe = withContext(Dispatchers.Default) { FilamentProbe.run(context) }
         val status = when {
+            probe.support != GlobeStatus.Available -> Status.FAIL
             probe.error != null -> Status.FAIL
             probe.vulkanActive -> Status.PASS
             else -> Status.WARN
