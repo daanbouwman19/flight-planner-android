@@ -24,6 +24,13 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
 
+    // `UserDatabaseMigrationTest` drives the generated auto-migrations against a
+    // real version-1 file on a device: `MigrationTestHelper` reads the exported
+    // schema JSONs (which the Room Gradle plugin publishes as androidTest assets)
+    // and opens the result through the same `BundledSQLiteDriver` the app uses.
+    // The runner is named explicitly because ext-junit does not bring it and
+    // nothing else here does.
     androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.room.testing)
 }
