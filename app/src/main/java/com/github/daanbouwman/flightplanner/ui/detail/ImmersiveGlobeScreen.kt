@@ -37,7 +37,6 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDa
 import com.github.daanbouwman.flightplanner.core.designsystem.components.ValueChip
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.SystemBarsOverMedia
-import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeAttribution
 import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeCameraControls
 import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeControlButton
@@ -279,14 +278,10 @@ private fun RoutePlate(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom,
             ) {
-                Text(
-                    text = stringResource(
-                        R.string.route_detail_title_spoken,
-                        route.departureIcao,
-                        route.destinationIcao,
-                    ),
-                    style = MaterialTheme.typography.titleLarge.withTabularFigures(),
-                )
+                // The pair as the detail screen's app bar draws it — two codes
+                // and an arrow — rather than the spoken string, which is a
+                // sentence for a screen reader and read as one on the plate.
+                RouteTitle(route = route)
                 Text(
                     text = state.aircraft?.displayName.orEmpty(),
                     style = MaterialTheme.typography.labelLarge,

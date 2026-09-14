@@ -22,7 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -37,7 +36,6 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptySt
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
-import com.github.daanbouwman.flightplanner.core.designsystem.theme.withTabularFigures
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.navigation.Destination
@@ -187,13 +185,12 @@ private fun RouteDetailPaneContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = stringResource(
-                R.string.route_detail_title_spoken,
-                route.departureIcao,
-                route.destinationIcao,
-            ),
-            style = MaterialTheme.typography.titleLarge.withTabularFigures(),
+        // The same three-node pair the full screen's app bar draws, not the
+        // spoken "EHAM to KJFK" string it announces — that sentence is written
+        // for a screen reader, and on a display it read as prose beside a
+        // heading elsewhere that drew the arrow.
+        RouteTitle(
+            route = route,
             modifier = Modifier
                 .widthIn(max = if (isCompactHeight()) MaxContentWidth else WideMaxContentWidth)
                 .fillMaxWidth(),

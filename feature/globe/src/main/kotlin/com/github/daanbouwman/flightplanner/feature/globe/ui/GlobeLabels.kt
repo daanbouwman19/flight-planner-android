@@ -3,7 +3,6 @@ package com.github.daanbouwman.flightplanner.feature.globe.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,7 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -70,6 +71,20 @@ internal data class GlobeLabel(
  *     both codes, anchored to the midpoint of the leg. Nudging them apart would
  *     put a code somewhere no airport is, which is the same lie in a smaller
  *     font.
+ *
+ * ### The one thing that does move: the code slides along under its dot
+ *
+ * A code is centred under its dot, and a dot a few pixels inside the left or
+ * right edge of the surface therefore put half its code *outside* it, where the
+ * globe's own clip cut it off — RJTT read as "TT" on a long leg fitted to a phone.
+ * So [Plate] slides the code sideways by exactly as much as it needs to stay a
+ * gutter's width inside the surface, and **no further**. The dot does not move:
+ * it stays on its projected point, and the code hangs under it off-centre the way
+ * a tooltip does near a window edge. That keeps the rule above intact — the label
+ * still says where the airport is, because the dot does — while the text stays
+ * legible. The slide is horizontal only; vertically a plate still fades rather
+ * than moves, because the top and bottom edges carry chrome and a plate nudged
+ * clear of the app bar would land on top of it.
  *
  * ### This is the part of the globe TalkBack can read
  *
@@ -147,25 +162,34 @@ internal fun GlobeLabels(
                 y = midScreen.y,
                 alpha = minOf(depAlpha, destAlpha),
                 spoken = "${departure.icao} to ${destination.icao}",
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Dot(departure.color)
-                    Dot(destination.color)
-                }
-                Code("${departure.icao} · ${destination.icao}")
-            }
+                dot = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Dot(departure.color)
+                        Dot(destination.color)
+                    }
+                },
+                code = { Code("${departure.icao} · ${destination.icao}") },
+            )
         } else {
             depScreen?.let { p ->
-                Plate(p.x, p.y, depAlpha, departure.icao) {
-                    Dot(departure.color)
-                    Code(departure.icao)
-                }
+                Plate(
+                    x = p.x,
+                    y = p.y,
+                    alpha = depAlpha,
+                    spoken = departure.icao,
+                    dot = { Dot(departure.color) },
+                    code = { Code(departure.icao) },
+                )
             }
             destScreen?.let { p ->
-                Plate(p.x, p.y, destAlpha, destination.icao) {
-                    Dot(destination.color)
-                    Code(destination.icao)
-                }
+                Plate(
+                    x = p.x,
+                    y = p.y,
+                    alpha = destAlpha,
+                    spoken = destination.icao,
+                    dot = { Dot(destination.color) },
+                    code = { Code(destination.icao) },
+                )
             }
         }
     }
@@ -174,11 +198,16 @@ internal fun GlobeLabels(
 /**
  * A dot and the text under it, positioned by its dot and nothing else.
  *
- * The layout modifier places the *dot* at `(x, y)` and lets the plate hang below
- * it, centred. That is what makes "anchored to its own point by construction"
- * literally true rather than a thing to be careful about: there is no offset
- * anywhere that could drift, and a plate that grows — a longer code, a larger
- * font scale — grows downward and outward from the dot rather than moving it.
+ * The layout places the *dot* centred on `(x, y)` and hangs the code below it.
+ * That is what makes "anchored to its own point by construction" literally true
+ * rather than a thing to be careful about: there is no offset anywhere that could
+ * drift, and a plate that grows — a longer code, a larger font scale — grows
+ * downward and outward from the dot rather than moving it.
+ *
+ * The code is centred under the dot and then slid by [plateShiftPx] — the least
+ * distance that keeps it [PlateEdgeMargin] inside the surface — while the dot is
+ * placed from `x` alone and never slides. Two measurables rather than one
+ * `Column`, because a column can only move both together.
  */
 @Composable
 private fun Plate(
@@ -186,30 +215,73 @@ private fun Plate(
     y: Float,
     alpha: Float,
     spoken: String,
-    content: @Composable () -> Unit,
+    dot: @Composable () -> Unit,
+    code: @Composable () -> Unit,
 ) {
     if (alpha <= 0.01f) return
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+    Layout(
+        content = {
+            Box(modifier = Modifier.layoutId(PlateDotId)) { dot() }
+            Box(modifier = Modifier.layoutId(PlateCodeId)) { code() }
+        },
         modifier = Modifier
-            .layout { measurable, constraints ->
-                val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
-                layout(constraints.maxWidth, constraints.maxHeight) {
-                    placeable.place(
-                        x = (x - placeable.width / 2f).roundToInt(),
-                        // The dot is the first child and is DotSize tall, so
-                        // lifting by half of it puts the dot's centre on the
-                        // projected point.
-                        y = (y - DotSize.toPx() / 2f).roundToInt(),
-                    )
-                }
-            }
             .alpha(alpha)
             .semantics(mergeDescendants = true) { contentDescription = spoken },
-        content = { content() },
-    )
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val dotPlaceable = measurables.first { it.layoutId == PlateDotId }.measure(loose)
+        val codePlaceable = measurables.first { it.layoutId == PlateCodeId }.measure(loose)
+        val codeLeft = x - codePlaceable.width / 2f
+        val shift = plateShiftPx(
+            left = codeLeft,
+            width = codePlaceable.width.toFloat(),
+            surfaceWidth = constraints.maxWidth.toFloat(),
+            marginPx = PlateEdgeMargin.toPx(),
+        )
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            // Centred on the projected point, whatever the dot slot measured to —
+            // one dot in cases 1 and 2, two side by side in case 3.
+            dotPlaceable.place(
+                x = (x - dotPlaceable.width / 2f).roundToInt(),
+                y = (y - dotPlaceable.height / 2f).roundToInt(),
+            )
+            codePlaceable.place(
+                x = (codeLeft + shift).roundToInt(),
+                y = (y + dotPlaceable.height / 2f + PlateGap.toPx()).roundToInt(),
+            )
+        }
+    }
 }
+
+/**
+ * How far a code has to slide to sit at least [marginPx] inside a surface
+ * [surfaceWidth] wide, given that centring it under its dot would put its left
+ * edge at [left].
+ *
+ * Zero whenever the centred position already fits, so a label anywhere in the
+ * body of the surface is exactly where it always was; and zero again when the
+ * code is wider than the surface less both margins, because there is then no
+ * position that satisfies the rule and sliding would only choose which end to
+ * clip. In pixels, signed: positive slides right.
+ */
+internal fun plateShiftPx(left: Float, width: Float, surfaceWidth: Float, marginPx: Float): Float {
+    val minLeft = marginPx
+    val maxLeft = surfaceWidth - width - marginPx
+    if (maxLeft < minLeft) return 0f
+    return left.coerceIn(minLeft, maxLeft) - left
+}
+
+private const val PlateDotId = "dot"
+private const val PlateCodeId = "code"
+
+/** Between the dot and the code under it. */
+private val PlateGap = 4.dp
+
+/**
+ * How far inside the surface a code stops. The same 12 dp gutter the glass
+ * controls keep from the edge of the surface, so a slid label lines up with them.
+ */
+private val PlateEdgeMargin = 12.dp
 
 @Composable
 private fun Dot(color: Color) {
