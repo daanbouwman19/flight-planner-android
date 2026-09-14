@@ -18,6 +18,13 @@ private const val SHOW_GLOBE_DESCRIPTION = "Show the globe"
 private const val OPEN_FULLSCREEN_DESCRIPTION = "Open the globe full screen"
 private const val COLLAPSE_DESCRIPTION = "Leave the full-screen globe"
 
+/**
+ * The tail of a route card's merged content description
+ * (`plan_route_content_description`): the one shape of sentence only a card has.
+ */
+private val ROUTE_CARD_DESCRIPTION =
+    Regex(".*nautical\\s+miles, \\d+ hours \\d+ minutes", RegexOption.DOT_MATCHES_ALL).toPattern()
+
 /** How long a control may take to appear once the screen it lives on is requested. */
 private const val CONTROL_TIMEOUT_MILLIS = 10_000L
 
@@ -45,10 +52,17 @@ private const val IMAGERY_SETTLE_MILLIS = 4_000L
  */
 fun MacrobenchmarkScope.openImmersiveGlobe() {
     val list = awaitRouteList()
-    // The first card is the first clickable descendant: rows are cards, and a
-    // card is the only thing in the list that takes a tap.
-    val card = list.findObject(By.clickable(true))
-        ?: error("The route list has no clickable card to open")
+    // The first *card*, not the first clickable thing: the list's header row
+    // carries the filter fields, which are clickable and open a sheet. A card
+    // is the one node in the list whose merged description is a route sentence
+    // — "…, N nautical miles, H hours M minutes" — so that is what it is found by.
+    // Not `By.clickable(true)` as well: Compose reports the card's merged
+    // description on a node *beside* the one carrying the click (checked with
+    // `uiautomator dump`), and a click on the described node's centre lands on
+    // the card regardless. Waited for, because the list exists — header only —
+    // before the first batch of routes has been generated into it.
+    val card = list.wait(Until.findObject(By.desc(ROUTE_CARD_DESCRIPTION)), CONTROL_TIMEOUT_MILLIS)
+        ?: error("The route list has no route card to open after ${CONTROL_TIMEOUT_MILLIS}ms")
     card.click()
 
     awaitControl(SHOW_GLOBE_DESCRIPTION).click()
