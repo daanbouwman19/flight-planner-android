@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -47,6 +48,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -640,7 +642,12 @@ private fun GlobeCanvas(
     // imagery, after a grace long enough that a slow first tile is not called an
     // outage. A tile landing ends the poll through `firstImagery`; a connection
     // returning ends it through the loader's own backoff, whose next success
-    // clears the failure before the next poll reads it.
+    // clears the failure before the next poll reads it. **And a forced teardown
+    // ends it too**: backgrounding decomposes nothing — the premise of the whole
+    // `forceTeardown` line of work — so without the `isDestroyed` clause an
+    // offline globe left on screen would keep a 1 Hz wake-up touching a dead
+    // loader for as long as the app sat in recents, against §9's "0 jiffies at
+    // rest". The session that replaces it on `ON_START` re-keys the effect.
     var imageryOffline by remember(session) { mutableStateOf(false) }
     LaunchedEffect(session, firstImagery) {
         if (firstImagery) {
@@ -648,7 +655,7 @@ private fun GlobeCanvas(
             return@LaunchedEffect
         }
         delay(OfflineGraceMs)
-        while (isActive) {
+        while (isActive && !session.isDestroyed) {
             imageryOffline = session.loader.stats().imageryUnreachable
             delay(OfflinePollMs)
         }
@@ -829,7 +836,12 @@ private fun GlobeCanvas(
         // Over the still map, under the host's chrome: the one sentence the
         // globe says about itself, and it says it only when it is true.
         if (imageryOffline) {
-            GlobeOfflineNotice(modifier = Modifier.align(Alignment.Center))
+            GlobeOfflineNotice(
+                // The box's own height, in px, from the surface — the number the
+                // notice's fit is decided against. See the composable.
+                boxHeightPx = viewport.height,
+                modifier = Modifier.align(Alignment.Center),
+            )
         }
 
         // The host's chrome is told, through the local rather than a parameter,
@@ -858,9 +870,23 @@ internal val LocalGlobeImageryOffline = compositionLocalOf { false }
  * `extraSmall` corner, one hairline. A plate rather than bare text because the
  * still map underneath has an arc through it, and a sentence crossing a line
  * is a sentence half read.
+ *
+ * ### Two sizes, decided by the box
+ *
+ * The full state is a title over a two-to-three-line message inside 24 dp of
+ * padding, plus this plate's own 24 dp gutter — about 190 dp tall at font
+ * scale 1 and twice that at 2.0. The compact landscape hero is 132 dp, the
+ * Stats band 260 dp, and the parent's `clipToBounds` is load-bearing (see the
+ * canvas), so in a box shorter than the notice it would be *sliced*, not
+ * shrunk: a sentence with its last line cut off, which is worse than no
+ * sentence. Below [OfflineNoticeFullMinHeight] — scaled by the font scale,
+ * because that is what grows the notice — only the title is drawn, on a tight
+ * plate, and the message is left to the taller hosts.
  */
 @Composable
-private fun GlobeOfflineNotice(modifier: Modifier = Modifier) {
+private fun GlobeOfflineNotice(boxHeightPx: Float, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    val fullFits = with(density) { boxHeightPx >= (OfflineNoticeFullMinHeight * fontScale).toPx() }
     Surface(
         modifier = modifier
             .padding(OfflineNoticeGutter)
@@ -870,12 +896,30 @@ private fun GlobeOfflineNotice(modifier: Modifier = Modifier) {
         contentColor = MaterialTheme.colorScheme.onSurface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        EmptyState(
-            title = stringResource(R.string.globe_offline_title),
-            message = stringResource(R.string.globe_offline_message),
-        )
+        if (fullFits) {
+            EmptyState(
+                title = stringResource(R.string.globe_offline_title),
+                message = stringResource(R.string.globe_offline_message),
+            )
+        } else {
+            Text(
+                text = stringResource(R.string.globe_offline_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
     }
 }
+
+/**
+ * The shortest box the full notice fits in without being clipped, at font
+ * scale 1: `EmptyState`'s 48 dp of vertical padding, a `titleMedium` line, the
+ * 8 dp gap, three `bodyMedium` lines, and this plate's 24 dp gutter above and
+ * below, with a little to spare. Multiplied by the font scale at the call site.
+ */
+private val OfflineNoticeFullMinHeight = 220.dp
 
 /**
  * How long a globe with no imagery is given before the loader is asked whether

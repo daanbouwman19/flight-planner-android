@@ -30,6 +30,20 @@ package com.github.daanbouwman.flightplanner.feature.globe.render
  * A blank full-screen rectangle with no way out is a defect this feature has
  * already shipped once.
  *
+ * ### What a centred band does not cover, stated
+ *
+ * On an 800 dp window with ~104 dp of chrome the band sits at roughly dp
+ * 352–552 — the middle of the sphere. A spin begun in the lower third, where a
+ * thumb rests, is still inside the system's strip and still pilfered; so is one
+ * begun in the upper third. That is the 200 dp cap, not a choice: the band
+ * cannot be taller, and centring it is the guess that a spin starts where the
+ * planet's bulk is. Biasing it low instead would trade the upper third for the
+ * lower and put it behind the bottom controls, whose height the globe does not
+ * know on every host. **Unverified on a device** — the edge-drag check named in
+ * the review (immersive screen and deep hero, top, middle and lower thirds) is
+ * still owed, and if the lower third is where spins actually start, the band
+ * should move there and this note should say why.
+ *
  * Pure, so the arithmetic is tested on the JVM; the host converts it to an
  * `android.graphics.Rect` at the boundary.
  */

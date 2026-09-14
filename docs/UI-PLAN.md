@@ -2362,7 +2362,11 @@ SM-S942B, `benchmarkRelease`, keyless GIBS imagery, 2026-09-14:
 would have justified carrying work over to the next frame; a budget would be
 machinery for a cost that is not there. The `Partial()` column is no faster —
 these sections are `FloatArray` arithmetic the JIT has little to add to — so the
-first-use case is not hiding a warm-up cliff either.
+first-use case is not hiding a warm-up cliff either. **The keyed z18 provider is
+unmeasured** (no ArcGIS key in this checkout): a deeper tree is more nodes to
+visit, but the traversal's node count is bounded by the same `evictableSlots`
+gate at every depth, so the conclusion should carry; it is an expectation, not
+a figure, until someone with a key runs the same benchmark.
 
 **What the trace says instead, and is left open:** the whole globe callback is
 under 2 ms of a `frameDurationCpuMs` that sits at 7.6 ms P50 and ~10 ms P90
