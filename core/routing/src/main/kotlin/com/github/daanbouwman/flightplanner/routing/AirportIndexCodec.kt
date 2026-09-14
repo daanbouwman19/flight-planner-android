@@ -49,10 +49,28 @@ object AirportIndexCodec {
     /** Per airport: latRad, sinLat, cosLat, sinLon, cosLon. */
     private const val FLOATS_PER_AIRPORT = 5
 
-    fun encodedSize(count: Int): Int =
-        HEADER_BYTES +
-            LatBandIndex.BAND_COUNT * 4 + 4 + // bandStart
-            count * (INTS_PER_AIRPORT * 4 + DOUBLES_PER_AIRPORT * 8 + FLOATS_PER_AIRPORT * 4)
+    /** Bytes per airport across all three column groups. */
+    private const val BYTES_PER_AIRPORT =
+        INTS_PER_AIRPORT * 4 + DOUBLES_PER_AIRPORT * 8 + FLOATS_PER_AIRPORT * 4
+
+    /**
+     * The blob size for [count] airports, or `null` if it would not fit in a
+     * `ByteArray`.
+     *
+     * Computed in `Long`. The count is read straight off the wire in [decode],
+     * and at 60 bytes per airport an `Int` product overflows past about 35
+     * million — a corrupt header could then wrap to a small positive number
+     * that happens to match the blob's real length, and the size check that is
+     * supposed to reject the blob would pass it. `Long` cannot wrap on any
+     * 32-bit count, and the null makes "too big for a Java array" a rejection
+     * rather than a `NegativeArraySizeException` out of `allocate`.
+     */
+    fun encodedSize(count: Int): Int? {
+        val bytes = HEADER_BYTES.toLong() +
+            (LatBandIndex.BAND_COUNT + 1) * 4L + // bandStart
+            count.toLong() * BYTES_PER_AIRPORT
+        return if (bytes <= Int.MAX_VALUE) bytes.toInt() else null
+    }
 
     fun encode(index: AirportIndex): ByteArray {
         val n = index.size
@@ -61,7 +79,8 @@ object AirportIndexCodec {
             "Band index holds ${bands.bandSlots.size} slots for $n airports"
         }
 
-        val buffer = ByteBuffer.allocate(encodedSize(n)).order(ByteOrder.LITTLE_ENDIAN)
+        val size = checkNotNull(encodedSize(n)) { "$n airports do not fit in one index blob" }
+        val buffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
         buffer.putInt(MAGIC)
         buffer.putInt(VERSION)
         buffer.putInt(n)
@@ -112,8 +131,10 @@ object AirportIndexCodec {
         val n = buffer.int
         buffer.int // alignment padding
         check(n >= 0) { "Airport index blob declares $n airports" }
-        check(bytes.size == encodedSize(n)) {
-            "Airport index blob is ${bytes.size} bytes, expected ${encodedSize(n)} for $n airports"
+        val expected = encodedSize(n)
+        check(expected != null) { "Airport index blob declares $n airports, more than a blob can hold" }
+        check(bytes.size == expected) {
+            "Airport index blob is ${bytes.size} bytes, expected $expected for $n airports"
         }
 
         val bandStart = IntArray(LatBandIndex.BAND_COUNT + 1)

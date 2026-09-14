@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.routing
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.doubles.shouldBeGreaterThan
 import io.kotest.matchers.doubles.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.doubles.shouldBeLessThan
@@ -156,6 +157,28 @@ class RouteArcTest {
         abs(arc.departureLon - 4.76) shouldBeLessThan 1e-9
         abs(arc.destinationLat - 40.64) shouldBeLessThan 1e-9
         abs(arc.destinationLon - (-73.78)) shouldBeLessThan 1e-9
+    }
+
+    @Test
+    fun `fewer than two samples is refused rather than filled with NaN`() {
+        // The interpolation divides by `count - 1`. With one sample that is
+        // 0/0, and the arc would come back as a NaN nobody draws or notices.
+        shouldThrow<IllegalArgumentException> {
+            RouteArc.sampleInto(52.31, 4.76, 40.64, -73.78, DoubleArray(1), DoubleArray(1))
+        }
+        shouldThrow<IllegalArgumentException> {
+            RouteArc.sampleInto(52.31, 4.76, 40.64, -73.78, DoubleArray(0), DoubleArray(0))
+        }
+        // And mismatched columns are the same class of caller error.
+        shouldThrow<IllegalArgumentException> {
+            RouteArc.sampleInto(52.31, 4.76, 40.64, -73.78, DoubleArray(4), DoubleArray(3))
+        }
+        // Two is the minimum that means anything: the two endpoints.
+        val lats = DoubleArray(2)
+        val lons = DoubleArray(2)
+        RouteArc.sampleInto(52.31, 4.76, 40.64, -73.78, lats, lons)
+        abs(lats[0] - 52.31) shouldBeLessThan 1e-9
+        abs(lats[1] - 40.64) shouldBeLessThan 1e-9
     }
 
     @Test

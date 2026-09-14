@@ -119,6 +119,13 @@ class RouteGenerator(
                 slot
             } ?: -1
 
+            // Always hoisted, where `routes.rs` gates this behind
+            // `use_cache = aircraft_list.len() <= amount` and otherwise rebuilds
+            // the candidate per route. That gate is a deliberate divergence, not
+            // an omission: the Rust candidate also carries a formatted display
+            // string, which is what made it worth skipping for a fleet larger
+            // than the batch. This one is four numbers, so building it once per
+            // airframe is always at least as cheap as building it per route.
             val candidates = fleet.map { it.toCandidate() }
             val routes = ArrayList<GeneratedRoute>(request.amount)
 

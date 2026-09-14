@@ -270,6 +270,71 @@ class SolarPositionTest {
 }
 
 /**
+ * The two `asin` calls in the frame conversions, at the edge of their domain.
+ *
+ * The identity that bounds their argument to −1..1 holds in exact arithmetic
+ * and not in `Double`: with the body at the zenith the argument is
+ * `sin²φ + cos²φ`, which for many latitudes evaluates to one ulp past 1, and
+ * `asin(1.0000000000000002)` is `NaN`. A NaN elevation is not a wrong number
+ * — it is a Sun the sky simply does not draw. These sweep the latitudes rather
+ * than pick one, because which of them trip the ulp is a property of the
+ * libm, not of the geometry.
+ *
+ * The tolerance is loose for a reason: `asin` has an infinite slope at 1, so an
+ * argument one ulp *below* 1 is already about 1e-6° short of 90. That is a
+ * hundredth of a pixel and not the defect; `NaN` is.
+ */
+class CelestialFrameDomainTest {
+
+    private val nearPoleDeg = 1e-5
+
+    @Test
+    fun `a body at the zenith has an elevation of exactly 90 degrees, never NaN`() {
+        var latitude = -89.75
+        while (latitude <= 89.75) {
+            val body = horizontalFrom(
+                Equatorial(rightAscensionDeg = 0.0, declinationDeg = latitude),
+                latitudeDeg = latitude,
+                hourAngleDeg = 0.0,
+            )
+            body.elevationDeg.isNaN() shouldBe false
+            body.elevationDeg shouldBe (90.0 plusOrMinus nearPoleDeg)
+            latitude += 0.37
+        }
+    }
+
+    @Test
+    fun `a body at the nadir has an elevation of exactly -90 degrees, never NaN`() {
+        var latitude = -89.75
+        while (latitude <= 89.75) {
+            val body = horizontalFrom(
+                Equatorial(rightAscensionDeg = 0.0, declinationDeg = -latitude),
+                latitudeDeg = latitude,
+                hourAngleDeg = 180.0,
+            )
+            body.elevationDeg.isNaN() shouldBe false
+            body.elevationDeg shouldBe (-90.0 plusOrMinus nearPoleDeg)
+            latitude += 0.37
+        }
+    }
+
+    @Test
+    fun `an ecliptic pole converts to a declination of exactly the co-obliquity, never NaN`() {
+        // The ecliptic north pole (β = 90°) has declination 90° − ε whatever λ
+        // is; sweeping λ exercises the same one-ulp overshoot in the other
+        // conversion.
+        val obliquity = 23.4383
+        var longitude = 0.0
+        while (longitude < 360.0) {
+            val equatorial = equatorialFromEcliptic(longitude, 90.0, obliquity)
+            equatorial.declinationDeg.isNaN() shouldBe false
+            equatorial.declinationDeg shouldBe (90.0 - obliquity plusOrMinus nearPoleDeg)
+            longitude += 3.7
+        }
+    }
+}
+
+/**
  * The Moon, against Meeus's own worked examples.
  *
  * The first two tests are why this file carries all 120 rows of tables 47.A and

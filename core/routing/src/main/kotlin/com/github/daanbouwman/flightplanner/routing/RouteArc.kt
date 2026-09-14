@@ -92,6 +92,12 @@ object RouteArc {
      *
      * Longitudes are raw: they may step across the ±180° seam. Call
      * [unwrapLongitudes] before drawing.
+     *
+     * @throws IllegalArgumentException for fewer than two samples, or two arrays
+     *   of different lengths. The interpolation divides by `count - 1`, so a
+     *   one-element array would put `0/0` into the first fraction and fill the
+     *   arc with `NaN` rather than fail; [sampleGeographic] coerces its own
+     *   count, and this is the guard for a caller that sizes the arrays itself.
      */
     internal fun sampleInto(
         depLat: Double,
@@ -102,6 +108,8 @@ object RouteArc {
         lons: DoubleArray,
     ) {
         val count = lats.size
+        require(count >= 2) { "An arc needs at least two samples; got $count" }
+        require(lons.size == count) { "${lats.size} latitudes against ${lons.size} longitudes" }
 
         val lat1 = Math.toRadians(depLat)
         val lon1 = Math.toRadians(depLon)

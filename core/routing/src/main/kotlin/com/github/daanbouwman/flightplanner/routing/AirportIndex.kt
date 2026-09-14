@@ -78,7 +78,18 @@ class AirportIndex internal constructor(
             .also { it.sort() }
     }
 
-    /** Slot for a packed code, or -1. */
+    /**
+     * Slot for a packed code, or -1.
+     *
+     * **Codes are unique per index, and that is guaranteed upstream rather than
+     * here.** The ETL in `:tools:airportdb` collapses airports that share a code
+     * before writing the database (`deduplicateByCode`, keeping the larger
+     * airport and then the longer runway), and its verifier fails the build if
+     * any code appears twice in the shipped file. So the binary search below has
+     * exactly one match to find and no tie to break. Were duplicates ever fed in
+     * through [AirportIndexBuilder] directly, whichever the search landed on would
+     * win — there is no keep-first rule, because there is no case that needs one.
+     */
     fun slotOfCode(packedCode: Int): Int {
         if (packedCode < 0) return -1
         val table = codeLookup
