@@ -243,6 +243,14 @@ internal class GlobeSession private constructor(
          */
         private val surfaces = AttachedSurfaces()
 
+        /**
+         * Whether a session exists and has not been destroyed — for the
+         * instrumented lifecycle test, which has to know the teardown it is
+         * waiting on has happened and the rebuild it asserts against has too.
+         * Not a UI affordance: the UI asks [support] and [acquire].
+         */
+        internal val hasLiveInstance: Boolean get() = instance?.isDestroyed == false
+
         internal fun registerSurface(view: BackgroundReleasable) = surfaces.register(view)
 
         internal fun unregisterSurface(view: BackgroundReleasable) = surfaces.unregister(view)
