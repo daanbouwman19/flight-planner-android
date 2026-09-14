@@ -31,6 +31,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -184,7 +185,7 @@ fun RouteDetailScreen(
     // chrome sits on top of. Zero until the first layout pass, which is a safe
     // default — before that this screen has not scrolled and the hero, if
     // shown, is still full height.
-    var appBarHeightPx by remember { mutableStateOf(0f) }
+    var appBarHeightPx by remember { mutableFloatStateOf(0f) }
 
     // Whether the app's own chrome — the title plate, the buttons, the bar's
     // colour — should be on glass. True only while imagery still reaches under

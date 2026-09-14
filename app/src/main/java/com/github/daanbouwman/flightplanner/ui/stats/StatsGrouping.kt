@@ -21,6 +21,13 @@ import java.util.Locale
  */
 object StatsGrouping {
 
+    /**
+     * The bar chart's month labels — "Jan", "Feb" — in a fixed locale, for the
+     * reason `asFigure` gives: these are chart labels under tabular figures, set
+     * in the app's own chart typography, and a translated three-letter month
+     * ("janv.", "März") breaks the fixed width the axis is laid out on. The
+     * Logbook's month *headers* are prose and follow the device locale.
+     */
     private val MonthLabelFormatter = DateTimeFormatter.ofPattern("MMM", Locale.US)
 
     /**

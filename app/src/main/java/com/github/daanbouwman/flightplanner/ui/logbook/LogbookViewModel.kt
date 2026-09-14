@@ -71,6 +71,16 @@ class LogbookViewModel @Inject constructor(
     private val _events = Channel<LogbookEvent>(capacity = Channel.CONFLATED)
     val events = _events.receiveAsFlow()
 
+    /**
+     * The one deletion that can be undone.
+     *
+     * A single slot, not a stack, and deliberately: the snackbar that offers
+     * the undo is the only way to reach it, and a snackbar shows one action for
+     * one event. A second swipe-delete while the first snackbar is still up
+     * replaces both the snackbar and this slot, so the first flight is gone for
+     * good — the same trade PlanViewModel makes for mark-as-flown, and the
+     * same one the platform's own snackbar makes.
+     */
     private var undoLog: LogbookRow? = null
 
     /**

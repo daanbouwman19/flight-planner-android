@@ -833,9 +833,13 @@ private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<
     val rowId = row.id
     val replacing = row.arrivedAsReplacement
     val reduceMotion = LocalReduceMotion.current
-    // Read and record in one step, during composition, so the row knows whether
-    // this is its first appearance before any effect has had a chance to run.
-    val alreadyEntered = remember(rowId) { !entered.add(rowId) }
+    // Read during composition, so the row knows whether this is its first
+    // appearance before any effect has run — and *recorded* in the effect
+    // below, not here. Composition is allowed to be speculative and thrown
+    // away; a mutation inside `remember` would mark a row as entered in a
+    // composition that never reached the screen, and the row would then never
+    // animate. Effects run only for compositions that were applied.
+    val alreadyEntered = remember(rowId) { rowId in entered }
 
     // Only the first screenful of a batch animates.
     //
@@ -850,6 +854,7 @@ private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<
 
     var visible by remember(rowId) { mutableStateOf(alreadyEntered || reduceMotion || !animates) }
     LaunchedEffect(rowId) {
+        entered.add(rowId)
         if (!visible) {
             if (!replacing) delay(FlightMotion.enterDelayMillis(index).toLong())
             visible = true
