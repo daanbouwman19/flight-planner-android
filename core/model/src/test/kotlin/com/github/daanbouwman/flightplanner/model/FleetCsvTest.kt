@@ -75,6 +75,29 @@ class FleetCsvTest {
     }
 
     @Test
+    fun `a quote inside an unquoted field is literal text, not the start of a quoted one`() {
+        // An inch mark in a hand-edited variant name. The reader used to flip
+        // into quoted mode on it, swallow the comma and every column after it
+        // into the variant, and then reject the row for having no range.
+        val result = FleetCsv.parse("$HEADER\nCessna,172\" kit,C172,0,640,Light,120,,500")
+
+        result.warnings shouldHaveSize 0
+        val cessna = result.aircraft.single()
+        cessna.manufacturer shouldBe "Cessna"
+        cessna.variant shouldBe "172\" kit"
+        cessna.icaoCode shouldBe "C172"
+        cessna.rangeNm shouldBe 640
+        cessna.takeoffDistanceMeters shouldBe 500
+    }
+
+    @Test
+    fun `an escaped quote inside a quoted field still decodes to one quote`() {
+        // The RFC form, unchanged by the fix above: `""` inside quotes is one `"`.
+        val rows = FleetCsv.readRows("\"Say \"\"hi\"\", now\",x")
+        rows shouldBe listOf(listOf("Say \"hi\", now", "x"))
+    }
+
+    @Test
     fun `a bad row is skipped with a warning instead of failing the whole import`() {
         val result = FleetCsv.parse(
             """

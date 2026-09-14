@@ -127,17 +127,28 @@ object FleetCsv {
      * Minimal RFC 4180 reader: handles quoted fields, escaped quotes and
      * newlines inside quotes. Aircraft names such as `Beech 18, Twin Beech`
      * really do occur, so naive splitting on commas is not safe.
+     *
+     * A quote **opens** a quoted field only as the field's first character. One
+     * that turns up later in an unquoted field — `Cessna 172" kit`, an inch mark
+     * in a hand-edited file — is literal text, exactly as RFC 4180 has it. The
+     * reader used to toggle quoting on *every* bare quote, so that one inch mark
+     * swallowed the rest of the row into the field and every later column
+     * disappeared with it.
      */
     internal fun readRows(text: String): List<List<String>> {
         val rows = mutableListOf<List<String>>()
         var row = mutableListOf<String>()
         val field = StringBuilder()
         var inQuotes = false
+        // True until the current field has seen its first character, so that a
+        // quote can be told apart from one appearing mid-field.
+        var atFieldStart = true
         var i = 0
 
         fun endField() {
             row.add(field.toString())
             field.setLength(0)
+            atFieldStart = true
         }
 
         fun endRow() {
@@ -152,14 +163,21 @@ object FleetCsv {
                 inQuotes && c == '"' && i + 1 < text.length && text[i + 1] == '"' -> {
                     field.append('"'); i++
                 }
-                c == '"' -> inQuotes = !inQuotes
+                inQuotes && c == '"' -> inQuotes = false
+                !inQuotes && c == '"' && atFieldStart -> {
+                    inQuotes = true
+                    atFieldStart = false
+                }
                 !inQuotes && c == ',' -> endField()
                 !inQuotes && (c == '\n' || c == '\r') -> {
                     // Treat CRLF as a single terminator.
                     if (c == '\r' && i + 1 < text.length && text[i + 1] == '\n') i++
                     endRow()
                 }
-                else -> field.append(c)
+                else -> {
+                    field.append(c)
+                    atFieldStart = false
+                }
             }
             i++
         }
