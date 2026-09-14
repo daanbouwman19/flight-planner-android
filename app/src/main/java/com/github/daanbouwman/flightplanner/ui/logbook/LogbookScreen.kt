@@ -353,15 +353,12 @@ private fun LogbookList(
     // count-up animation for a number that never actually changed.
     val unitSystem = LocalUnitSystem.current
     val distanceSuffix = distanceUnitSuffix(unitSystem)
-    // The tile's own caption, not just its value, names the unit — otherwise
-    // toggling Metric leaves "NM" captioning a distance now shown in km.
-    val distanceLabel = stringResource(
-        if (unitSystem == UnitSystem.METRIC) {
-            R.string.logbook_summary_distance_metric
-        } else {
-            R.string.logbook_summary_distance_aviation
-        },
-    )
+    // "DISTANCE", whatever the unit. The caption used to be the unit itself —
+    // "NM" or "KM", switched with the setting — which was one more place for
+    // the caption and the figure to disagree, to say a word the figure already
+    // says in its own suffix. FLIGHTS and HOURS beside it name quantities; so
+    // does this now.
+    val distanceLabel = stringResource(R.string.logbook_summary_distance)
 
     LazyColumn(
         state = listState,

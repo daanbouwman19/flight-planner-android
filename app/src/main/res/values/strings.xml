@@ -262,10 +262,11 @@
     <string name="stats_airport_count_format">%1$s · %2$d</string>
 
     <!-- Logbook (D1): the summary strip's three captions. Short and aviation-terse,
-         matching plan_chip_distance/plan_chip_time. -->
+         matching plan_chip_distance/plan_chip_time. The distance caption names the
+         quantity, not the unit: the figure under it carries its own suffix, and a
+         caption that repeated it had to be switched with the unit system. -->
     <string name="logbook_summary_flights">FLIGHTS</string>
-    <string name="logbook_summary_distance_aviation">NM</string>
-    <string name="logbook_summary_distance_metric">KM</string>
+    <string name="logbook_summary_distance">DISTANCE</string>
     <string name="logbook_summary_hours">HOURS</string>
 
     <!-- Logbook row. Shown when the flight has no recorded distance or duration. -->
