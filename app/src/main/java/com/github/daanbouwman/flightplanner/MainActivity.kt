@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.github.daanbouwman.flightplanner.core.database.airport.AirportAssetInstaller
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.index.AirportIndexProvider
 import com.github.daanbouwman.flightplanner.ui.FlightPlannerApp
@@ -27,6 +28,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var airportIndexProvider: AirportIndexProvider
+
+    @Inject
+    lateinit var airportAssetInstaller: AirportAssetInstaller
 
     @Inject
     lateinit var settingsRepository: SettingsRepository
@@ -51,8 +55,19 @@ class MainActivity : ComponentActivity() {
         // of someone who chose Cockpit precisely so they would not get one. It is
         // one small file read, running in parallel with the index, under the same
         // deadline.
+        //
+        // And for the database install, which Application.onCreate also started.
+        // On every launch but the first that is a sidecar read and settles in a
+        // few milliseconds; on the first it is a ~30 MB copy that the deadline
+        // caps like everything else — past it the app appears and the first
+        // DAO request blocks for the remainder, exactly as it used to for the
+        // whole copy.
         splashScreen.setKeepOnScreenCondition {
-            (!airportIndexProvider.isSettled || settingsRepository.settings.value == null) &&
+            (
+                !airportIndexProvider.isSettled ||
+                    !airportAssetInstaller.isSettled ||
+                    settingsRepository.settings.value == null
+                ) &&
                 SystemClock.uptimeMillis() < deadline
         }
 

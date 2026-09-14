@@ -16,6 +16,7 @@ import com.github.daanbouwman.flightplanner.routing.RouteGenerator
 import com.github.daanbouwman.flightplanner.routing.RouteMode
 import com.github.daanbouwman.flightplanner.routing.RouteRequest
 import com.github.daanbouwman.flightplanner.startup.CheckResult.Status
+import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,9 +41,22 @@ import kotlin.system.measureTimeMillis
  */
 @HiltViewModel
 class StartupCheckViewModel @Inject constructor(
-    private val airportDao: AirportDao,
-    private val runwayDao: RunwayDao,
-    private val datasetMetaDao: DatasetMetaDao,
+    /**
+     * `Lazy`, so that opening the database is something this screen *does*
+     * rather than something it needs in order to exist. Providing a DAO
+     * provides the database, which waits for the asset install and then opens
+     * the file; if either fails, an eager injection failed the ViewModel's
+     * construction and the self-check screen — whose whole job is to report
+     * that failure — could not appear. All three resolve inside
+     * [checkAirportDatabase]'s try, where a failure becomes a FAIL row.
+     *
+     * Three lazy DAOs rather than one lazy database: `:app` keeps Room off its
+     * compile classpath on purpose, and naming `AirportDatabase` here would put
+     * `RoomDatabase` on it.
+     */
+    private val airportDao: Lazy<AirportDao>,
+    private val runwayDao: Lazy<RunwayDao>,
+    private val datasetMetaDao: Lazy<DatasetMetaDao>,
     private val aircraftDao: AircraftDao,
     private val fleetSeeder: FleetSeeder,
     private val indexLoader: AirportIndexLoader,
@@ -77,10 +91,17 @@ class StartupCheckViewModel @Inject constructor(
         return try {
             var airports = 0
             var runways = 0
+            // Resolving the first DAO is part of what is being timed and part of
+            // what can fail: it waits for the install and opens the file. Off the
+            // main thread, because the wait can block for the remainder of a
+            // first-launch copy.
             val millis = measureTimeMillis {
+                val airportDao = withContext(Dispatchers.IO) { airportDao.get() }
                 airports = airportDao.count()
-                runways = runwayDao.count()
+                runways = runwayDao.get().count()
             }
+            val airportDao = airportDao.get()
+            val datasetMetaDao = datasetMetaDao.get()
             if (airports == 0) {
                 report("Airport database", Status.FAIL, "opened but contains no airports")
                 return null
