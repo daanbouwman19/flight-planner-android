@@ -13,6 +13,7 @@ import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.model.FlightRecord
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
+import com.github.daanbouwman.flightplanner.routing.FlightStatisticsCalculator
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
 import io.kotest.matchers.shouldBe
@@ -121,6 +122,32 @@ private class FakeWorldOutlineLoader : WorldOutlineLoader {
     override suspend fun load(): WorldOutline = WorldOutline.Empty
 }
 
+/**
+ * A log with every tie the calculator's rules resolve: two equal shortest legs,
+ * two equal longest legs, a tied arrival, a tied most-visited airport, and one
+ * leg with no distance. Shared between the ViewModel under test and the
+ * desktop-shaped `calculate()` it is checked against.
+ */
+private val crossCheckAircraft = listOf(spec(1, "737-800"), spec(2, "A320"))
+
+private val crossCheckAirports = listOf(
+    airport(1, "EHAM", "Amsterdam", 52.31, 4.76),
+    airport(2, "EGLL", "London", 51.47, -0.45),
+    airport(3, "KJFK", "New York", 40.64, -73.78),
+    airport(4, "LFPG", "Paris", 49.01, 2.55),
+)
+
+private val crossCheckRecords = listOf(
+    FlightRecord(1, "EHAM", "EGLL", 1, "2026-08-01", 200), // first 200
+    FlightRecord(2, "LFPG", "EGLL", 2, "2026-08-02", 200), // second 200
+    FlightRecord(3, "EGLL", "KJFK", 2, "2026-08-05", 3000), // first 3000
+    FlightRecord(4, "KJFK", "LFPG", 1, "2026-08-06", 3000), // second 3000
+    FlightRecord(5, "EHAM", "KJFK", 1, "2026-08-10", null), // no distance: counts as 0
+)
+
+/** The desktop app's `"EHAM to KJFK"` leg format, so a [LegStat] can be compared with `calculate()`. */
+private fun LegStat.desktopLeg() = "$departureIcao to $arrivalIcao"
+
 class StatsViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
@@ -218,6 +245,49 @@ class StatsViewModelTest {
 
         val distanceState = viewModel.uiState.value as StatsUiState.Success
         distanceState.chartMetric shouldBe ChartMetric.DISTANCE
+    }
+
+    @Test
+    fun dashboardFigures_matchTheDesktopShapedCalculate() = testScope.runTest {
+        val viewModel = StatsViewModel(
+            FakeLogbookRepository(crossCheckRecords),
+            FakeFleetRepository(crossCheckAircraft),
+            FakeAirportRepository(crossCheckAirports),
+            FakeWorldOutlineLoader(),
+            testDispatcher,
+        )
+
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        state.shouldBeInstanceOf<StatsUiState.Success>()
+        val reference = FlightStatisticsCalculator.calculate(crossCheckRecords, crossCheckAircraft)
+
+        // Field for field against the desktop-shaped projection of the same pass.
+        state.totalFlights shouldBe reference.totalFlights
+        state.totalDistanceNm shouldBe reference.totalDistanceNm
+        state.averageDistanceNm shouldBe reference.averageFlightDistanceNm
+        state.longestFlight?.desktopLeg() shouldBe reference.longestFlight
+        state.shortestFlight?.desktopLeg() shouldBe reference.shortestFlight
+        state.favoriteDeparture?.icao shouldBe reference.favoriteDepartureAirport
+        state.favoriteArrival?.icao shouldBe reference.favoriteArrivalAirport
+        state.mostVisitedAirport?.icao shouldBe reference.mostVisitedAirport
+
+        // And the fixture's ties resolved the desktop way, so the agreement
+        // above is not two implementations agreeing on an easy log: a second
+        // equal maximum takes over, the undistanced leg is the minimum at 0,
+        // and equal counts go to the alphabetically first ICAO.
+        reference.longestFlight shouldBe "KJFK to LFPG"
+        reference.shortestFlight shouldBe "EHAM to KJFK"
+        state.shortestFlight?.distanceNm shouldBe 0
+        reference.favoriteArrivalAirport shouldBe "EGLL"
+        reference.mostVisitedAirport shouldBe "EGLL"
+        state.favoriteArrival?.count shouldBe 2
+        state.mostVisitedAirport?.count shouldBe 3
+
+        // The name is the ViewModel's contribution, looked up in the repository.
+        state.mostVisitedAirport?.name shouldBe "London"
     }
 }
 
