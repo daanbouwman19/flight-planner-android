@@ -150,7 +150,15 @@ object StatsGrouping {
     }
 
     /**
-     * Builds visited airport coordinates and unique flight leg arcs for the 2D map.
+     * Builds visited airport coordinates and unique flight leg arcs for the network map.
+     *
+     * A leg is an unordered pair — EHAM–EGLL flown both ways is one leg — but
+     * its [VisitedLeg.arc] is sampled **in the direction it was first flown**,
+     * departure to arrival of the earliest record, and that is the direction
+     * the map's arrowhead states. The repository hands records out newest
+     * first, so they are put into date order here before the first one wins;
+     * without that the arrow would point the way the *latest* flight went, and
+     * flip every time a leg was flown back.
      */
     fun buildVisitedNetwork(
         records: List<FlightRecord>,
@@ -162,7 +170,11 @@ object StatsGrouping {
         val seenLegs = HashSet<Pair<String, String>>()
         val visitedLegs = ArrayList<VisitedLeg>()
 
-        for (record in records) {
+        // ISO-8601 dates sort as strings; the id breaks a same-day tie the way
+        // the logbook itself orders them.
+        val chronological = records.sortedWith(compareBy<FlightRecord> { it.date }.thenBy { it.id })
+
+        for (record in chronological) {
             val depIcao = record.departureIcao.trim().uppercase()
             val arrIcao = record.arrivalIcao.trim().uppercase()
 

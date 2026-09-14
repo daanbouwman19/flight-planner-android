@@ -249,6 +249,14 @@ data class StatTile(val label: String, val value: Int,
                          routeColor: Color = MaterialTheme.colorScheme.primary,
                          casingColor: Color = MaterialTheme.colorScheme.surfaceContainer)
 
+@Immutable class NetworkNode(val latitude: Double, val longitude: Double, val visits: Int)
+
+@Composable fun NetworkMap(nodes: List<NetworkNode>, legs: List<GeoArc>, outline: WorldOutline,
+                           modifier: Modifier = Modifier,
+                           landColor: Color = …, coastColor: Color = …,
+                           routeColor: Color = MaterialTheme.colorScheme.primary,
+                           casingColor: Color = MaterialTheme.colorScheme.surfaceContainer)
+
 @Immutable data class DiagramWind(val directionFromDeg: Int?, val speedKt: Int,
                                   val gustKt: Int? = null, val variable: Boolean = false) {
     val hasDirection: Boolean
@@ -337,6 +345,25 @@ Notes that are easy to get wrong:
   Required rather than defaulted so a new host cannot forget it. `FlightRulesBadge`
   merges its descendants for the same reason: "VFR" folds into "Visual Flight
   Rules" instead of being announced again after it.
+- **`NetworkMap` is `RouteMap` with more legs on it, and it shares the ink by
+  construction.** The Stats screen's visited network used to draw itself in
+  `:app` from its own numbers — a 1.5 dp leg beside the route card's 2.5 dp, a
+  casing half as wide, legs at 80 % alpha under opaque dots, twice the margin,
+  no arrowhead, no graticule — and the two maps read as sketches of each other.
+  The stroke, casing, endpoint, arrowhead and margin constants in `RouteMap.kt`
+  are `internal` so this component draws from the same figures (`RouteStrokeDp`,
+  `CasingDp`, `EndpointRadiusDp`, `ArrowLengthDp`, `OutlineMargin`, `arrowPath`);
+  retune one and both maps move. What a network adds: an arrowhead per leg in
+  the direction the leg was **first** flown (the `GeoArc` is sampled that way by
+  the caller, which is the only fact the map cannot know), dropped when the
+  projected chord is under 24 dp so a short hop is not a smudge; dots whose
+  radius runs 4–9 dp as the *square root* of `visits / maxVisits`, exactly as the
+  globe's node layer does, so the dot's area is the count; every leg's casing
+  before any leg's line, so crossings read as one drawing. The frame is fitted to
+  the nodes, not the arcs, because a great circle bows poleward of its endpoints
+  and framing the bow frames empty ocean. It takes `NetworkNode`, a geometry
+  type, rather than the app's `VisitedAirport` — this module knows shapes and
+  nothing about where they were read from.
 - **`RunwayDiagram` draws a true plan when the data has one, and a compass when
   it does not.** OurAirports publishes real threshold coordinates for every end
   of most well-documented fields and for very few small ones, so there are two

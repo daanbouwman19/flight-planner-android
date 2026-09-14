@@ -4,6 +4,7 @@ import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.model.FlightRecord
+import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import java.time.LocalDate
 import java.time.YearMonth
@@ -199,5 +200,42 @@ class StatsGroupingTest {
         legs.size shouldBe 2 // EHAM-EGLL and EHAM-KJFK
         (legs.any { it.departureIcao == "EGLL" || it.arrivalIcao == "EGLL" }) shouldBe true
         (legs.any { it.departureIcao == "KJFK" || it.arrivalIcao == "KJFK" }) shouldBe true
+    }
+
+    /**
+     * The repository emits newest first. The leg's arc — and so the arrowhead
+     * the map draws on it — has to run the way the leg was *first* flown, which
+     * is the last record in that order, not the first.
+     */
+    @Test
+    fun visitedNetwork_legRunsInTheDirectionFirstFlown() {
+        val newestFirst = listOf(
+            FlightRecord(3, "EGLL", "EHAM", 1, "2026-03-01", 200),
+            FlightRecord(2, "EGLL", "EHAM", 1, "2026-02-01", 200),
+            FlightRecord(1, "EHAM", "EGLL", 1, "2026-01-01", 200),
+        )
+
+        val (_, legs) = StatsGrouping.buildVisitedNetwork(newestFirst, testAirports)
+
+        legs.size shouldBe 1
+        val leg = legs.single()
+        leg.departureIcao shouldBe "EHAM"
+        leg.arrivalIcao shouldBe "EGLL"
+        // The arc is spherically interpolated, so its ends match to floating
+        // point rather than exactly.
+        leg.arc.departureLon shouldBe (testAirports.getValue("EHAM").longitude plusOrMinus 1e-6)
+        leg.arc.destinationLon shouldBe (testAirports.getValue("EGLL").longitude plusOrMinus 1e-6)
+    }
+
+    @Test
+    fun visitedNetwork_sameDayTieBreaksOnId() {
+        val records = listOf(
+            FlightRecord(2, "EGLL", "EHAM", 1, "2026-01-01", 200),
+            FlightRecord(1, "EHAM", "EGLL", 1, "2026-01-01", 200),
+        )
+
+        val (_, legs) = StatsGrouping.buildVisitedNetwork(records, testAirports)
+
+        legs.single().departureIcao shouldBe "EHAM"
     }
 }

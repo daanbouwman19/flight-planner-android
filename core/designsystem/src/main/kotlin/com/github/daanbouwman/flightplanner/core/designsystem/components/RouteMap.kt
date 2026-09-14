@@ -251,23 +251,28 @@ const val WorldMapLandAlpha = 0.08f
 /** The coast, at twice the fill, which is what makes a silhouette recognisable. */
 const val WorldMapCoastAlpha = 0.16f
 
-private const val CoastStrokeDp = 1f
-private const val RouteStrokeDp = 2.5f
+// The ink every map in this module draws with. Internal rather than private
+// because [NetworkMap] is the same map with more legs on it, and it used to
+// re-literalise these numbers in `:app` — where they drifted: a 1.5 dp leg under
+// a 2.5 dp route, a casing half as wide, a margin twice as wide. One set of
+// figures, one place to retune them.
+internal const val CoastStrokeDp = 1f
+internal const val RouteStrokeDp = 2.5f
 
 /** Half-width of the casing under each line, per side. */
-private const val CasingDp = 1.5f
+internal const val CasingDp = 1.5f
 
 /** Half-length of the direction arrowhead. */
-private const val ArrowLengthDp = 5f
+internal const val ArrowLengthDp = 5f
 
 /** The arrowhead's half-width as a fraction of its length: a narrow, chart-like head. */
-private const val ArrowHalfWidth = 0.62f
+internal const val ArrowHalfWidth = 0.62f
 
-private const val EndpointRadiusDp = 4f
-private const val EndpointStrokeDp = 2f
+internal const val EndpointRadiusDp = 4f
+internal const val EndpointStrokeDp = 2f
 
 /** Extra window projected around the card, as a fraction of each span. */
-private const val OutlineMargin = 0.05
+internal const val OutlineMargin = 0.05
 
 @LightDarkPreview
 @Composable
@@ -331,9 +336,11 @@ fun ProjectedRings.toPath(width: Float, height: Float, close: Boolean): Path {
  * entire signal. The direction comes from the samples *either side* of the
  * midpoint, so it follows the curve rather than the chord between the ends.
  *
+ * Internal: [NetworkMap] puts the same head on every leg of the visited network.
+ *
  * @return null when the arc is too short to have a direction at all.
  */
-private fun arrowPath(
+internal fun arrowPath(
     projected: FloatArray,
     index: Int,
     width: Float,
