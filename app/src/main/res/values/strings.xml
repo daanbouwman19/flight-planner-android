@@ -235,6 +235,7 @@
     <string name="stats_network_mode_globe">Globe</string>
     <string name="stats_network_mode_flat_description">Flat map</string>
     <string name="stats_network_mode_globe_description">3D globe</string>
+    <string name="stats_network_refit">Frame the whole network</string>
 
     <string name="stats_metric_total_flights">TOTAL FLIGHTS</string>
     <string name="stats_metric_avg_distance">AVG LEG DISTANCE</string>

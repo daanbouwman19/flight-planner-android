@@ -136,6 +136,35 @@ fun GlobeCameraControls(
 }
 
 /**
+ * The re-frame control on its own — the one control an embedded globe keeps.
+ *
+ * A globe in a card inside a scrolling list does not carry the full stack: the
+ * stack sat on the data (over a leg, hiding an airport on the Stats band), a
+ * pinch already zooms, and TalkBack reaches every camera move through the
+ * surface's own custom actions, so the two zoom cells were the only visible way
+ * to do something that already had two other ways. What has no gesture is
+ * *getting back*: after a pan and a pinch the whole network is somewhere off the
+ * card, and this is the way home. Same plate, same cell, same brackets as the
+ * stack's own refit cell, at one cell's length.
+ *
+ * @param contentDescription what re-framing means here — "Frame the whole
+ *   network" on the Stats band, where the stack's "Frame the whole route" would
+ *   be wrong.
+ */
+@Composable
+fun GlobeRefitControl(
+    onClick: () -> Unit,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    GlassPlate(modifier = modifier.width(ControlSize)) {
+        PlateCell(onClick = onClick, contentDescription = contentDescription) { tint ->
+            drawFrameBrackets(tint)
+        }
+    }
+}
+
+/**
  * One control on its own — the immersive screen's collapse action.
  *
  * The same plate as a cell of the stack, so a single control and a stack of them

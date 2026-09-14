@@ -32,6 +32,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -47,6 +48,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
 import com.github.daanbouwman.flightplanner.feature.globe.R
+import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeBandFit
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeFit
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
@@ -288,6 +290,7 @@ fun GlobeSurface(
         interactive = interactive,
         nestedVerticalScroll = nestedVerticalScroll,
         embedded = embedded,
+        spaceColor = null,
         statusStripPx = statusStripPx,
         onImageryVisible = onImageryVisible,
         onImageryReachesTop = onImageryReachesTop,
@@ -334,6 +337,21 @@ fun GlobeNetworkSurface(
     nestedVerticalScroll: Boolean = false,
     /** See [GlobeSurface]. The Stats band is a `LazyColumn` item, so this is `true` there. */
     embedded: Boolean = false,
+    /**
+     * Set for a globe inside a card, whose frame is part of the picture. The
+     * fit is then settled so the sphere is either a clean window of imagery or
+     * the whole planet with this much of the card showing around it on the
+     * short axis — never a disc barely cropped by the band. See
+     * [com.github.daanbouwman.flightplanner.feature.globe.math.GlobeBandFit].
+     * Null for a globe that owns its box.
+     */
+    discInset: Dp? = null,
+    /**
+     * What to paint where there is no planet. Defaults to the page (`surface`);
+     * a globe embedded in a card passes the card's container colour so the band
+     * is not a rectangle of page colour inside it.
+     */
+    spaceColor: Color? = null,
     /** See [GlobeSurface]. */
     onImageryVisible: (Boolean) -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit = {},
@@ -345,17 +363,20 @@ fun GlobeNetworkSurface(
         network.nodes.size,
         network.legs.size,
     )
+    val insetPx = discInset?.let { with(LocalDensity.current) { it.toPx() } }
 
     GlobeCanvas(
         key = network.key,
         arcs = network.legs,
-        fit = remember(network) {
+        fit = remember(network, insetPx) {
             val lats = network.nodes.map { it.latitude }.toDoubleArray()
             val lons = network.nodes.map { it.longitude }.toDoubleArray()
             // Named rather than returned as a trailing lambda: after a `val`, the
             // parser reads a bare `{ … }` as an argument to the line above it.
-            val solve: (GlobeViewport, Int) -> GlobeCamera =
-                { viewport, maxLod -> GlobeFit.framePoints(lats, lons, viewport, maxLod = maxLod) }
+            val solve: (GlobeViewport, Int) -> GlobeCamera = { viewport, maxLod ->
+                val fitted = GlobeFit.framePoints(lats, lons, viewport, maxLod = maxLod)
+                if (insetPx == null) fitted else GlobeBandFit.settle(fitted, viewport, insetPx)
+            }
             solve
         },
         description = description,
@@ -364,6 +385,7 @@ fun GlobeNetworkSurface(
         interactive = interactive,
         nestedVerticalScroll = nestedVerticalScroll,
         embedded = embedded,
+        spaceColor = spaceColor,
         statusStripPx = 0f,
         onImageryVisible = onImageryVisible,
         onImageryReachesTop = {},
@@ -414,6 +436,8 @@ private fun GlobeCanvas(
     interactive: Boolean,
     nestedVerticalScroll: Boolean,
     embedded: Boolean,
+    /** See [GlobeNetworkSurface]. Null paints the page colour outside the planet. */
+    spaceColor: Color?,
     statusStripPx: Float,
     onImageryVisible: (Boolean) -> Unit,
     onImageryReachesTop: (Boolean) -> Unit,
@@ -485,7 +509,7 @@ private fun GlobeCanvas(
         return
     }
 
-    val ink = rememberGlobeInk()
+    val ink = rememberGlobeInk(space = spaceColor)
     val destinationInk = androidx.compose.material3.MaterialTheme.colorScheme.tertiary
     val reduceMotion = LocalReduceMotion.current
     val scope = rememberCoroutineScope()
