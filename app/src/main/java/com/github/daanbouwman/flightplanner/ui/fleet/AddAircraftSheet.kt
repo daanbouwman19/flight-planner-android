@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.ui.fleet
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +37,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
+import com.github.daanbouwman.flightplanner.ui.LocalUnitSystem
+import com.github.daanbouwman.flightplanner.ui.displayDistanceToNm
+import com.github.daanbouwman.flightplanner.ui.displayLengthToTakeoffMeters
+import com.github.daanbouwman.flightplanner.ui.displaySpeedToKt
+import com.github.daanbouwman.flightplanner.ui.distanceUnitSuffix
+import com.github.daanbouwman.flightplanner.ui.lengthUnitSuffix
+import com.github.daanbouwman.flightplanner.ui.speedUnitSuffix
 
 /**
  * A form for adding a user-defined airframe.
@@ -49,6 +57,12 @@ import com.github.daanbouwman.flightplanner.model.AircraftSpec
  * [id] and [AircraftSpec.isCustom] are not asked for: [FleetRepository.add]
  * assigns the id and forces `isCustom = true` for every airframe reaching it
  * through this path, so the spec built here carries throwaway values for both.
+ *
+ * The three envelope fields are typed in the **active unit system** and
+ * converted to the stored units -- NM, kt and metres -- on submit, through the
+ * inverse conversions in `Figures.kt`. The labels say which unit they take. The
+ * `> 0` check is unit-invariant, so it runs on the typed figure; see the note
+ * on those conversions for why any future threshold would run on the stored one.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,19 +80,22 @@ fun AddAircraftSheet(
     var category by rememberSaveable { mutableStateOf("") }
     var rangeNm by rememberSaveable { mutableStateOf("") }
     var cruiseSpeedKt by rememberSaveable { mutableStateOf("") }
-    var takeoffDistanceM by rememberSaveable { mutableStateOf("") }
+    var takeoffDistance by rememberSaveable { mutableStateOf("") }
     var showErrors by rememberSaveable { mutableStateOf(false) }
+
+    // Everything typed is in this unit; nothing leaves the sheet in it.
+    val unit = LocalUnitSystem.current
 
     val range = rangeNm.toIntOrNull()
     val cruise = cruiseSpeedKt.toIntOrNull()
     // Optional: a blank field means "unknown", exactly as the bundled CSV
     // treats a missing takeoff distance — not zero, which would make every
     // runway look long enough.
-    val takeoff = takeoffDistanceM.toIntOrNull()
+    val takeoff = takeoffDistance.toIntOrNull()
     val fieldsValid = manufacturer.isNotBlank() && variant.isNotBlank() &&
         icaoCode.isNotBlank() && category.isNotBlank() &&
         range != null && range > 0 && cruise != null && cruise > 0 &&
-        (takeoffDistanceM.isBlank() || (takeoff != null && takeoff > 0))
+        (takeoffDistance.isBlank() || (takeoff != null && takeoff > 0))
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = modifier) {
         Column(
@@ -134,7 +151,7 @@ fun AddAircraftSheet(
                 LabelledField(
                     value = rangeNm,
                     onValueChange = { rangeNm = it.filter(Char::isDigit) },
-                    label = stringResource(R.string.fleet_add_range),
+                    label = unitFieldLabel(R.string.fleet_add_range, distanceUnitSuffix(unit)),
                     error = showErrors && (range == null || range <= 0),
                     supportingText = positiveMessage,
                     keyboardType = KeyboardType.Number,
@@ -143,7 +160,7 @@ fun AddAircraftSheet(
                 LabelledField(
                     value = cruiseSpeedKt,
                     onValueChange = { cruiseSpeedKt = it.filter(Char::isDigit) },
-                    label = stringResource(R.string.fleet_add_cruise),
+                    label = unitFieldLabel(R.string.fleet_add_cruise, speedUnitSuffix(unit)),
                     error = showErrors && (cruise == null || cruise <= 0),
                     supportingText = positiveMessage,
                     keyboardType = KeyboardType.Number,
@@ -152,10 +169,10 @@ fun AddAircraftSheet(
             }
 
             LabelledField(
-                value = takeoffDistanceM,
-                onValueChange = { takeoffDistanceM = it.filter(Char::isDigit) },
-                label = stringResource(R.string.fleet_add_takeoff),
-                error = showErrors && takeoffDistanceM.isNotBlank() && (takeoff == null || takeoff <= 0),
+                value = takeoffDistance,
+                onValueChange = { takeoffDistance = it.filter(Char::isDigit) },
+                label = unitFieldLabel(R.string.fleet_add_takeoff, lengthUnitSuffix(unit)),
+                error = showErrors && takeoffDistance.isNotBlank() && (takeoff == null || takeoff <= 0),
                 supportingText = positiveMessage,
                 keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Done,
@@ -174,11 +191,11 @@ fun AddAircraftSheet(
                             variant = variant.trim(),
                             icaoCode = icaoCode.trim().uppercase(),
                             flown = false,
-                            rangeNm = range ?: 0,
+                            rangeNm = displayDistanceToNm(range ?: 0, unit),
                             category = category.trim(),
-                            cruiseSpeedKt = cruise ?: 0,
+                            cruiseSpeedKt = displaySpeedToKt(cruise ?: 0, unit),
                             dateFlown = null,
-                            takeoffDistanceMeters = takeoff,
+                            takeoffDistanceMeters = takeoff?.let { displayLengthToTakeoffMeters(it, unit) },
                         ),
                     )
                 },
@@ -265,6 +282,17 @@ private fun CategoryField(
         }
     }
 }
+
+/**
+ * "Range (km)": an envelope field's label with the active unit appended.
+ *
+ * Composed here from the bare label and the suffix `Figures.kt` already
+ * derives for every displayed figure, rather than from a second set of
+ * per-unit string pairs that would have to be kept in step with it.
+ */
+@Composable
+internal fun unitFieldLabel(@StringRes label: Int, suffix: String): String =
+    stringResource(R.string.fleet_add_field_unit, stringResource(label), suffix)
 
 /** Shared with [EditEnvelopeSheet] — one validated-field look for every aircraft form. */
 @Composable

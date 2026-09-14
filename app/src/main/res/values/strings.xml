@@ -174,10 +174,18 @@
     <string name="fleet_add_variant">Variant</string>
     <string name="fleet_add_icao_code">ICAO type code</string>
     <string name="fleet_add_category">Category</string>
-    <string name="fleet_add_range">Range (NM)</string>
-    <string name="fleet_add_cruise">Cruise (kt)</string>
-    <!-- Metres, matching the field FleetCsv and AircraftSpec store — see AircraftSpec's KDoc on the unit asymmetry. -->
-    <string name="fleet_add_takeoff">Takeoff distance (m)</string>
+    <!--
+        The three envelope fields carry no unit of their own: the sheets append the
+        active unit system's suffix through fleet_add_field_unit, so a Metric
+        reader types kilometres into "Range (km)" rather than converting by hand
+        into a field fixed at the stored NM. The stored units (NM, kt, m) are the
+        sheets' concern, not the labels' — see Figures.kt's inverse conversions.
+    -->
+    <string name="fleet_add_range">Range</string>
+    <string name="fleet_add_cruise">Cruise</string>
+    <string name="fleet_add_takeoff">Takeoff distance</string>
+    <!-- %1$s is one of the three labels above, %2$s the unit suffix: "Range (km)". -->
+    <string name="fleet_add_field_unit">%1$s (%2$s)</string>
     <string name="fleet_add_submit">Add to fleet</string>
     <string name="fleet_add_error_required">Required</string>
     <string name="fleet_add_error_positive_number">Enter a positive number</string>

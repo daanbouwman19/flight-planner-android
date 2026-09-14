@@ -1,6 +1,9 @@
 package com.github.daanbouwman.flightplanner.ui
 
 import com.github.daanbouwman.flightplanner.model.AltimeterConvention
+import com.github.daanbouwman.flightplanner.settings.UnitSystem
+import io.kotest.matchers.ints.shouldBeGreaterThan
+import io.kotest.matchers.ints.shouldBeInRange
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import kotlin.test.Test
@@ -173,5 +176,94 @@ class TemperatureTextTest {
         // The common case: most stations transmit whole degrees, and this must not
         // move them.
         temperatureText(21.0, 12.0) shouldBe "21°/12°C"
+    }
+}
+
+/**
+ * The aircraft forms' conversions, both ways round.
+ *
+ * The stored units are NM, kt and metres; the forms show and take the active
+ * unit system's. Reopening a sheet must show the figures the airframe has, and
+ * saving a sheet nobody edited must not move them -- that is the stored ->
+ * display -> stored direction, exact everywhere. The typed direction is allowed
+ * to come back off by up to half a stored unit where the typed unit is the
+ * finer one, and these pin what that is in each display unit.
+ */
+class UnitConversionRoundTripTest {
+
+    @Test
+    fun `under Aviation, range and cruise are the stored units and pass straight through`() {
+        for (value in listOf(1, 300, 2_935, 7_200)) {
+            nmToDisplayDistance(value, UnitSystem.AVIATION) shouldBe value
+            displayDistanceToNm(value, UnitSystem.AVIATION) shouldBe value
+            ktToDisplaySpeed(value, UnitSystem.AVIATION) shouldBe value
+            displaySpeedToKt(value, UnitSystem.AVIATION) shouldBe value
+        }
+    }
+
+    @Test
+    fun `under Metric, a stored range or cruise survives display and back unchanged`() {
+        // Every value a fleet could plausibly hold, not a sample: the claim is
+        // "exact", and a boundary that drifts would drift at one value in 1,852.
+        for (nm in 1..8_000) {
+            displayDistanceToNm(nmToDisplayDistance(nm, UnitSystem.METRIC), UnitSystem.METRIC) shouldBe nm
+        }
+        for (kt in 1..700) {
+            displaySpeedToKt(ktToDisplaySpeed(kt, UnitSystem.METRIC), UnitSystem.METRIC) shouldBe kt
+        }
+    }
+
+    @Test
+    fun `under Metric, a typed range or cruise comes back within one unit`() {
+        // The direction that can drift: a kilometre is finer than the nautical
+        // mile it is stored as, so what was typed reopens rounded to the NM.
+        for (km in 1..15_000) {
+            val back = nmToDisplayDistance(displayDistanceToNm(km, UnitSystem.METRIC), UnitSystem.METRIC)
+            back shouldBeInRange (km - 1)..(km + 1)
+        }
+        // And the drift is real, not a theoretical bound: 1,001 km is 540.5 NM,
+        // stores as 540, and reopens as 1,000 km.
+        nmToDisplayDistance(displayDistanceToNm(1_001, UnitSystem.METRIC), UnitSystem.METRIC) shouldBe 1_000
+    }
+
+    @Test
+    fun `takeoff distance is exact under Metric, the stored unit, in both directions`() {
+        for (meters in listOf(1, 450, 2_000, 3_500)) {
+            takeoffMetersToDisplayLength(meters, UnitSystem.METRIC) shouldBe meters
+            displayLengthToTakeoffMeters(meters, UnitSystem.METRIC) shouldBe meters
+        }
+    }
+
+    @Test
+    fun `under Aviation, a stored takeoff distance survives feet and back unchanged`() {
+        for (meters in 1..5_000) {
+            displayLengthToTakeoffMeters(
+                takeoffMetersToDisplayLength(meters, UnitSystem.AVIATION),
+                UnitSystem.AVIATION,
+            ) shouldBe meters
+        }
+        // The same figure the hero chip shows, by construction.
+        takeoffMetersToDisplayLength(2_000, UnitSystem.AVIATION) shouldBe 6_562
+    }
+
+    @Test
+    fun `under Aviation, a typed takeoff distance comes back within half a metre`() {
+        // Half a metre is 1.64 ft, so the bound is two feet rather than one: the
+        // metre is the coarsest stored unit relative to its display unit. From
+        // two feet, because one foot is the case the floor below owns.
+        for (feet in 2..16_000) {
+            val back = takeoffMetersToDisplayLength(displayLengthToTakeoffMeters(feet, UnitSystem.AVIATION), UnitSystem.AVIATION)
+            back shouldBeInRange (feet - 2)..(feet + 2)
+        }
+        // And it does reach two: 5 ft is 1.5 m, stores as 2 m, reopens as 7 ft.
+        takeoffMetersToDisplayLength(displayLengthToTakeoffMeters(5, UnitSystem.AVIATION), UnitSystem.AVIATION) shouldBe 7
+    }
+
+    @Test
+    fun `a positive typed takeoff distance never stores as no requirement`() {
+        // 1 ft is 0.3 m and rounds to 0, which AircraftSpec reads as "no
+        // requirement" -- the opposite of a figure somebody went to the trouble
+        // of typing.
+        displayLengthToTakeoffMeters(1, UnitSystem.AVIATION) shouldBeGreaterThan 0
     }
 }

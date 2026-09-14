@@ -26,6 +26,16 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
+import com.github.daanbouwman.flightplanner.ui.LocalUnitSystem
+import com.github.daanbouwman.flightplanner.ui.displayDistanceToNm
+import com.github.daanbouwman.flightplanner.ui.displayLengthToTakeoffMeters
+import com.github.daanbouwman.flightplanner.ui.displaySpeedToKt
+import com.github.daanbouwman.flightplanner.ui.distanceUnitSuffix
+import com.github.daanbouwman.flightplanner.ui.ktToDisplaySpeed
+import com.github.daanbouwman.flightplanner.ui.lengthUnitSuffix
+import com.github.daanbouwman.flightplanner.ui.nmToDisplayDistance
+import com.github.daanbouwman.flightplanner.ui.speedUnitSuffix
+import com.github.daanbouwman.flightplanner.ui.takeoffMetersToDisplayLength
 
 /**
  * Range, cruise and takeoff distance, editable — the one thing about an
@@ -38,11 +48,21 @@ import com.github.daanbouwman.flightplanner.model.AircraftSpec
  * already has one place a user types aircraft numbers into, and reusing that
  * shape here means there is one input pattern instead of two.
  *
- * Takeoff distance is asked for in metres, not the feet
- * [com.github.daanbouwman.flightplanner.ui.fleet.FleetDetailContent]'s hero
- * chip shows — [AircraftSpec]'s own KDoc documents that asymmetry as
- * inherited from the desktop's CSV format and kept deliberately, so the field
- * matches the unit that is actually stored.
+ * ### The fields are in the reader's unit, not the stored one
+ *
+ * The three figures are shown and typed in the **active unit system** and
+ * converted on the way in and out through the conversions in `Figures.kt`, so
+ * under Aviation the takeoff field says "Takeoff distance (ft)" and shows the
+ * same figure the hero chip above it does, and under Metric all three read in
+ * km, km/h and m. It used to ask for metres under a fixed "(m)" label beside a
+ * chip that said feet, on the reasoning that the field should match what
+ * [AircraftSpec] stores -- but the stored unit is the *database's* concern, and
+ * a form that shows one unit and asks for another is a conversion the user has
+ * to do in their head. See the round-trip note on those conversions for the
+ * one place a typed figure can come back a unit off.
+ *
+ * The `> 0` validation runs on the typed figure, which is unit-invariant; any
+ * future threshold that is not applies to the stored value after conversion.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,19 +74,28 @@ fun EditEnvelopeSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var rangeNm by rememberSaveable(aircraft.id) { mutableStateOf(aircraft.rangeNm.toString()) }
-    var cruiseSpeedKt by rememberSaveable(aircraft.id) { mutableStateOf(aircraft.cruiseSpeedKt.toString()) }
-    var takeoffDistanceM by rememberSaveable(aircraft.id) {
-        mutableStateOf(aircraft.takeoffDistanceMeters?.toString().orEmpty())
+    // Keyed on the unit as well as the airframe: a figure typed as kilometres
+    // must not survive a switch to Aviation and be read back as nautical miles.
+    val unit = LocalUnitSystem.current
+    var rangeText by rememberSaveable(aircraft.id, unit) {
+        mutableStateOf(nmToDisplayDistance(aircraft.rangeNm, unit).toString())
+    }
+    var cruiseText by rememberSaveable(aircraft.id, unit) {
+        mutableStateOf(ktToDisplaySpeed(aircraft.cruiseSpeedKt, unit).toString())
+    }
+    var takeoffText by rememberSaveable(aircraft.id, unit) {
+        mutableStateOf(
+            aircraft.takeoffDistanceMeters?.let { takeoffMetersToDisplayLength(it, unit) }?.toString().orEmpty(),
+        )
     }
     var showErrors by rememberSaveable(aircraft.id) { mutableStateOf(false) }
 
-    val range = rangeNm.toIntOrNull()
-    val cruise = cruiseSpeedKt.toIntOrNull()
+    val range = rangeText.toIntOrNull()
+    val cruise = cruiseText.toIntOrNull()
     // Optional: a blank field means "unknown", not zero — see AddAircraftSheet.
-    val takeoff = takeoffDistanceM.toIntOrNull()
+    val takeoff = takeoffText.toIntOrNull()
     val fieldsValid = range != null && range > 0 && cruise != null && cruise > 0 &&
-        (takeoffDistanceM.isBlank() || (takeoff != null && takeoff > 0))
+        (takeoffText.isBlank() || (takeoff != null && takeoff > 0))
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = modifier) {
         Column(
@@ -86,18 +115,18 @@ fun EditEnvelopeSheet(
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 LabelledField(
-                    value = rangeNm,
-                    onValueChange = { rangeNm = it.filter(Char::isDigit) },
-                    label = stringResource(R.string.fleet_add_range),
+                    value = rangeText,
+                    onValueChange = { rangeText = it.filter(Char::isDigit) },
+                    label = unitFieldLabel(R.string.fleet_add_range, distanceUnitSuffix(unit)),
                     error = showErrors && (range == null || range <= 0),
                     supportingText = positiveMessage,
                     keyboardType = KeyboardType.Number,
                     modifier = Modifier.weight(1f),
                 )
                 LabelledField(
-                    value = cruiseSpeedKt,
-                    onValueChange = { cruiseSpeedKt = it.filter(Char::isDigit) },
-                    label = stringResource(R.string.fleet_add_cruise),
+                    value = cruiseText,
+                    onValueChange = { cruiseText = it.filter(Char::isDigit) },
+                    label = unitFieldLabel(R.string.fleet_add_cruise, speedUnitSuffix(unit)),
                     error = showErrors && (cruise == null || cruise <= 0),
                     supportingText = positiveMessage,
                     keyboardType = KeyboardType.Number,
@@ -105,10 +134,10 @@ fun EditEnvelopeSheet(
                 )
             }
             LabelledField(
-                value = takeoffDistanceM,
-                onValueChange = { takeoffDistanceM = it.filter(Char::isDigit) },
-                label = stringResource(R.string.fleet_add_takeoff),
-                error = showErrors && takeoffDistanceM.isNotBlank() && (takeoff == null || takeoff <= 0),
+                value = takeoffText,
+                onValueChange = { takeoffText = it.filter(Char::isDigit) },
+                label = unitFieldLabel(R.string.fleet_add_takeoff, lengthUnitSuffix(unit)),
+                error = showErrors && takeoffText.isNotBlank() && (takeoff == null || takeoff <= 0),
                 supportingText = positiveMessage,
                 keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Done,
@@ -124,7 +153,11 @@ fun EditEnvelopeSheet(
                             showErrors = true
                             return@Button
                         }
-                        onSave(range ?: 0, cruise ?: 0, takeoff)
+                        onSave(
+                            displayDistanceToNm(range ?: 0, unit),
+                            displaySpeedToKt(cruise ?: 0, unit),
+                            takeoff?.let { displayLengthToTakeoffMeters(it, unit) },
+                        )
                     },
                 ) {
                     Text(stringResource(R.string.fleet_detail_action_save))
