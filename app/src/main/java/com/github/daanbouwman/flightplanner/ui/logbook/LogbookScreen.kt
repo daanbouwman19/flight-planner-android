@@ -55,6 +55,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -167,39 +168,10 @@ fun LogbookScreen(
             header = header,
         )
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 8.dp),
+        LogbookOverlay(
+            snackbarHostState = snackbarHostState,
+            onAddClick = { showAddFlightSheet = true },
         )
-
-        // The default (M3 "medium") FAB size, shape-morphing on press —
-        // copied verbatim from FleetScreen's own add-aircraft FAB. See its
-        // KDoc for why this is the shape Expressive actually prescribes here.
-        val fabInteractionSource = remember { MutableInteractionSource() }
-        val fabPressed by fabInteractionSource.collectIsPressedAsState()
-        val fabMorphProgress by animateFloatAsState(
-            targetValue = if (fabPressed) 1f else 0f,
-            animationSpec = FlightMotion.spatialFast(),
-            label = "fab-morph",
-        )
-        val fabMorph = remember { Morph(FlightShapes.Circle, FlightShapes.Cookie) }
-
-        FloatingActionButton(
-            onClick = { showAddFlightSheet = true },
-            interactionSource = fabInteractionSource,
-            shape = rememberMorphShape(fabMorph, fabMorphProgress),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
-                .padding(16.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_logbook_add),
-                contentDescription = stringResource(R.string.logbook_action_add_flight),
-            )
-        }
     }
 
     if (showAddFlightSheet) {
@@ -221,6 +193,68 @@ fun LogbookScreen(
             },
             onDismiss = { showAddFlightSheet = false },
         )
+    }
+}
+
+/**
+ * The add-flight FAB and its snackbar host, positioned so an Undo action can never land
+ * under the FAB that paints over it.
+ *
+ * The [SnackbarHost] and the [FloatingActionButton] are siblings in one [Box], and the FAB
+ * is composed last and aligned [Alignment.BottomEnd] — without this end clearance it simply
+ * paints over the last ~72 dp of whatever the host draws, occluding the "Undo" action on a
+ * delete snackbar (the one action in this screen a user actually needs to press in a hurry).
+ * A `Scaffold` would fix this too, but its `snackbarHost` slot changes how window insets are
+ * applied here, which the empty-system-bars invariant depends on; padding the host is the
+ * smaller, safer change.
+ *
+ * Extracted from [LogbookScreen] so [LogbookOverlayTest] (`app/src/test`) can drive it
+ * directly, without a Hilt-backed [LogbookViewModel].
+ */
+@Composable
+internal fun LogbookOverlay(
+    snackbarHostState: SnackbarHostState,
+    onAddClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxSize()) {
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                // The FAB sits at BottomEnd with its own 16 dp margin; reserve its full
+                // width plus a 16 dp gap so the host — and any action inside it — never
+                // sits under it, however wide the action label gets.
+                .padding(start = 16.dp, end = 16.dp + FabWidth + 16.dp, bottom = 8.dp),
+        )
+
+        // The default (M3 "medium") FAB size, shape-morphing on press —
+        // copied verbatim from FleetScreen's own add-aircraft FAB. See its
+        // KDoc for why this is the shape Expressive actually prescribes here.
+        val fabInteractionSource = remember { MutableInteractionSource() }
+        val fabPressed by fabInteractionSource.collectIsPressedAsState()
+        val fabMorphProgress by animateFloatAsState(
+            targetValue = if (fabPressed) 1f else 0f,
+            animationSpec = FlightMotion.spatialFast(),
+            label = "fab-morph",
+        )
+        val fabMorph = remember { Morph(FlightShapes.Circle, FlightShapes.Cookie) }
+
+        FloatingActionButton(
+            onClick = onAddClick,
+            interactionSource = fabInteractionSource,
+            shape = rememberMorphShape(fabMorph, fabMorphProgress),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                .padding(16.dp)
+                .testTag(FabTestTag),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_logbook_add),
+                contentDescription = stringResource(R.string.logbook_action_add_flight),
+            )
+        }
     }
 }
 
@@ -562,6 +596,12 @@ private const val SummaryKey = "summary"
 
 /** Extra bottom room so the FAB (56 dp, plus its own margin) never sits over the last card. Matches FleetScreen's own constant. */
 private val FabClearance = 112.dp
+
+/** The default (M3 "medium") FAB's footprint — see [LogbookOverlay]'s snackbar-host clearance. */
+private val FabWidth = 56.dp
+
+/** Lets [LogbookOverlayTest] find the FAB's bounds without depending on its content description string. */
+internal const val FabTestTag = "logbook_fab"
 
 /*
  * Previews.
