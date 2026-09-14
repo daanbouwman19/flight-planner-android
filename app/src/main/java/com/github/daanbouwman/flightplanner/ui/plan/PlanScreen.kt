@@ -888,19 +888,38 @@ private fun Modifier.rowEntrance(
     // list, not how far it is from the user's attention.
     val animates = replacing || index < FlightMotion.EnterStaggerCap
 
-    var visible by remember(rowId) { mutableStateOf(alreadyEntered || reduceMotion || !animates) }
+    // Decided once, on the row's first composition, like the entrance itself.
+    val skipsEntrance = remember(rowId) { alreadyEntered || reduceMotion || !animates }
+    LaunchedEffect(rowId) { markEntered(rowId) }
+
+    // **A row with nothing to animate gets no layer.** `graphicsLayer` is a
+    // separate render node per item, and this used to hand one to every row
+    // for its whole life — including the forty-two rows of a batch past the
+    // stagger cap, every row scrolled back into view, and every row after its
+    // entrance had finished, all drawing through a layer that set alpha to one
+    // and translated by zero. During a fling that is every visible card paying
+    // for an animation none of them is running.
+    if (skipsEntrance) return this
+
+    var visible by remember(rowId) { mutableStateOf(false) }
     LaunchedEffect(rowId) {
-        markEntered(rowId)
-        if (!visible) {
-            if (!replacing) delay(FlightMotion.enterDelayMillis(index).toLong())
-            visible = true
-        }
+        if (!replacing) delay(FlightMotion.enterDelayMillis(index).toLong())
+        visible = true
     }
+
+    // Both springs report in, so the layer comes off only once the card is
+    // fully opaque *and* at rest: the effects spring is the shorter of the
+    // two, but which finishes last is the motion scheme's business, not this
+    // row's. `finishedListener` fires only for an animation that ran to its
+    // target uninterrupted, and the target here moves exactly once.
+    var faded by remember(rowId) { mutableStateOf(false) }
+    var travelled by remember(rowId) { mutableStateOf(false) }
 
     val alpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
         animationSpec = FlightMotion.effects(),
         label = "rowEntranceAlpha",
+        finishedListener = { faded = true },
     )
     // One progress value for either axis: 0 is "off its mark", 1 is home. The
     // spatial spring carries it past 1 and back, which is the overshoot that
@@ -910,7 +929,13 @@ private fun Modifier.rowEntrance(
         targetValue = if (visible) 1f else 0f,
         animationSpec = FlightMotion.spatial(),
         label = "rowEntranceTravel",
+        finishedListener = { travelled = true },
     )
+
+    // Entered: the row is drawn as its neighbours are, with no layer between
+    // it and the list. Swapping the modifier out costs one relayout of this
+    // item, once, against a layer composited on every frame after.
+    if (faded && travelled) return this
 
     val rise = with(LocalDensity.current) { EntranceRise.toPx() }
     // A swipe carries the card towards the start edge, so its replacement comes
