@@ -143,6 +143,21 @@ class MetarParserTest {
     }
 
     @Test
+    fun `10+SM is ten miles or better, not an unreported visibility`() {
+        // The US automated stations' "unlimited". Before the `+` was in the
+        // regex the token matched nothing, the visibility stayed null, and a
+        // report of the best visibility a station can give derived an UNKNOWN
+        // flight category.
+        val parsed = MetarParser.parse("METAR KDEN 271853Z 08006KT 10+SM CLR 31/06 A3012 RMK AO2")
+
+        parsed.visibilityStatuteMiles!! shouldBe (10.0 plusOrMinus 0.001)
+        parsed.visibilityIsOrGreater shouldBe true
+        // And the plain form is still not "or greater" — the flag is the `+`.
+        MetarParser.parse("METAR XXXX 271800Z 31006KT 10SM CLR 20/10 A3000")
+            .visibilityIsOrGreater shouldBe false
+    }
+
+    @Test
     fun `the ICAO metre group converts, and 9999 means or better`() {
         val parsed = MetarParser.parse("METAR EDDF 271820Z 25008KT 9999 FEW035 24/14 Q1015")
 
