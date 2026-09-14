@@ -2,6 +2,7 @@ package com.github.daanbouwman.flightplanner.feature.globe.render
 
 import android.view.Choreographer
 import android.view.Surface
+import androidx.tracing.trace
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
 import com.github.daanbouwman.flightplanner.feature.globe.math.VisibleTile
@@ -426,7 +427,11 @@ internal class GlobeRenderHost(
         // Built from *this* surface's camera, driver or not: the width, the lift
         // and the samples it keeps are all functions of the viewpoint, so the
         // driver's ribbon would be the wrong geometry for the other surface.
-        ribbon?.update(scene.routeArcs, scene.arcsGeneration, camera, basis, viewport)
+        // Its own trace section, like the scene's stages: `GlobeSpinBenchmark`
+        // reads the cost of each part of this callback separately.
+        trace("globe:ribbon") {
+            ribbon?.update(scene.routeArcs, scene.arcsGeneration, camera, basis, viewport)
+        }
         filamentCamera?.let { scene.applyCamera(it, camera, viewport) }
 
         // `beginFrame` returning false is the driver saying it would rather this
@@ -434,20 +439,23 @@ internal class GlobeRenderHost(
         // queue longer. What was rendered is recorded only when something was:
         // a declined frame has to be retried on the next vsync, not remembered
         // as drawn.
-        if (renderer.beginFrame(chain, frameTimeNanos)) {
-            renderer.render(view)
-            renderer.endFrame()
-            renderedCamera = camera
-            renderedViewport = viewport
-            renderedMeshGeneration = scene.meshGeneration
-            renderedArcsGeneration = scene.arcsGeneration
-            // The clear colour is *set* above, because the renderer has to carry
-            // it into the frame, but it is only *recorded as applied* here. Ticking
-            // the generation before the driver had accepted the frame lost a theme
-            // change outright on a still globe: the settled test then saw no change
-            // pending and returned early on every following vsync, so the colour
-            // sat on the renderer and was never drawn.
-            appliedSpaceGeneration = scene.spaceGeneration
+        trace("globe:render") {
+            if (renderer.beginFrame(chain, frameTimeNanos)) {
+                renderer.render(view)
+                renderer.endFrame()
+                renderedCamera = camera
+                renderedViewport = viewport
+                renderedMeshGeneration = scene.meshGeneration
+                renderedArcsGeneration = scene.arcsGeneration
+                // The clear colour is *set* above, because the renderer has to
+                // carry it into the frame, but it is only *recorded as applied*
+                // here. Ticking the generation before the driver had accepted the
+                // frame lost a theme change outright on a still globe: the settled
+                // test then saw no change pending and returned early on every
+                // following vsync, so the colour sat on the renderer and was never
+                // drawn.
+                appliedSpaceGeneration = scene.spaceGeneration
+            }
         }
 
         onFrame(tiles)
