@@ -32,6 +32,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -46,9 +47,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -187,6 +190,28 @@ class PlanViewModel @Inject constructor(
     private val weatherAskedAt = mutableMapOf<String, Long>()
 
     /**
+     * Fires once, [WEATHER_RETRY_DELAY_MILLIS] after a failed chunk, and re-asks for
+     * whatever is on screen *then*.
+     *
+     * A failed fetch unmarks its stations so they are not silenced for the cache's
+     * fifteen minutes — but nothing re-asked. The collector below only runs when
+     * the visible set *changes*, so a dropped connection on a list the user was
+     * reading left every chip on screen unresolved until they scrolled. Merged
+     * into the same collector as a second trigger, so a retry is subject to the
+     * same cancellation and the same asked-lately filter as a scroll.
+     *
+     * Same shape as [appendRequests]: no replay, one slot, drop the oldest.
+     */
+    private val weatherRetries = MutableSharedFlow<Unit>(
+        replay = 0,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /** The one pending retry. A screenful of failed chunks schedules one, not one each. */
+    private var weatherRetry: Job? = null
+
+    /**
      * One-shot events, as a channel rather than as state.
      *
      * A snackbar is not a property of the screen — replaying "flight logged" on
@@ -277,10 +302,13 @@ class PlanViewModel @Inject constructor(
             // set cancels whatever fetch was in flight for the previous one,
             // rather than letting a stale batch's request race the current
             // screenful's.
-            visibleIcaos
-                .debounce(VISIBLE_ICAO_DEBOUNCE_MILLIS)
-                .distinctUntilChanged()
-                .collectLatest { icaos ->
+            merge(
+                visibleIcaos.debounce(VISIBLE_ICAO_DEBOUNCE_MILLIS).distinctUntilChanged(),
+                // Whatever is visible *now*, not what was visible when the chunk
+                // failed: the user may have scrolled on, and the stations they
+                // left behind will be asked about again if they come back.
+                weatherRetries.map { visibleIcaos.value },
+            ).collectLatest { icaos ->
                     if (icaos.isEmpty()) return@collectLatest
                     // Only what has not been asked about lately.
                     //
@@ -306,12 +334,15 @@ class PlanViewModel @Inject constructor(
                         // Marked before the call, so a station that legitimately has
                         // no report backs off. Unmarked again if the call *failed*,
                         // because a dropped connection is not an answer and must not
-                        // buy fifteen minutes of silence.
+                        // buy fifteen minutes of silence — and asked again once,
+                        // later, through [weatherRetries], because unmarking alone
+                        // only helps a station that scrolls back into view.
                         chunk.forEach { weatherAskedAt[it] = now }
                         val fetched = runCatchingCancellable { weatherRepository.fetch(chunk) }
                             .onFailure {
                                 Log.w(TAG, "Fetching weather for $chunk failed", it)
                                 chunk.forEach { station -> weatherAskedAt.remove(station) }
+                                scheduleWeatherRetry()
                             }
                             .getOrNull()
                             .orEmpty()
@@ -366,6 +397,25 @@ class PlanViewModel @Inject constructor(
     /** The ICAOs currently visible in the list, from [PlanScreen]'s `LazyListState`. */
     fun setVisibleIcaos(icaos: Set<String>) {
         visibleIcaos.value = icaos
+    }
+
+    /**
+     * Arms the one retry, if none is pending.
+     *
+     * Launched on [viewModelScope] rather than inside the collector that failed,
+     * because `collectLatest` cancels that collector on the next visible-set
+     * change and a delay inside it would go with it — a user who scrolled after
+     * a failure would never get the retry. Bounded to a single pending job: a
+     * fifty-row screenful failing in one chunk of fifty is one failure, and a
+     * retry per chunk on a flaky connection would be a slow denial of service
+     * against a quota'd key.
+     */
+    private fun scheduleWeatherRetry() {
+        if (weatherRetry?.isActive == true) return
+        weatherRetry = viewModelScope.launch {
+            delay(WEATHER_RETRY_DELAY_MILLIS)
+            weatherRetries.tryEmit(Unit)
+        }
     }
 
     /** Generates a fresh batch, replacing whatever is on screen. */
@@ -885,5 +935,13 @@ class PlanViewModel @Inject constructor(
 
         /** NOAA's documented ceiling per request; also what docs/PLAN.md's "chunk by 50" specifies. */
         const val WEATHER_BATCH_SIZE = 50
+
+        /**
+         * How long after a failed chunk the visible stations are asked about again.
+         * Long enough for a dropped connection to come back and to not hammer a
+         * provider that is refusing; short enough that a list the user is still
+         * reading resolves while they are reading it.
+         */
+        const val WEATHER_RETRY_DELAY_MILLIS = 30_000L
     }
 }

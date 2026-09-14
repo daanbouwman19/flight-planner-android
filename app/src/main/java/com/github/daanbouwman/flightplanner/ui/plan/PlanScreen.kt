@@ -746,7 +746,10 @@ private fun RouteList(
             SwipeableRoute(
                 row = row,
                 outline = outline,
-                weatherByStation = state.weatherByStation,
+                // Looked up here so a card whose two ends have not changed is
+                // skipped when some other station resolves — see RouteCard.
+                departureMetar = state.weatherByStation[row.departure.icao],
+                destinationMetar = state.weatherByStation[row.destination.icao],
                 onOpen = { onOpenRoute(row) },
                 onMarkFlown = { onMarkFlown(row) },
                 onReplace = { onReplace(row) },
@@ -917,7 +920,8 @@ private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<
 private fun SwipeableRoute(
     row: RouteRow,
     outline: WorldOutline,
-    weatherByStation: Map<String, Metar>,
+    departureMetar: Metar?,
+    destinationMetar: Metar?,
     onOpen: () -> Unit,
     onMarkFlown: () -> Unit,
     onReplace: () -> Unit,
@@ -1034,7 +1038,8 @@ private fun SwipeableRoute(
             onClick = onOpen,
             onMarkFlown = onMarkFlown,
             onReplace = onReplace,
-            weatherByStation = weatherByStation,
+            departureMetar = departureMetar,
+            destinationMetar = destinationMetar,
         )
     }
 }

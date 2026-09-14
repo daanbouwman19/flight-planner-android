@@ -110,6 +110,16 @@ import com.github.daanbouwman.flightplanner.routing.WorldOutline
  * are drawn by their own overlay layers, at their own bounds, so the face's
  * scale never reaches them. They do inherit one thing worth knowing about: see
  * `sharedRouteElement`'s note on why the enclosing clip has to be opted out of.
+ *
+ * ### The card takes its two reports, not the map they came from
+ *
+ * It used to take `weatherByStation` whole and look its two ends up inside.
+ * That map is one `StateFlow` value for the entire list and changes every time
+ * any station anywhere resolves, so every visible card's parameters changed
+ * with it and every card recomposed for a report about somebody else's
+ * airport. Looked up at the call site, a card whose two ends did not change
+ * receives the same two values and is skipped. The lookup is a hash read; the
+ * saving is fifty cards' worth of composition per resolved screenful.
  */
 @Composable
 fun RouteCard(
@@ -119,7 +129,8 @@ fun RouteCard(
     onMarkFlown: () -> Unit,
     onReplace: () -> Unit,
     modifier: Modifier = Modifier,
-    weatherByStation: Map<String, Metar> = emptyMap(),
+    departureMetar: Metar? = null,
+    destinationMetar: Metar? = null,
 ) {
     // One description for the whole card. Left to itself the card announces
     // eleven separate nodes — two codes, two names, two "N/A" chips and three
@@ -226,7 +237,11 @@ fun RouteCard(
                 // The gap between the eyebrow and the codes is the map's, and it
                 // takes whatever height the card has left over.
                 Box(modifier = Modifier.weight(1f))
-                AirportLine(row, weatherByStation)
+                AirportLine(
+                    row = row,
+                    departureRules = departureMetar?.flightRules ?: FlightRules.UNKNOWN,
+                    destinationRules = destinationMetar?.flightRules ?: FlightRules.UNKNOWN,
+                )
                 FactLine(row)
             }
         }
@@ -276,7 +291,7 @@ private fun AircraftLine(row: RouteRow) {
  * belongs to the detail screen, where there is room to read it.
  */
 @Composable
-private fun AirportLine(row: RouteRow, weatherByStation: Map<String, Metar>) {
+private fun AirportLine(row: RouteRow, departureRules: FlightRules, destinationRules: FlightRules) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -284,7 +299,7 @@ private fun AirportLine(row: RouteRow, weatherByStation: Map<String, Metar>) {
     ) {
         AirportEnd(
             icao = row.departure.icao,
-            rules = weatherByStation[row.departure.icao]?.flightRules ?: FlightRules.UNKNOWN,
+            rules = departureRules,
             runwayFt = row.departureRunwayFt,
             runwayTooShort = row.departureRunwayTooShort,
             alignment = Alignment.Start,
@@ -298,7 +313,7 @@ private fun AirportLine(row: RouteRow, weatherByStation: Map<String, Metar>) {
         Box(modifier = Modifier.weight(1f))
         AirportEnd(
             icao = row.destination.icao,
-            rules = weatherByStation[row.destination.icao]?.flightRules ?: FlightRules.UNKNOWN,
+            rules = destinationRules,
             runwayFt = row.destinationRunwayFt,
             runwayTooShort = row.destinationRunwayTooShort,
             alignment = Alignment.End,
