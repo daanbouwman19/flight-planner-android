@@ -159,6 +159,10 @@ class TileLoaderTest {
         server.requestCount shouldBe 1
         loader.retryDue(499) shouldBe false
         loader.retryDue(500) shouldBe true
+        // A 500 is the provider's problem, not the connection's: the offline
+        // notice must not be shown for it.
+        loader.stats().lastFailure shouldBe TileFailure.Server
+        loader.stats().imageryUnreachable shouldBe false
 
         // Resting: asked for before it is due, nothing happens — and the frame
         // that asked has re-armed the wake-up for when it will be.
@@ -287,6 +291,16 @@ class TileLoaderTest {
         awaitUntil("the failure") { offline.stats().let { it.errors == 1 && it.pending == 0 } }
         offline.retryDue(499) shouldBe false
         offline.retryDue(500) shouldBe true
+        // Recorded as the network's failure — and still not "unreachable",
+        // because the cached tile above decoded: this globe draws.
+        offline.stats().lastFailure shouldBe TileFailure.Network
+        offline.stats().imageryUnreachable shouldBe false
+
+        // A loader with no cache to fall back on is the case the notice is for.
+        val cold = loader(provider)
+        cold.request(never)
+        awaitUntil("the cold failure") { cold.stats().let { it.errors == 1 && it.pending == 0 } }
+        cold.stats().imageryUnreachable shouldBe true
         clock = 500
         offline.request(never)
         awaitUntil("the retry") { offline.stats().let { it.errors == 2 && it.pending == 0 } }

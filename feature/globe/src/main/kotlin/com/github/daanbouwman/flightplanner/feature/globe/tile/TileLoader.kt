@@ -21,12 +21,25 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.min
 
 private const val TAG = "TileLoader"
 
 /** A tile that has been fetched and decoded, waiting to be uploaded. */
 internal class DecodedTile(val key: TileKey, val pixels: ByteBuffer)
+
+/** Why the most recent tile failed — the one distinction the UI acts on. */
+internal enum class TileFailure {
+    /** No response at all: offline, refused, or the cache had nothing to fall back on. */
+    Network,
+
+    /** The provider answered and the answer was not a tile — a 4xx or 5xx. */
+    Server,
+
+    /** A body arrived and did not decode to a 256² RGB565 tile. */
+    Decode,
+}
 
 /** Counters for the on-screen diagnostics and for the tests to assert against. */
 internal data class TileStats(
@@ -38,7 +51,29 @@ internal data class TileStats(
     val fromCache: Int = 0,
     val errors: Int = 0,
     val decoded: Int = 0,
-)
+    /** The most recent failure since the last success, or null when the last tile succeeded. */
+    val lastFailure: TileFailure? = null,
+) {
+    /**
+     * Whether this loader has nothing to show and the reason is the network.
+     *
+     * Both halves are load-bearing. `decoded == 0` says no tile has landed since
+     * the session began — not from the wire and **not from the disk cache**, so
+     * a globe that is offline with a warm cache is a working globe and this is
+     * false for it, which is right: it draws. `lastFailure == Network` says the
+     * reason nothing landed is that nothing answered, as opposed to a provider
+     * returning errors or bodies that will not decode — those are the app's
+     * problem, not the user's connection, and telling a user to go online for
+     * them would be a lie. A single 4xx among twenty network failures flips
+     * this false until the next network failure, which is a flicker the poll's
+     * cadence smooths and an honest one besides.
+     *
+     * A predicate on the stats rather than on the loader so it can be tested
+     * without a socket.
+     */
+    val imageryUnreachable: Boolean
+        get() = decoded == 0 && lastFailure == TileFailure.Network
+}
 
 /**
  * Fetches, decodes and hands back tiles — everything between a `(z, x, y)` and
@@ -211,6 +246,9 @@ internal class TileLoader(
     private val errors = AtomicInteger()
     private val decoded = AtomicInteger()
 
+    /** See [TileStats.lastFailure]. Cleared by a decode that succeeds. */
+    private val lastFailure = AtomicReference<TileFailure?>(null)
+
     private var jobs: List<Job> = emptyList()
 
     val attribution: ImageryAttribution get() = provider.attribution
@@ -312,6 +350,7 @@ internal class TileLoader(
         fromCache = fromCache.get(),
         errors = errors.get(),
         decoded = decoded.get(),
+        lastFailure = lastFailure.get(),
     )
 
     /**
@@ -355,6 +394,7 @@ internal class TileLoader(
                 // where it can be found.
                 Log.e(TAG, "tile $key failed unexpectedly", e)
                 errors.incrementAndGet()
+                lastFailure.set(TileFailure.Decode)
                 failed(key)
             } finally {
                 synchronized(queueLock) { pending.remove(key) }
@@ -403,12 +443,14 @@ internal class TileLoader(
         if (!ok || buffer.remaining() != TileAtlas.TILE_BYTES) {
             Log.d(TAG, "tile $key did not decode to 256² RGB565")
             errors.incrementAndGet()
+            lastFailure.set(TileFailure.Decode)
             recycleBuffer(buffer)
             failed(key)
             return
         }
 
         decoded.incrementAndGet()
+        lastFailure.set(null)
         retryAfter.remove(key)
         // Held first, then offered: see the class note.
         held.add(key)
@@ -461,11 +503,13 @@ internal class TileLoader(
                     response.code == HttpURLConnection.HTTP_BAD_REQUEST ||
                         response.code == HttpURLConnection.HTTP_NOT_FOUND -> {
                         errors.incrementAndGet()
+                        lastFailure.set(TileFailure.Server)
                         markAbsent(key)
                         null
                     }
                     else -> {
                         errors.incrementAndGet()
+                        lastFailure.set(TileFailure.Server)
                         failed(key)
                         null
                     }
@@ -475,8 +519,11 @@ internal class TileLoader(
             // Offline is the ordinary case here, not an exceptional one: the
             // pinned base levels are already drawn and the globe simply stops
             // sharpening. Logged at debug so a real failure is still findable.
+            // Recorded as a network failure, which is the one kind the UI says
+            // anything about - see TileStats.imageryUnreachable.
             Log.d(TAG, "tile $key could not be fetched: ${e.message}")
             errors.incrementAndGet()
+            lastFailure.set(TileFailure.Network)
             failed(key)
             null
         }

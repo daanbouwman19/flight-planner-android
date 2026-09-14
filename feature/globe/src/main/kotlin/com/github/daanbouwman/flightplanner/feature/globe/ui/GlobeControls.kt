@@ -107,6 +107,13 @@ fun GlobeCameraControls(
      */
     boundsReporter: ((Rect) -> Unit)? = null,
 ) {
+    // Nothing at all while the globe has no imagery and the network is why:
+    // every cell here moves a camera that is rendering to a surface the still
+    // map is drawn over at full opacity, so the stack would be controls for a
+    // picture that is not there. The host does not have to know - the globe
+    // says so through the local, from inside its own box. See GlobeSurface.
+    if (LocalGlobeImageryOffline.current) return
+
     GlassPlate(modifier = modifier.width(ControlSize).reportBoundsInParent(boundsReporter)) {
         PlateCell(
             onClick = onZoomIn,

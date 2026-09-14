@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.feature.globe.render
 
+import android.graphics.Rect
 import android.view.Choreographer
 import android.view.Surface
 import androidx.tracing.trace
@@ -165,12 +166,61 @@ internal class GlobeRenderHost(
                 filamentView?.viewport = Viewport(0, 0, width, height)
                 viewport = GlobeViewport(width.toFloat(), height.toFloat())
                 onViewportChanged(viewport)
+                applyGestureExclusion()
             }
         }
     }
 
     /** The viewport the CPU projection must use — pixels, matching the surface. */
     fun currentViewport(): GlobeViewport = viewport
+
+    /**
+     * Whether the system's edge gestures are kept off this surface at all.
+     *
+     * True for a globe touch moves; false for one that is only looked at, where
+     * excluding the strip would break the back gesture for nothing. See
+     * [GestureExclusion] for what is excluded and what is deliberately left.
+     */
+    var excludeSystemGestures: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            applyGestureExclusion()
+        }
+
+    /**
+     * How much of the top of this surface the host covers with its own chrome,
+     * in px — the collapse button, or the app bar. The exclusion band starts
+     * below it, so the system's back gesture still works beside those controls.
+     */
+    var gestureExclusionTopPx: Int = 0
+        set(value) {
+            if (field == value) return
+            field = value
+            applyGestureExclusion()
+        }
+
+    /**
+     * Re-derives the exclusion rects from the surface's size and the two
+     * properties above. Called from [UiHelper.RendererCallback.onResized],
+     * which is where this class learns the view's size, and from the setters,
+     * because the host binds them from a Compose `update` block that can run
+     * after the surface has already been sized.
+     */
+    private fun applyGestureExclusion() {
+        val band = if (excludeSystemGestures) {
+            GestureExclusion.forSurface(
+                width = viewport.width.toInt(),
+                height = viewport.height.toInt(),
+                topChromePx = gestureExclusionTopPx,
+                maxBandPx = (MAX_EXCLUSION_DP * view.resources.displayMetrics.density).toInt(),
+            )
+        } else {
+            null
+        }
+        view.systemGestureExclusionRects =
+            listOfNotNull(band?.let { Rect(it.left, it.top, it.right, it.bottom) })
+    }
 
     /** The view has attached to its window. */
     fun onAttached() {
@@ -465,6 +515,16 @@ internal class GlobeRenderHost(
         }
     }
 }
+
+/**
+ * The most exclusion height the platform honours per edge, in dp.
+ *
+ * `View.setSystemGestureExclusionRects` documents the cap; above it the request
+ * is silently trimmed, so the band asks for exactly this much and places it
+ * where a spin starts rather than leaving the platform to choose. See
+ * [GestureExclusion].
+ */
+private const val MAX_EXCLUSION_DP = 200f
 
 /**
  * A view that draws the globe, whichever kind it is.

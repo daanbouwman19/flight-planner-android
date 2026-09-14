@@ -3,13 +3,20 @@ package com.github.daanbouwman.flightplanner.feature.globe.ui
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.DecayAnimationSpec
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
@@ -45,6 +53,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.LocalReduceMotion
 import com.github.daanbouwman.flightplanner.feature.globe.GlobeStatus
@@ -64,6 +73,7 @@ import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeSurfaceVie
 import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeTextureView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
 
 /**
@@ -272,6 +282,7 @@ fun GlobeSurface(
         nestedVerticalScroll = nestedVerticalScroll,
         embedded = embedded,
         spaceColor = null,
+        topChromeInset = topChromeInset,
         statusStripPx = statusStripPx,
         onImageryVisible = onImageryVisible,
         onImageryReachesTop = onImageryReachesTop,
@@ -367,6 +378,9 @@ fun GlobeNetworkSurface(
         nestedVerticalScroll = nestedVerticalScroll,
         embedded = embedded,
         spaceColor = spaceColor,
+        // No host chrome over the Stats band: the card's header is above the
+        // box, not on it.
+        topChromeInset = 0.dp,
         statusStripPx = 0f,
         onImageryVisible = onImageryVisible,
         onImageryReachesTop = {},
@@ -419,6 +433,13 @@ private fun GlobeCanvas(
     embedded: Boolean,
     /** See [GlobeNetworkSurface]. Null paints the page colour outside the planet. */
     spaceColor: Color?,
+    /**
+     * How much of the top of the box the host covers with its own chrome. The
+     * labels fade under it (see the callers), and the system-gesture exclusion
+     * band starts below it, so the back gesture keeps working beside the
+     * controls that live there — see `GestureExclusion`.
+     */
+    topChromeInset: Dp,
     statusStripPx: Float,
     onImageryVisible: (Boolean) -> Unit,
     onImageryReachesTop: (Boolean) -> Unit,
@@ -491,7 +512,7 @@ private fun GlobeCanvas(
     }
 
     val ink = rememberGlobeInk(space = spaceColor)
-    val destinationInk = androidx.compose.material3.MaterialTheme.colorScheme.tertiary
+    val destinationInk = MaterialTheme.colorScheme.tertiary
     val reduceMotion = LocalReduceMotion.current
     val scope = rememberCoroutineScope()
 
@@ -610,6 +631,29 @@ private fun GlobeCanvas(
         latestOnImageryVisible(true)
     }
 
+    // **Offline, said out loud — but only when it is true.** Before this, a
+    // globe with no network was the still map wearing the globe's chrome: a
+    // camera stack driving a camera nothing rendered, a credit for imagery that
+    // was not there, and fullscreen still on offer. The loader knows the
+    // difference between "nothing has landed yet" and "nothing answered" — see
+    // TileStats.imageryUnreachable — and this polls it while there is still no
+    // imagery, after a grace long enough that a slow first tile is not called an
+    // outage. A tile landing ends the poll through `firstImagery`; a connection
+    // returning ends it through the loader's own backoff, whose next success
+    // clears the failure before the next poll reads it.
+    var imageryOffline by remember(session) { mutableStateOf(false) }
+    LaunchedEffect(session, firstImagery) {
+        if (firstImagery) {
+            imageryOffline = false
+            return@LaunchedEffect
+        }
+        delay(OfflineGraceMs)
+        while (isActive) {
+            imageryOffline = session.loader.stats().imageryUnreachable
+            delay(OfflinePollMs)
+        }
+    }
+
     // The screen this surface was on is going away, or the session under it
     // changed: either way it is no longer imagery under anyone's status bar.
     DisposableEffect(session) {
@@ -655,6 +699,9 @@ private fun GlobeCanvas(
     // happen before the first control can be tapped.
     controls?.bind(cameraState, fitted)
 
+    // In px, for the view: the exclusion band is set on the `View`, in its pixels.
+    val topChromePx = with(LocalDensity.current) { topChromeInset.roundToPx() }
+
     // **`clipToBounds`, and it is load-bearing.** The label plates are placed by
     // a `layout` block at a projected pixel, and Compose lets a child be placed
     // outside its parent and drawn there. A dot near the bottom of the sphere
@@ -691,6 +738,12 @@ private fun GlobeCanvas(
                 host.onViewportChanged = { viewport = it }
                 host.onScreen = onScreen
                 host.embedded = embedded
+                // The system's back-gesture strip runs the full height of both
+                // window edges, and a spin that starts in it navigates away.
+                // Only for a globe touch actually moves; the host's chrome row
+                // is left to the system. See GestureExclusion.
+                host.excludeSystemGestures = interactive
+                host.gestureExclusionTopPx = topChromePx
             },
             modifier = Modifier
                 .fillMaxSize()
@@ -773,9 +826,74 @@ private fun GlobeCanvas(
             markers(cameraState, viewport, ink.route, destinationInk)
         }
 
-        overlay()
+        // Over the still map, under the host's chrome: the one sentence the
+        // globe says about itself, and it says it only when it is true.
+        if (imageryOffline) {
+            GlobeOfflineNotice(modifier = Modifier.align(Alignment.Center))
+        }
+
+        // The host's chrome is told, through the local rather than a parameter,
+        // because the host composes it from outside this box and the one piece
+        // that has to react — the camera stack — is this module's own. See
+        // GlobeCameraControls.
+        CompositionLocalProvider(LocalGlobeImageryOffline provides imageryOffline) {
+            overlay()
+        }
     }
 }
+
+/**
+ * Whether the globe under the host's overlay has no imagery and the reason is
+ * the network. Read by [GlobeCameraControls], which composes nothing while it
+ * is true: a zoom control over a still map drives a camera nothing renders.
+ */
+internal val LocalGlobeImageryOffline = compositionLocalOf { false }
+
+/**
+ * "Imagery unavailable offline", on the glass plate.
+ *
+ * The design system's [EmptyState] — this *is* an empty state, the app working
+ * and waiting on something outside it, not an error — on the same plate every
+ * mark over the imagery is made on: `surfaceContainer` at [PlateAlpha], the
+ * `extraSmall` corner, one hairline. A plate rather than bare text because the
+ * still map underneath has an arc through it, and a sentence crossing a line
+ * is a sentence half read.
+ */
+@Composable
+private fun GlobeOfflineNotice(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier
+            .padding(OfflineNoticeGutter)
+            .widthIn(max = OfflineNoticeMaxWidth),
+        shape = MaterialTheme.shapes.extraSmall,
+        color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = PlateAlpha),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        EmptyState(
+            title = stringResource(R.string.globe_offline_title),
+            message = stringResource(R.string.globe_offline_message),
+        )
+    }
+}
+
+/**
+ * How long a globe with no imagery is given before the loader is asked whether
+ * the network is the reason. Long enough that a slow first tile — a cold
+ * connection, a far provider — is not called an outage; the loader's own
+ * failures arrive well inside it when there is genuinely no network, because a
+ * refused connection is immediate.
+ */
+private const val OfflineGraceMs = 2_000L
+
+/** How often the loader is asked, while there is still no imagery. Two atomics. */
+private const val OfflinePollMs = 1_000L
+
+/** Keeps the plate off the host's controls in the corners, and off the limb. */
+private val OfflineNoticeGutter = 24.dp
+
+/** Wide enough for the message in two or three lines at `bodyMedium`. */
+private val OfflineNoticeMaxWidth = 320.dp
 
 /**
  * The chrome the concept puts on the glass, wired to a camera.
