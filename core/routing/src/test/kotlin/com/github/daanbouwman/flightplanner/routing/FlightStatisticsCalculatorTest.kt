@@ -270,3 +270,105 @@ class FlightStatisticsCalculatorTieBreakTest {
         stats.longestFlight shouldBe "EEEE to FFFF"
     }
 }
+
+/**
+ * [FlightStatisticsCalculator.calculateDetailed]: the same pass with its
+ * identities kept, which is what the Stats dashboard consumes.
+ *
+ * The tie-break cases here came over from `StatsGroupingTest` when the
+ * dashboard's own copies of the scan were deleted in favour of the calculator;
+ * they assert on records and counts, which `calculate()`'s formatted strings
+ * cannot express.
+ */
+class FlightStatisticsCalculatorDetailedTest {
+
+    @Test
+    fun `an empty log produces the defaults`() {
+        FlightStatisticsCalculator.calculateDetailed(emptyList()) shouldBe DetailedFlightStatistics()
+    }
+
+    @Test
+    fun `calculate is a projection of calculateDetailed`() {
+        val records = listOf(
+            flight(1, "KJFK", "EGLL", aircraftId = 7, distanceNm = 3000),
+            flight(2, "EHAM", "EGLL", aircraftId = 3, distanceNm = 200),
+            flight(3, "EGLL", "EHAM", aircraftId = 3, distanceNm = 200),
+        )
+
+        val detailed = FlightStatisticsCalculator.calculateDetailed(records)
+        val projected = FlightStatisticsCalculator.calculate(records, fleet)
+
+        projected.totalFlights shouldBe detailed.totalFlights
+        projected.totalDistanceNm shouldBe detailed.totalDistanceNm
+        projected.averageFlightDistanceNm shouldBe detailed.averageFlightDistanceNm
+        projected.longestFlight shouldBe "KJFK to EGLL"
+        detailed.longestFlight?.id shouldBe 1L
+        projected.shortestFlight shouldBe "EHAM to EGLL"
+        detailed.shortestFlight?.id shouldBe 2L
+        projected.favoriteDepartureAirport shouldBe detailed.favoriteDepartureAirport?.icao
+        projected.favoriteArrivalAirport shouldBe detailed.favoriteArrivalAirport?.icao
+        projected.mostVisitedAirport shouldBe detailed.mostVisitedAirport?.icao
+        detailed.mostFlownAircraftId shouldBe 3
+        projected.mostFlownAircraft shouldBe "Airbus A320"
+    }
+
+    @Test
+    fun `airport highlights break ties by alphabetical icao and carry their counts`() {
+        val records = listOf(
+            flight(1, "KJFK", "EGLL", aircraftId = 3, distanceNm = 3000),
+            flight(2, "EHAM", "EGLL", aircraftId = 7, distanceNm = 200),
+        )
+
+        val detailed = FlightStatisticsCalculator.calculateDetailed(records)
+
+        // Departures: EHAM (1), KJFK (1) -> EHAM wins alphabetically.
+        detailed.favoriteDepartureAirport shouldBe AirportTally("EHAM", 1)
+        // Arrivals: EGLL (2).
+        detailed.favoriteArrivalAirport shouldBe AirportTally("EGLL", 2)
+        // Most visited: EGLL (2 visits), EHAM (1 visit), KJFK (1 visit).
+        detailed.mostVisitedAirport shouldBe AirportTally("EGLL", 2)
+    }
+
+    @Test
+    fun `longest keeps the last and shortest the first of equal distances, as records`() {
+        val records = listOf(
+            flight(1, "EHAM", "EGLL", aircraftId = 3, distanceNm = 200), // first min
+            flight(2, "EGLL", "EHAM", aircraftId = 7, distanceNm = 200), // second min
+            flight(3, "EHAM", "KJFK", aircraftId = 7, distanceNm = 3160), // first max
+            flight(4, "KJFK", "EHAM", aircraftId = 7, distanceNm = 3160), // second max
+        )
+
+        val detailed = FlightStatisticsCalculator.calculateDetailed(records)
+
+        detailed.shortestFlight shouldBe records[0]
+        detailed.longestFlight shouldBe records[3]
+    }
+
+    @Test
+    fun `a missing distance is the shortest record and reads back as the record itself`() {
+        val undistanced = flight(2, "LFPG", "EDDF", distanceNm = null)
+        val detailed = FlightStatisticsCalculator.calculateDetailed(
+            listOf(flight(1, "EHAM", "EGLL", distanceNm = 400), undistanced),
+        )
+
+        // The record keeps its null; the caller decides how to display it.
+        detailed.shortestFlight shouldBe undistanced
+        detailed.totalDistanceNm shouldBe 400
+        detailed.averageFlightDistanceNm shouldBe 200.0
+    }
+
+    @Test
+    fun `most flown aircraft ties go to the lowest id, as an id`() {
+        FlightStatisticsCalculator.calculateDetailed(
+            listOf(
+                flight(1, "EHAM", "EGLL", aircraftId = 7),
+                flight(2, "EGLL", "EHAM", aircraftId = 3),
+            ),
+        ).mostFlownAircraftId shouldBe 3
+
+        // The id is reported even when no fleet could name it.
+        FlightStatisticsCalculator.calculateDetailed(
+            listOf(flight(1, "EHAM", "EGLL", aircraftId = 99)),
+        ).mostFlownAircraftId shouldBe 99
+    }
+}
