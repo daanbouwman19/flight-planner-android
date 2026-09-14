@@ -226,11 +226,21 @@ fun RouteCard(
                 arc = row.arc,
                 outline = outline,
                 modifier = Modifier.matchParentSize(),
+                // The band the airframe line is printed across: the card's
+                // padding plus the line itself. The route is framed below it, so
+                // a north–south leg no longer parks its departure on the title's
+                // baseline; the land still runs through it. The bottom edge is
+                // not reserved the same way — the codes sit at the card's edges
+                // and the chips are translucent, so a marker can pass behind
+                // them and still read, where a marker under a word cannot.
+                topInset = CardPadding + with(LocalDensity.current) {
+                    MaterialTheme.typography.titleSmall.lineHeight.toDp()
+                },
             )
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
+                    .padding(CardPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 AircraftLine(row)
@@ -465,6 +475,9 @@ private val FlightRulesSlotHeight = 24.dp
 /** See the class KDoc: a floor, not a fixed height. */
 private val CardHeight = 180.dp
 
+/** The content's inset from the card's edge, on all four sides. */
+private val CardPadding = 16.dp
+
 /** The floor in a short window — a phone in landscape, or a split-screen half. */
 private val CompactCardHeight = 132.dp
 
@@ -496,6 +509,28 @@ private fun RouteCardPreview() {
                 // input, these two stop differing and the preview says so.
                 RouteCard(PlanPreviewData.longHaul, outline, onClick = {}, onMarkFlown = {}, onReplace = {})
                 RouteCard(PlanPreviewData.transatlantic, outline, onClick = {}, onMarkFlown = {}, onReplace = {})
+            }
+        }
+    }
+}
+
+/**
+ * The two shapes the map has to handle specially: a hop too short for two
+ * markers, drawn as one ring, and a north–south leg whose northern end would
+ * otherwise sit under the airframe title.
+ */
+@LightDarkPreview
+@Composable
+private fun RouteCardShortAndTallPreview() {
+    FlightPlannerTheme(dynamicColor = false) {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            val outline = rememberPreviewWorldOutline()
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                RouteCard(PlanPreviewData.shortHop, outline, onClick = {}, onMarkFlown = {}, onReplace = {})
+                RouteCard(PlanPreviewData.northSouth, outline, onClick = {}, onMarkFlown = {}, onReplace = {})
             }
         }
     }

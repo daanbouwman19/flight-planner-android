@@ -33,6 +33,9 @@ internal object PlanPreviewData {
     val haneda = airport(2, "RJTT", "Tokyo Haneda International", 35.5533, 139.7811, 11811)
     val kennedy = airport(3, "KJFK", "John F Kennedy International", 40.6398, -73.7789, 14511)
     val innsbruck = airport(4, "LOWI", "Innsbruck", 47.2602, 11.3439, 6562)
+    val rotterdam = airport(5, "EHRD", "Rotterdam The Hague", 51.9569, 4.4372, 7218)
+    val oslo = airport(6, "ENGM", "Oslo Gardermoen", 60.1939, 11.1004, 11811)
+    val rome = airport(7, "LIRF", "Rome Fiumicino", 41.8003, 12.2389, 12795)
 
     val boeing = aircraft(1, "Boeing", "777-300ER", "B77W", "Wide-body", range = 7370, cruise = 490)
     val cessna = aircraft(2, "Textron Aviation", "Cessna 172", "C172", "Light", range = 640, cruise = 122)
@@ -51,6 +54,20 @@ internal object PlanPreviewData {
      * its own preview.
      */
     val runwayTooShort = row(id = 3, aircraft = boeing, from = schiphol, to = innsbruck)
+
+    /**
+     * A 30 NM hop. Its two ends project a few pixels apart on a card, which is
+     * the case the map collapses to a single ring — the sub-100 NM smudge a
+     * light aircraft produces in the real list.
+     */
+    val shortHop = row(id = 4, aircraft = cessna, from = schiphol, to = rotterdam)
+
+    /**
+     * A leg that runs almost due south. Framed symmetrically its northern end
+     * sat on the airframe title's baseline; this is the case the map's top
+     * inset exists for.
+     */
+    val northSouth = row(id = 5, aircraft = boeing, from = oslo, to = rome)
 
     val batch: List<RouteRow> = listOf(longHaul, transatlantic, runwayTooShort)
 

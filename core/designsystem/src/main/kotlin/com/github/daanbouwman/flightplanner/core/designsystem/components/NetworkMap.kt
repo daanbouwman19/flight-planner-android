@@ -26,7 +26,6 @@ import com.github.daanbouwman.flightplanner.routing.MapFrame
 import com.github.daanbouwman.flightplanner.routing.NetworkFraming
 import com.github.daanbouwman.flightplanner.routing.RouteArc
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
-import kotlin.math.hypot
 import kotlin.math.sqrt
 
 /**
@@ -65,7 +64,8 @@ class NetworkNode(
  *   *first* one way, and that is the way its [GeoArc] runs; the arrowhead at
  *   its midpoint says so. A leg whose projected chord is shorter than
  *   [MinArrowChordDp] drops the head rather than stacking it on its own
- *   endpoints — the same threshold the route card applies to a short hop.
+ *   endpoints — the one threshold, declared beside [RouteMap], below which
+ *   the route card collapses a hop to a single ring.
  * - **Size means count.** A dot's radius runs from [NodeMinRadiusDp] — the
  *   route card's own endpoint — to [NodeMaxRadiusDp] as the *square root* of
  *   `visits / maxVisits`, exactly as the globe's `GlobeNodes` does, so the
@@ -152,11 +152,7 @@ fun NetworkMap(
                                 lineTo(projected[i * 2] * size.width, projected[i * 2 + 1] * size.height)
                             }
                         }
-                        val chord = hypot(
-                            (projected[projected.size - 2] - projected[0]) * size.width,
-                            (projected[projected.size - 1] - projected[1]) * size.height,
-                        )
-                        if (chord >= minArrowChord) {
+                        if (projectedChord(projected, size.width, size.height) >= minArrowChord) {
                             arrowPath(projected, projected.size / 4, size.width, size.height, arrowLength)
                                 ?.let(arrowPaths::add)
                         }
@@ -229,15 +225,6 @@ internal const val NodeMinRadiusDp = EndpointRadiusDp
 
 /** The most-visited field in the set. */
 internal const val NodeMaxRadiusDp = 9f
-
-/**
- * Below this projected chord a leg carries no arrowhead.
- *
- * At 24 dp the head, its casing and the two endpoint dots would overlap into one
- * mark, and a mark that cannot be read is worse than a leg with no stated
- * direction — the neighbour it connects to still says where it goes.
- */
-internal const val MinArrowChordDp = 24f
 
 @LightDarkPreview
 @Composable

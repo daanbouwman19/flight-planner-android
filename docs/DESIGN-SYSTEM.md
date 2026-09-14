@@ -244,6 +244,7 @@ data class StatTile(val label: String, val value: Int,
 
 
 @Composable fun RouteMap(arc: GeoArc, outline: WorldOutline, modifier: Modifier = Modifier,
+                         topInset: Dp = 0.dp,
                          landColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                          coastColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
                          routeColor: Color = MaterialTheme.colorScheme.primary,
@@ -336,6 +337,19 @@ Notes that are easy to get wrong:
   off-window coastline had the whole screen to draw on. The crop is a `clipRect`
   inside the draw scope rather than `Modifier.clipToBounds()`, which is a
   `graphicsLayer` and would put an offscreen layer on every card in the list.
+  **The route stays out from under the text.** `topInset` is how much of the top of
+  the map belongs to something printed over it — the route card passes its padding
+  plus the airframe title's line height. `MapFrame.forRoute` frames the route in the
+  region *below* that band, with its usual 12 % padding applied within the region,
+  and then extends the window north to cover the whole canvas: land runs through
+  the band, the route does not, and the projected aspect is unchanged. Before it,
+  a north–south leg parked its northern marker on the title's baseline. The detail
+  hero and `NetworkMap` have nothing printed over them and leave it at zero.
+  **A short hop is one ring.** Below `MinArrowChordDp` (24 dp) between the
+  projected ends, the departure ring, destination dot and arrowhead collapsed into
+  a blob — a 66 NM hop on a phone. Such a leg is drawn as its cased line under a
+  single hollow ring at the arc's midpoint, and no head. The threshold is the one
+  `NetworkMap` uses to drop a leg's arrowhead, declared once in `RouteMap.kt`.
 - **`RunwayDiagram` and `SkyProfile` take a required `contentDescription`.**
   Both are one childless canvas node, and both used to be silent to a screen
   reader — the diagram cleared its semantics and set nothing, the scene set
@@ -356,7 +370,8 @@ Notes that are easy to get wrong:
   retune one and both maps move. What a network adds: an arrowhead per leg in
   the direction the leg was **first** flown (the `GeoArc` is sampled that way by
   the caller, which is the only fact the map cannot know), dropped when the
-  projected chord is under 24 dp so a short hop is not a smudge; dots whose
+  projected chord is under `MinArrowChordDp` — `RouteMap`'s own short-hop
+  threshold — so a short leg is not a smudge; dots whose
   radius runs 4–9 dp as the *square root* of `visits / maxVisits`, exactly as the
   globe's node layer does, so the dot's area is the count; every leg's casing
   before any leg's line, so crossings read as one drawing. The frame is fitted to

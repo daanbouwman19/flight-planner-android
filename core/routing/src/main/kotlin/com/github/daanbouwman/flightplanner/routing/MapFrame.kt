@@ -289,9 +289,28 @@ class MapFrame(
         /**
          * A window around a sampled route, sized to the canvas it will be drawn on.
          *
+         * ### A band at the top can be kept clear
+         *
+         * The route card prints its title across the top of the map, and a
+         * north–south leg framed symmetrically put its northern endpoint on the
+         * title's baseline and ran the arc under the letters. [topInsetFraction]
+         * is the fraction of the canvas height that belongs to that text: the
+         * route is fitted into the region *below* it, with [paddingFraction]
+         * applied within that region, and the window is then extended north to
+         * cover the full canvas. So the band is part of the map — land runs
+         * through it, and a coast is not cut off at the title — and no part of
+         * the route is. The projected aspect is preserved: the region below the
+         * inset has the aspect `aspect / (1 - inset)`, and extending its height
+         * by `1 / (1 - inset)` brings it back to the canvas's own.
+         *
+         * Zero by default, which is every map without text over it — the detail
+         * hero and the network map.
+         *
          * @param aspect the canvas's width divided by its height. The spans are
          *   fitted to it, so a degree covers the same number of pixels on both axes
          *   and land is not squashed to the card's shape.
+         * @param topInsetFraction the fraction of the canvas height, from the top,
+         *   that the route keeps clear. In `[0, 1)`.
          */
         fun forRoute(
             lats: DoubleArray,
@@ -299,6 +318,33 @@ class MapFrame(
             aspect: Double,
             minSpanDegrees: Double = MIN_SPAN_DEGREES,
             paddingFraction: Double = PADDING_FRACTION,
+            topInsetFraction: Double = 0.0,
+        ): MapFrame {
+            require(topInsetFraction >= 0.0 && topInsetFraction < 1.0) {
+                "Top inset must leave some of the canvas for the route, was $topInsetFraction"
+            }
+            if (topInsetFraction == 0.0) return fitted(lats, lons, aspect, minSpanDegrees, paddingFraction)
+
+            val remaining = 1.0 - topInsetFraction
+            val band = fitted(lats, lons, aspect / remaining, minSpanDegrees, paddingFraction)
+            val spanLat = band.spanLat / remaining
+            return MapFrame(
+                centreLon = band.centreLon,
+                // The band keeps its place at the bottom of the canvas; the extra
+                // height is all above it, so the centre moves north by half of it.
+                centreLat = band.centreLat + (spanLat - band.spanLat) / 2.0,
+                spanLon = band.spanLon,
+                spanLat = spanLat,
+            )
+        }
+
+        /** [forRoute] with the route filling the whole canvas. */
+        private fun fitted(
+            lats: DoubleArray,
+            lons: DoubleArray,
+            aspect: Double,
+            minSpanDegrees: Double,
+            paddingFraction: Double,
         ): MapFrame {
             require(lats.isNotEmpty() && lats.size == lons.size) {
                 "Need at least one point and matching arrays, got ${lats.size} and ${lons.size}"
