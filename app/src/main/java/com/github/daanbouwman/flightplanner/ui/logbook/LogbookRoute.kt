@@ -23,7 +23,6 @@ import com.github.daanbouwman.flightplanner.ui.chrome.LocalSharedTransitionScope
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailPane
 import com.github.daanbouwman.flightplanner.ui.detail.RouteDetailPaneViewModel
 import com.github.daanbouwman.flightplanner.ui.profile.ProfileScreen
-import com.github.daanbouwman.flightplanner.ui.profile.ProfileSegment
 import kotlinx.coroutines.launch
 
 /**
@@ -42,7 +41,6 @@ fun LogbookRoute(
 
     if (!twoPanes) {
         ProfileScreen(
-            segment = ProfileSegment.Logbook,
             onOpenSettings = onOpenSettings,
             onOpenRoute = onOpenRoute,
             modifier = modifier,
@@ -67,7 +65,6 @@ fun LogbookRoute(
             listPane = {
                 AnimatedPane {
                     ProfileScreen(
-                        segment = ProfileSegment.Logbook,
                         onOpenSettings = onOpenSettings,
                         onOpenRoute = { row ->
                             val route = row.toDestination()

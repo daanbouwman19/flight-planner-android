@@ -17,6 +17,7 @@ import com.github.daanbouwman.flightplanner.search.rankedAircraftResults
 import com.github.daanbouwman.flightplanner.search.rankedAirportResults
 import com.github.daanbouwman.flightplanner.ui.plan.SearchScope
 import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
+import com.github.daanbouwman.flightplanner.ui.STOP_TIMEOUT_MILLIS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
@@ -212,15 +213,6 @@ class LogbookViewModel @Inject constructor(
         }
     }
 
-    private companion object {
-        /**
-         * How long the flow keeps running after the last collector goes away.
-         * Matches [com.github.daanbouwman.flightplanner.ui.plan.PlanViewModel]'s
-         * own constant: long enough to survive a configuration change, short
-         * enough that a backgrounded app stops observing the database.
-         */
-        const val STOP_TIMEOUT_MILLIS = 5_000L
-    }
 }
 
 /** Events the Logbook screen should act on, usually by showing a snackbar. */

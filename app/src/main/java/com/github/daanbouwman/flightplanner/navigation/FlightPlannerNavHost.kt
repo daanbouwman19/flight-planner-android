@@ -30,7 +30,6 @@ import com.github.daanbouwman.flightplanner.ui.fleet.toFleetDetailDestination
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.ui.profile.ProfileScreen
-import com.github.daanbouwman.flightplanner.ui.profile.ProfileSegment
 import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRoute
 import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRow
 import com.github.daanbouwman.flightplanner.ui.settings.LicencesScreen

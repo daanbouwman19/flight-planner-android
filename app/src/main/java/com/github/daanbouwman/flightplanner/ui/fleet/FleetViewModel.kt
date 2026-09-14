@@ -6,6 +6,7 @@ import com.github.daanbouwman.flightplanner.core.database.repository.FleetReposi
 import com.github.daanbouwman.flightplanner.di.DefaultDispatcher
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
+import com.github.daanbouwman.flightplanner.ui.STOP_TIMEOUT_MILLIS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -89,8 +90,4 @@ class FleetViewModel @Inject constructor(
         viewModelScope.launch { runCatchingCancellable { fleetRepository.update(spec) } }
     }
 
-    private companion object {
-        /** Matches [com.github.daanbouwman.flightplanner.ui.logbook.LogbookViewModel]'s own constant. */
-        const val STOP_TIMEOUT_MILLIS = 5_000L
-    }
 }

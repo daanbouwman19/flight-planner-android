@@ -8,6 +8,7 @@ import com.github.daanbouwman.flightplanner.core.database.repository.FleetReposi
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
+import com.github.daanbouwman.flightplanner.ui.STOP_TIMEOUT_MILLIS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -51,7 +52,4 @@ class FleetDetailViewModel @Inject constructor(
         viewModelScope.launch { runCatchingCancellable { fleetRepository.update(spec) } }
     }
 
-    private companion object {
-        const val STOP_TIMEOUT_MILLIS = 5_000L
-    }
 }

@@ -1,6 +1,5 @@
 package com.github.daanbouwman.flightplanner.ui.profile
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,24 +12,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.R
@@ -38,13 +26,12 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.DeviceP
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.ui.SettingsAction
-import com.github.daanbouwman.flightplanner.ui.chrome.LocalAppChromeState
 import com.github.daanbouwman.flightplanner.ui.chrome.ScreenBottomGutter
 import com.github.daanbouwman.flightplanner.ui.chrome.ScreenCompactTopGutter
 import com.github.daanbouwman.flightplanner.ui.chrome.ScreenHorizontalGutter
 import com.github.daanbouwman.flightplanner.ui.chrome.ScreenTopGutter
-import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.ScrollToTopOnReselect
+import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
 import com.github.daanbouwman.flightplanner.ui.chrome.rememberChromeScrollConnection
 import com.github.daanbouwman.flightplanner.ui.chrome.rememberContentInsets
@@ -52,33 +39,25 @@ import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRow
 import com.github.daanbouwman.flightplanner.ui.logbook.LogbookScreen
 
 /**
- * Shared container for the Logbook and Stats section screens.
+ * The Logbook's frame: insets, centring up to [WideMaxContentWidth], the app
+ * header and the chrome-retracting scroll connection.
  *
- * Provides consistent insets, responsive centering up to [WideMaxContentWidth],
- * app header affordance, and chrome scroll handling across both top-level
- * sections without duplicating the layout scaffolding.
+ * It was the "Profile" section's container, with a `ProfileSegment` enum that
+ * switched between Logbook and Stats. Stats then became a section of its own and
+ * the enum was left with one value — a `when` with one branch, a segmented
+ * control that was never drawn, a `LaunchedEffect` that could not fire. Only
+ * the frame was ever load-bearing, and it is what is left. Kept as its own
+ * composable rather than folded into `LogbookScreen` because `LogbookRoute`
+ * composes it on both sides of its pane split.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
-    segment: ProfileSegment,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenRoute: (LogbookRow) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
-    val chrome = LocalAppChromeState.current
-
-    // Only meaningful while Logbook is showing — listState is not attached to
-    // any LazyColumn on the Stats segment, so a reselect there would have
-    // nothing to scroll.
-    if (segment == ProfileSegment.Logbook) {
-        ScrollToTopOnReselect(listState = listState)
-    }
-
-    LaunchedEffect(segment) {
-        if (segment != ProfileSegment.Logbook) chrome.show()
-    }
+    ScrollToTopOnReselect(listState = listState)
 
     val chromeScroll = rememberChromeScrollConnection(listState = listState)
     val contentInsets = rememberContentInsets()
@@ -103,48 +82,29 @@ fun ProfileScreen(
         val topClearance = insets.calculateTopPadding() +
             if (compactHeight) ScreenCompactTopGutter else ScreenTopGutter
         val bottomPadding = insets.calculateBottomPadding() + ScreenBottomGutter
-        val contentPadding = PaddingValues(
-            start = horizontalStart,
-            end = horizontalEnd,
-            top = topClearance,
-            bottom = bottomPadding,
+
+        LogbookScreen(
+            onOpenRoute = onOpenRoute,
+            listState = listState,
+            // A sticky month header pins to the LazyColumn's own top edge, not
+            // to its contentPadding — Compose's stickyHeader ignores content
+            // padding when it clamps a header's pinned offset, so the top
+            // clearance moves to real modifier padding below, which a pinned
+            // header cannot cross. contentPadding's own top is zeroed out here
+            // so the clearance isn't reserved twice.
+            contentPadding = PaddingValues(
+                start = horizontalStart,
+                end = horizontalEnd,
+                bottom = bottomPadding,
+            ),
+            header = { ProfileHeader(onOpenSettings = onOpenSettings) },
+            modifier = Modifier.padding(top = topClearance),
         )
-
-        val header: @Composable () -> Unit = {
-            ProfileHeader(
-                titleRes = segment.labelRes,
-                onOpenSettings = onOpenSettings,
-            )
-        }
-
-        when (segment) {
-            ProfileSegment.Logbook -> LogbookScreen(
-                onOpenRoute = onOpenRoute,
-                listState = listState,
-                // A sticky month header pins to the LazyColumn's own top edge, not
-                // to its contentPadding — Compose's stickyHeader ignores content
-                // padding when it clamps a header's pinned offset, so the top
-                // clearance moves to real modifier padding below, which a pinned
-                // header cannot cross. contentPadding's own top is zeroed out here
-                // so the clearance isn't reserved twice.
-                contentPadding = PaddingValues(
-                    start = horizontalStart,
-                    end = horizontalEnd,
-                    bottom = bottomPadding,
-                ),
-                header = header,
-                modifier = Modifier.padding(top = topClearance),
-            )
-        }
     }
 }
 
-/** Which view Profile is currently showing. */
-enum class ProfileSegment { Logbook }
-
 @Composable
 private fun ProfileHeader(
-    titleRes: Int,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -155,7 +115,7 @@ private fun ProfileHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = stringResource(titleRes),
+                text = stringResource(R.string.destination_logbook),
                 style = if (compactHeight) {
                     MaterialTheme.typography.titleLarge
                 } else {
@@ -170,21 +130,11 @@ private fun ProfileHeader(
     }
 }
 
-private val ProfileSegment.iconRes: Int
-    get() = when (this) {
-        ProfileSegment.Logbook -> R.drawable.ic_nav_logbook
-    }
-
-private val ProfileSegment.labelRes: Int
-    get() = when (this) {
-        ProfileSegment.Logbook -> R.string.destination_logbook
-    }
-
 @LightDarkPreview
 @DevicePreviews
 @Composable
 private fun ProfileScreenPreview() {
     FlightPlannerTheme(dynamicColor = false) {
-        ProfileScreen(segment = ProfileSegment.Logbook, onOpenSettings = {})
+        ProfileScreen(onOpenSettings = {})
     }
 }

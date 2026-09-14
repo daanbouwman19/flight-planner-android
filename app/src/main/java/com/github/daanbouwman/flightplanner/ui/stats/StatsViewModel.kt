@@ -12,6 +12,7 @@ import com.github.daanbouwman.flightplanner.routing.AirportTally
 import com.github.daanbouwman.flightplanner.routing.FlightStatisticsCalculator
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
+import com.github.daanbouwman.flightplanner.ui.STOP_TIMEOUT_MILLIS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
@@ -24,8 +25,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 import javax.inject.Inject
-
-private const val STOP_TIMEOUT_MILLIS = 5_000L
 
 /**
  * The dashboard figures that depend on the logbook, fleet and timeframe — but

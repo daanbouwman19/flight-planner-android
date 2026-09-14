@@ -28,6 +28,7 @@ import com.github.daanbouwman.flightplanner.search.rankedAirportResults
 import com.github.daanbouwman.flightplanner.settings.SettingsRepository
 import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
+import com.github.daanbouwman.flightplanner.ui.STOP_TIMEOUT_MILLIS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -915,13 +916,6 @@ class PlanViewModel @Inject constructor(
     }
 
     private companion object {
-        /**
-         * How long a flow keeps running after the last collector goes away.
-         * Long enough to survive a configuration change, short enough that a
-         * backgrounded app stops observing the database.
-         */
-        const val STOP_TIMEOUT_MILLIS = 5_000L
-
         /**
          * How many destinations [replace] generates to choose one from. Small,
          * because the only thing the spares buy is a way past the destination
