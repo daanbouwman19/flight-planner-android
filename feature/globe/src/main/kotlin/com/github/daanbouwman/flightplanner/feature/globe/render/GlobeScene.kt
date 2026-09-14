@@ -499,13 +499,14 @@ internal class GlobeScene(
     }
 
     /**
-     * Hands decoded tiles to the atlas, newest first, until the budget is spent.
+     * Hands decoded tiles to the atlas, in the order they were fetched, until the
+     * budget is spent.
      *
-     * Newest first for the reason the loader's queue is: the tile decoded a
-     * moment ago is for where the camera is, and one from the start of a pan
-     * may be for a place that has scrolled off. A tile the atlas declines — no
-     * evictable slot, which the current budgets make impossible — is un-held so
-     * it can be asked for again rather than lost.
+     * Coarsest first, because that is what the loader's queue fetches first and
+     * what its ready deque hands back first — see `TileLoader.pollReady`: a leaf
+     * whose ancestor lands before it has something to be drawn from meanwhile. A
+     * tile the atlas declines — no evictable slot, which the current budgets make
+     * impossible — is un-held so it can be asked for again rather than lost.
      */
     private fun uploadReadyTiles() {
         val deadline = System.nanoTime() + UPLOAD_BUDGET_NANOS

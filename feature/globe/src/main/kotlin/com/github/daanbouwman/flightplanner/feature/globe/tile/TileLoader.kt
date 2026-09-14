@@ -44,14 +44,15 @@ internal data class TileStats(
  * Fetches, decodes and hands back tiles — everything between a `(z, x, y)` and
  * a buffer the atlas can upload.
  *
- * ### The queue: coarse first, then newest first
+ * ### The queue: coarse first, then the traversal's order
  *
  * Requests go into [TileQueue], one deque per level, popped shallowest level
- * first and newest entry first within a level. Coarse first is what gives every
- * leaf an ancestor to be drawn from while its own tile is in flight; newest
- * first is what makes the globe sharpen where the finger *is* rather than where
- * it was a second ago. See that class for the failure the single stack it
- * replaced produced.
+ * first and first-requested first within a level. Coarse first is what gives
+ * every leaf an ancestor to be drawn from while its own tile is in flight; the
+ * traversal's own order within a level is most important first, so keeping it
+ * is what makes the globe sharpen at the screen centre before the edges. See
+ * that class for the failure the single stack it replaced produced, and for
+ * why a level stopped being a stack.
  *
  * ### Eight workers
  *
@@ -272,11 +273,10 @@ internal class TileLoader(
     }
 
     /**
-     * The most recently decoded tile, or null when none is waiting.
+     * The earliest decoded tile still waiting, or null when none is.
      *
-     * Newest first, for the same reason the queue is: a tile decoded a moment
-     * ago is for where the camera is, and one from the start of a pan may be
-     * for a place that has scrolled off.
+     * First in, first out — coarsest first, since that is the order they were
+     * fetched in. See [offerReady] for why the drain is not newest-first.
      */
     fun pollReady(): DecodedTile? = synchronized(readyLock) { ready.pollFirst() }
 

@@ -160,12 +160,12 @@ internal class GlobeSession private constructor(
         loader.start()
         // Warm the permanent base levels immediately, so a coarse planet exists
         // from the first frames on and every leaf has an ancestor to fall back
-        // to. Deepest level first: the queue is newest-first within a level and
-        // coarse-first across them, so this order says what is wanted — z0/0/0
-        // out of the socket before anything else — rather than relying on the
-        // buckets to correct it. 21 tiles, and after the first run they come
-        // from the disk cache.
-        for (z in TileAtlas.PINNED_MAX_LEVEL downTo 0) {
+        // to. Coarsest first, which is also the order the queue would impose:
+        // it is coarse-first across levels and first-requested first within
+        // one, so z0/0/0 — the tile every other tile falls back to — is out of
+        // the socket before anything else. 21 tiles, and after the first run
+        // they come from the disk cache.
+        for (z in 0..TileAtlas.PINNED_MAX_LEVEL) {
             val span = 1 shl z
             for (x in 0 until span) {
                 for (y in 0 until span) {
