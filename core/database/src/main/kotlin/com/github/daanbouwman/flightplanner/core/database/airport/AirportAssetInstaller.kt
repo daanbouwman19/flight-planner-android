@@ -84,6 +84,17 @@ fun interface AssetOpener {
  * blocks only for the remainder of a copy that is still running, and it never
  * starts a second one.
  *
+ * In practice it never blocks at all, because the launch splash waits for
+ * [isSettled] *without* the deadline it puts on the index and the settings
+ * (`splashShouldHold` in `:app`). The first version capped the install with the
+ * same deadline, and on a first launch the ~30 MB copy outlived it: the app
+ * appeared, Plan composed, and this call ran `runBlocking` on the main thread
+ * for the rest of the copy behind a half-drawn screen — the original defect
+ * narrowed to first launch rather than removed. A splash that lasts the copy is
+ * the honest version of the same wait, and it cannot last forever:
+ * [InstallState.Failed] counts as settled, so a corrupt or missing asset
+ * releases the splash and lets the self-check screen report it.
+ *
  * ### The failure is replaceable
  *
  * A `Deferred` caches its failure forever, so one transient I/O error would
