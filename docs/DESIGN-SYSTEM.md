@@ -372,8 +372,13 @@ Notes that are easy to get wrong:
   the caller, which is the only fact the map cannot know), dropped when the
   projected chord is under `MinArrowChordDp` — `RouteMap`'s own short-hop
   threshold — so a short leg is not a smudge; dots whose
-  radius runs 4–9 dp as the *square root* of `visits / maxVisits`, exactly as the
-  globe's node layer does, so the dot's area is the count; every leg's casing
+  radius runs 4–9 dp by `nodeSizeFraction(visits, minVisits, maxVisits)` — the
+  least-visited field is the small dot, the most-visited the large one, and
+  between them the radius is the *square root* of the visits above the least, so
+  the dot's area is the count, and a log where every field has the same count is
+  all small dots (scaling from zero drew a one-visit-each logbook entirely at the
+  maximum). The function is public and the globe's node layer draws by it too,
+  so the two views of one logbook agree; every leg's casing
   before any leg's line, so crossings read as one drawing. The frame is fitted to
   the nodes, not the arcs, because a great circle bows poleward of its endpoints
   and framing the bow frames empty ocean — and to the nodes' longitudes

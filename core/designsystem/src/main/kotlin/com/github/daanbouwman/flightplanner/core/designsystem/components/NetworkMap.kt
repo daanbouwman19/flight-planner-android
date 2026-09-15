@@ -26,7 +26,6 @@ import com.github.daanbouwman.flightplanner.routing.MapFrame
 import com.github.daanbouwman.flightplanner.routing.NetworkFraming
 import com.github.daanbouwman.flightplanner.routing.RouteArc
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
-import kotlin.math.sqrt
 
 /**
  * One airport on the visited network: where it is, and how often it has been
@@ -67,12 +66,14 @@ class NetworkNode(
  *   endpoints — the one threshold, declared beside [RouteMap], below which
  *   the route card collapses a hop to a single ring.
  * - **Size means count.** A dot's radius runs from [NodeMinRadiusDp] — the
- *   route card's own endpoint — to [NodeMaxRadiusDp] as the *square root* of
- *   `visits / maxVisits`, exactly as the globe's `GlobeNodes` does, so the
- *   dot's **area** is proportional to the count it stands for. Scaling the
- *   radius linearly would make a field visited nine times look nine times the
- *   size, which is the bubble-chart error an eye reads as area whether or not
- *   it was drawn as one.
+ *   route card's own endpoint — to [NodeMaxRadiusDp] by [nodeSizeFraction],
+ *   the one rule the globe's `GlobeNodes` also draws by: the least-visited
+ *   field in the set is the small dot, the most-visited the large one, and
+ *   between them the radius goes as the *square root* of the visits above the
+ *   least, so the dot's **area** is the count. A set where every field has the
+ *   same count is all small dots — the first version scaled from zero and
+ *   drew a one-visit-each logbook, which is every new logbook, entirely at
+ *   the maximum, merging two fields 90 NM apart into one blob.
  * - **A graticule when there is no coast.** A network wholly inland, or wholly
  *   at sea, would otherwise be dots on a flat wash that reads as a failed load.
  *
@@ -159,7 +160,8 @@ fun NetworkMap(
                     }
                 }
 
-                val maxVisits = nodes.maxOf { it.visits }.coerceAtLeast(1).toFloat()
+                val minVisits = nodes.minOf { it.visits }
+                val maxVisits = nodes.maxOf { it.visits }
                 val minRadius = NodeMinRadiusDp.dp.toPx()
                 val maxRadius = NodeMaxRadiusDp.dp.toPx()
                 val centres = Array(nodes.size) { i ->
@@ -169,7 +171,7 @@ fun NetworkMap(
                     )
                 }
                 val radii = FloatArray(nodes.size) { i ->
-                    minRadius + (maxRadius - minRadius) * sqrt(nodes[i].visits.coerceAtLeast(0) / maxVisits)
+                    minRadius + (maxRadius - minRadius) * nodeSizeFraction(nodes[i].visits, minVisits, maxVisits)
                 }
 
                 val coastWidth = CoastStrokeDp.dp.toPx()

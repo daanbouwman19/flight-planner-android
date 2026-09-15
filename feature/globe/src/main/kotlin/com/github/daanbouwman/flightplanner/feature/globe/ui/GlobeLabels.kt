@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.github.daanbouwman.flightplanner.core.designsystem.components.nodeSizeFraction
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.feature.globe.math.CameraBasis
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
@@ -38,7 +39,6 @@ import com.github.daanbouwman.flightplanner.feature.globe.math.facingValueFast
 import com.github.daanbouwman.flightplanner.feature.globe.math.latLonToWorld
 import kotlin.math.abs
 import kotlin.math.hypot
-import kotlin.math.sqrt
 import kotlin.math.roundToInt
 
 /** One end of the leg, placed on the glass. */
@@ -422,12 +422,15 @@ private val DotSize = 10.dp
  * ### No labels, and a radius that means something
  *
  * A hundred four-letter codes over a planet is a word cloud, not a map, so these
- * carry no plates. What they carry instead is **size**: the radius goes as the
- * square root of the visit count, which is the only scaling that makes the
- * *area* of the dot proportional to the number it stands for. Scaling the radius
- * linearly would make a field visited nine times look nine times as big as it
- * should — the classic bubble-chart error, and one an eye reads as area whether
- * or not it was drawn as one.
+ * carry no plates. What they carry instead is **size**, by the design system's
+ * `nodeSizeFraction` — the same rule the flat `NetworkMap` draws by, so the two
+ * views of one logbook agree: the least-visited field is the small dot, the
+ * most-visited the large one, and between them the radius goes as the square
+ * root of the visits above the least, which is the only scaling that makes the
+ * *area* of the dot proportional to the number it stands for. A log where every
+ * field has the same count is all small dots; scaling from zero instead drew a
+ * one-visit-each logbook entirely at the maximum, and two fields 90 NM apart
+ * merged into one blob on the sphere.
  *
  * The codes are still announced. These dots are the only thing on this surface
  * an accessibility service can reach, and a sphere with a hundred unnamed marks
@@ -457,13 +460,14 @@ internal fun GlobeNodes(
     // shortens. One list built once has no such trap, and the whole computation
     // is a few hundred trig calls - cheaper than the guard would be.
     val marks = remember(nodes) {
-        val maxVisits = (nodes.maxOfOrNull { it.visits } ?: 1).coerceAtLeast(1).toFloat()
+        val minVisits = nodes.minOfOrNull { it.visits } ?: 0
+        val maxVisits = nodes.maxOfOrNull { it.visits } ?: 0
         nodes.map { node ->
             NodeMark(
                 icao = node.icao,
                 world = latLonToWorld(node.latitude.toFloat(), node.longitude.toFloat()),
                 size = NodeMinSize +
-                    (NodeMaxSize - NodeMinSize) * sqrt(node.visits.toFloat() / maxVisits),
+                    (NodeMaxSize - NodeMinSize) * nodeSizeFraction(node.visits, minVisits, maxVisits),
             )
         }
     }
