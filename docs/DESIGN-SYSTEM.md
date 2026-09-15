@@ -50,6 +50,31 @@ until a settings screen offers Light, Dark or Cockpit, at which point a near-bla
 app under a light system would lose its status bar entirely. This is the one place
 the design system touches the window, and it is a `SideEffect` of two field writes.
 
+```kotlin
+val LocalThemeChoice: ProvidableCompositionLocal<ThemeChoice>   // provided by FlightPlannerTheme
+
+@Composable fun SystemBarsOverMedia(active: Boolean)
+```
+
+**`LocalThemeChoice` is not for picking colours** — every colour is a role in the
+resolved scheme, and asking "which theme is on" to choose one is how Chart and
+Cockpit go wrong. It exists for the one thing that is not a colour: the globe dims
+its satellite imagery under Cockpit, and "how much light may a photograph throw at
+a dark-adapted eye" has no role in a Material scheme. That is the only sanctioned
+read.
+
+**`SystemBarsOverMedia(active)` asks for light status-bar glyphs while media fills
+the strip under the clock** — the globe hero once it has scrolled up under the bar,
+the immersive globe always. It does not touch the window: it **registers a
+request** that `FlightPlannerTheme` folds into the appearance it already sets,
+because the theme writes the insets controller on every recomposition and a second
+writer simply loses. The request is a *count* (`BarsOverMediaRequests`), not a flag:
+during a navigation two screens are composed at once, and the first version wrote
+`false` from every caller's `onDispose`, so the outgoing screen's teardown cancelled
+the incoming screen's request and the immersive globe ran full-bleed imagery under
+dark glyphs. Only the status bar; the navigation bar sits over ordinary content on
+every screen that uses this.
+
 ## Flight-rules colours
 
 ```kotlin
@@ -94,16 +119,38 @@ object FlightMotion {
     fun enterDelayMillis(index: Int): Int
     @Composable fun navEnter(): EnterTransition
     @Composable fun navExit(): ExitTransition
+    @Composable fun lateralEnter(): EnterTransition     // a page pushed in from the trailing edge
+    @Composable fun lateralExit(): ExitTransition       // and slid back off it
 
     @Composable fun sharedEnter(): EnterTransition      // fade only, no scale
     @Composable fun sharedExit(): ExitTransition
     @Composable fun paneContent(): ContentTransform     // content replaced in place
     @Composable fun boundsTransform(): BoundsTransform  // how a shared element travels
     @Composable fun rememberCountUp(target: Int): Int   // one-shot emphasis on a figure
+
+    fun <T> flingDecay(): DecayAnimationSpec<T>        // momentum after a fling; friction 0.6
 }
 
 @Composable fun rememberReduceMotion(): Boolean
 ```
+
+**`lateralEnter` / `lateralExit` are for a self-contained page you open and leave
+as a unit** — Settings, reached from a section's app bar — and neither of the other
+two entrances fits it: `navEnter` is a fade-through for screens that replace each
+other in place, `sharedEnter` for a screen that grows out of an element. The slide
+is across the **trailing** edge (right in LTR, left in RTL) so it reads as
+"forward" in either writing direction, spatial spring for the movement and effects
+spring for the fade. Predictive back falls out for free: `NavHost` seeks this same
+transition to the gesture's progress.
+
+**`flingDecay` is the one motion here that is not a spring, and it is here anyway**
+because a screen that reached for `exponentialDecay` itself would be picking a
+friction coefficient, which is the same mistake as picking a damping ratio. A decay
+has no target and no duration — it is a speed that runs out — so it is a
+`DecayAnimationSpec` used with `animateDecay`, not `animateTo`. The friction is
+lighter than the platform's default fling because the thing being flung is a
+planet, with no edges to run into. Under reduce motion, switch it **off**: inertia
+the user did not ask for is precisely what that setting is about.
 
 **`sharedEnter` / `sharedExit` exist because `navEnter` scales.** A shared element
 is drawn in an overlay, and an overlay does not inherit the transform on the screen
