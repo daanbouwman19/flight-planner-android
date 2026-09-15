@@ -73,6 +73,12 @@ jobs:
       # one more place `compileSdk` has to be kept in step with
       # `libs.versions.toml`.
       - uses: android-actions/setup-android@v4
+        with:
+          # The action installs "tools platform-tools" by default; the legacy
+          # "tools" package no longer exists in cmdline-tools 20.0 on the
+          # ubuntu-latest image and sdkmanager exits 1 before Gradle runs.
+          # AGP fetches platforms and build-tools itself.
+          packages: platform-tools
 
       - uses: gradle/actions/setup-gradle@v6
         with:
