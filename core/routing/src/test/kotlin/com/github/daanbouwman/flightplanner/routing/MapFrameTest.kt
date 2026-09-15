@@ -23,6 +23,10 @@ class MapFrameTest {
     private val tokyo = 35.55 to 139.78
     private val losAngeles = 33.94 to -118.41
     private val sydney = -33.95 to 151.18
+    private val oslo = 60.19 to 11.10
+    private val rome = 41.80 to 12.24
+    private val singapore = 1.35 to 103.99
+    private val nairobi = -1.32 to 36.93
 
     @Test
     fun `the window is fitted to the canvas, so a degree is the same size on both axes`() {
@@ -240,6 +244,97 @@ class MapFrameTest {
         val frame = MapFrame.forRoute(arc.lats, arc.lons, aspect = 2.0)
 
         frame.spanLon shouldBeLessThan 120.0
+    }
+
+    /**
+     * The route card prints its title across the top of the map. A north–south
+     * leg framed symmetrically put its northern endpoint on the title's
+     * baseline; with the inset, nothing of the route is projected into that
+     * band, and the map itself still covers it.
+     */
+    @Test
+    fun `a top inset keeps every point of the route below the band`() {
+        val inset = 0.3
+        val routes = listOf(
+            // Tall: fitted by height, so the inset is what places the north end.
+            oslo to rome,
+            // Wide: fitted by width, so the route sits centred in the band below.
+            amsterdam to tokyo,
+            amsterdam to london,
+            sydney to losAngeles,
+        )
+
+        for ((departure, destination) in routes) {
+            val arc = arc(departure, destination)
+            val frame = MapFrame.forRoute(arc.lats, arc.lons, aspect = 2.0, topInsetFraction = inset)
+            val projected = frame.project(arc.lats, arc.lons)
+
+            for (i in 0 until projected.size / 2) {
+                // Below the band, and still inside the card with its padding.
+                (projected[i * 2 + 1] > inset.toFloat()) shouldBe true
+                projected[i * 2 + 1] shouldBeLessThan 1f
+                projected[i * 2] shouldBeGreaterThan 0f
+                projected[i * 2] shouldBeLessThan 1f
+            }
+        }
+    }
+
+    @Test
+    fun `a tall route with a top inset is padded within the band, not the canvas`() {
+        val arc = arc(oslo, rome)
+        val inset = 0.3
+
+        val frame = MapFrame.forRoute(arc.lats, arc.lons, aspect = 2.0, topInsetFraction = inset)
+
+        // The northernmost sample lands at the band's top plus the band's own
+        // padding, not the canvas's: the title is the clearance from the edge,
+        // and the padding is the clearance from the title.
+        val northmost = arc.lats.indices.minBy { frame.y(arc.lats[it]) }
+        val expectedTop = inset + MapFrame.PADDING_FRACTION * (1.0 - inset) / (1.0 + 2.0 * MapFrame.PADDING_FRACTION)
+        abs(frame.y(arc.lats[northmost]) - expectedTop) shouldBeLessThan 0.02
+    }
+
+    @Test
+    fun `a top inset preserves the projected aspect and the width`() {
+        val arc = arc(amsterdam, tokyo)
+
+        for (aspect in listOf(0.5, 1.0, 2.0, 3.0)) {
+            val plain = MapFrame.forRoute(arc.lats, arc.lons, aspect)
+            val inset = MapFrame.forRoute(arc.lats, arc.lons, aspect, topInsetFraction = 0.3)
+            // The standard parallel is the *route's* centre latitude, which the
+            // symmetric frame is centred on; the inset frame's centre has moved
+            // north of it by construction, and that is not where the scale is set.
+            val lonScale = cos(Math.toRadians(plain.centreLat))
+
+            abs(inset.spanLon * lonScale / inset.spanLat - aspect) shouldBeLessThan 1e-9
+            // Never narrower: the band is the whole width, so a route fitted
+            // by width still fills the card edge to edge below the title.
+            (inset.spanLon >= plain.spanLon - 1e-9) shouldBe true
+            abs(inset.centreLon - plain.centreLon) shouldBeLessThan 1e-9
+        }
+
+        // A route fitted by width keeps exactly the symmetric frame's width: an
+        // equatorial east–west leg, which barely bows, on a card-shaped canvas.
+        // (Amsterdam–Tokyo above bows to 69°N and is fitted by *height* once
+        // the band is only seventy percent of the card, so giving up the top
+        // widens it — the alternative is a route that no longer fits.)
+        val flat = arc(singapore, nairobi)
+        val plain = MapFrame.forRoute(flat.lats, flat.lons, aspect = 2.0)
+        val inset = MapFrame.forRoute(flat.lats, flat.lons, aspect = 2.0, topInsetFraction = 0.3)
+        abs(inset.spanLon - plain.spanLon) shouldBeLessThan 1e-9
+    }
+
+    @Test
+    fun `no top inset is exactly the symmetric frame`() {
+        val arc = arc(amsterdam, tokyo)
+
+        val plain = MapFrame.forRoute(arc.lats, arc.lons, aspect = 2.0)
+        val zero = MapFrame.forRoute(arc.lats, arc.lons, aspect = 2.0, topInsetFraction = 0.0)
+
+        zero.centreLat shouldBe plain.centreLat
+        zero.centreLon shouldBe plain.centreLon
+        zero.spanLat shouldBe plain.spanLat
+        zero.spanLon shouldBe plain.spanLon
     }
 
     @Test

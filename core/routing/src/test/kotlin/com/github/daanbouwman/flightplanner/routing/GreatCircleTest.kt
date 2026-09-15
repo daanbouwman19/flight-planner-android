@@ -236,7 +236,7 @@ class AirportIndexInvariantTest {
     fun `rows are sorted ascending by longest runway`() {
         val index = randomWorld(2_000, seed = 3)
         for (slot in 1 until index.size) {
-            (index.longestRunwayFt[slot] >= index.longestRunwayFt[slot - 1]) shouldBe true
+            (index.longestRunwayFt(slot) >= index.longestRunwayFt(slot - 1)) shouldBe true
         }
     }
 
@@ -247,12 +247,29 @@ class AirportIndexInvariantTest {
             val first = index.firstSlotWithRunway(required)
             // Everything below is too short...
             for (slot in 0 until first) {
-                (index.longestRunwayFt[slot] < required) shouldBe true
+                (index.longestRunwayFt(slot) < required) shouldBe true
             }
             // ...and the slot itself, if any, is long enough.
             if (first < index.size) {
-                (index.longestRunwayFt[first] >= required) shouldBe true
+                (index.longestRunwayFt(first) >= required) shouldBe true
             }
+        }
+    }
+
+    @Test
+    fun `the slot accessors read the same columns the arrays hold`() {
+        // The arrays went `internal` so a consumer cannot mutate them; the
+        // accessors are the replacement API and must not drift from what they
+        // wrap. Same module, so both sides are visible here.
+        val index = randomWorld(300, seed = 8)
+        for (slot in 0 until index.size) {
+            index.idOf(slot) shouldBe index.ids[slot]
+            index.codeOf(slot) shouldBe index.codes[slot]
+            index.latDegOf(slot) shouldBe index.latDeg[slot]
+            index.lonDegOf(slot) shouldBe index.lonDeg[slot]
+            index.longestRunwayFt(slot) shouldBe index.longestRunwayFt[slot]
+            index.flagsOf(slot) shouldBe index.flags[slot]
+            index.icaoOf(slot) shouldBe IcaoCode.decode(index.codeOf(slot))
         }
     }
 
@@ -284,7 +301,7 @@ class AirportIndexInvariantTest {
             val b = (it * 7 + 3) % index.size
             val cached = GreatCircle.distanceNm(index, a, b)
             val direct = GreatCircle.distanceNm(
-                index.latDeg[a], index.lonDeg[a], index.latDeg[b], index.lonDeg[b],
+                index.latDegOf(a), index.lonDegOf(a), index.latDegOf(b), index.lonDegOf(b),
             )
             worst = maxOf(worst, abs(cached - direct))
         }

@@ -223,6 +223,10 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.lifecycle.process)
+    // `trace(...)` sections around the frame callback's stages, so
+    // `:macrobenchmark`'s GlobeSpinBenchmark can read each one's cost off a
+    // Perfetto trace. Free when nothing is tracing: one `isEnabled` check.
+    implementation(libs.androidx.tracing.ktx)
 
     // The JUnit 5 variant by name: an Android module resolves plain `kotlin-test`
     // through a variant that maps to JUnit 4, where `kotlin.test.Test` is simply

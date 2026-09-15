@@ -181,15 +181,15 @@ place.
 
 | Module | Type | Why separate |
 | --- | --- | --- |
-| `:app` | Android app | DI graph, `MainActivity`, NavHost, all screens under `feature/*` packages |
+| `:app` | Android app | DI graph, `MainActivity`, NavHost, all screens (under `ui/*` packages) |
 | `:core:model` | **pure JVM** | Domain types. No `Context` can leak in; tests are JVM-fast |
 | `:core:routing` | **pure JVM** | `AirportIndex`, `LatBandIndex`, `GreatCircle`, `RouteGenerator`, `SearchScorer`, statistics reference. The crown jewel — sub-second TDD and a JMH benchmark |
-| `:core:database` | Android lib | Two Room DBs, DAOs, asset opening, seeding. Isolated because Room's KSP round-trip is the slowest thing in the build |
+| `:core:database` | Android lib | Two Room DBs, DAOs, asset opening, seeding. Isolated because Room's KSP round-trip is the slowest thing in the build. Has an `androidTest` source set: the `UserDatabase` 1→2→3 migration runs on a device against the committed schema JSONs |
 | `:core:network` | Android lib | METAR client, tile HTTP client, OkHttp `Cache` config |
 | `:core:designsystem` | Android lib | Theme, semantic flight-rules colours, shared atoms |
 | `:feature:globe` | Android lib | Filament renderer + Compose host — a different toolset and failure mode from the rest of the UI, and its math half is unit-testable |
 | `:tools:airportdb` | **pure JVM, not shipped** | The ETL. Never on the app classpath |
-| `:microbench` / `:macrobenchmark` | benchmark | Standard androidx.benchmark layout |
+| `:macrobenchmark` | benchmark | Standard androidx.benchmark layout: cold start, the list fling, the globe spin, and the baseline-profile generator. There is no `:microbench` module and no JMH source set; the algorithms are covered by `:core:routing`'s unit tests and the device by `:macrobenchmark` |
 
 **Deliberately not split**: the six screens. Feature-per-module buys enforced boundaries, but with
 one developer and six screens sharing a design system the Gradle and navigation-plumbing cost
@@ -415,9 +415,15 @@ per-chunk `Random(baseSeed + chunkIndex)` so results stay reproducible.
 `ThreadLocalRandom`. Production passes `Random.Default`, tests `Random(42)`, and the daily-challenge
 widget `Random(LocalDate.now().toEpochDay())`.
 
-**Statistics implemented twice on purpose**: SQL aggregates in `FlightLogDao` returning `Flow`s
-(reactive, never loads the whole log) as the production path, and a pure-Kotlin
-`FlightStatisticsCalculator` mirroring `StatsAccumulator` used only to cross-check it in tests.
+**Statistics are computed once, in `:core:routing`.** `FlightStatisticsCalculator` mirrors the desktop's
+`StatsAccumulator` field for field, and `StatsViewModel` calls its `calculateDetailed()` on the
+timeframe-filtered log — mapping the winning `FlightRecord`s and `AirportTally`s onto the dashboard's
+rows and looking the airport names up in the database, which is the one part that does not belong
+in the pure module. `calculate()`, the desktop-shaped projection with formatted strings, is built on
+the same pass and is what the port is asserted against. `FlightLogDao` has a `COUNT(*)` and no other
+aggregate. (The plan originally called for SQL aggregates as the production path with the calculator
+as a test-only cross-check; the dashboard grew its own copies of the tie-break scan instead, and the
+2026-09 review collapsed the three copies into the calculator.)
 
 `SearchScorer` is a field-for-field port of `TableItem::search_score_optimized` over all four item
 types, with the same 2-for-code / 1-for-other scoring and score-descending sort. **Airport search
@@ -790,11 +796,13 @@ APIs poorly). Goldens per screen × {light, dark, dynamic} × {LTR, RTL} × {fon
 screenshot-tested** — stub a placeholder behind the overlay; the renderer is covered by the math
 tests plus a manual device smoke check.
 
-**Benchmarks** — JVM JMH on `:core:routing` (`generate50Routes`, `randomDestination`,
-`buildAirportIndex`) for sub-second algorithm feedback; on-device `:microbench` for the same three
-(ART and HotSpot differ materially on float math); `:macrobenchmark` for cold start and frame
-timing while flinging the list and spinning the globe, feeding a **Baseline Profile** — the largest
-single startup win available to a Compose app.
+**Benchmarks** — `:macrobenchmark` for cold start and frame timing while flinging the list and
+spinning the globe (`StartupBenchmark`, `flingBaselineProfile`, `GlobeSpinBenchmark`), feeding a
+**Baseline Profile** — the largest single startup win available to a Compose app. The JVM JMH suite
+and the on-device `:microbench` this plan originally called for were never built: nothing so far
+has needed a per-algorithm number, so the algorithms are held by their unit tests and the device by
+the macrobenchmarks. If one is ever wanted, JMH on `:core:routing` is the place, for the reason
+given — ART and HotSpot differ materially on float math, so a JVM figure is a guide, not a result.
 
 **CI** (GitHub Actions): per-PR `assemble + lint + jvmTest + verifyRoborazzi + verifyAirportAsset`;
 nightly `connectedCheck` on API 34 and 36 emulators; a **monthly scheduled dataset-refresh job**

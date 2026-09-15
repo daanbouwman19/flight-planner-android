@@ -18,7 +18,9 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.hypot
 import kotlin.math.sqrt
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.routing.GeoArc
@@ -60,6 +62,23 @@ import com.github.daanbouwman.flightplanner.routing.WorldOutline
  * before this composable saw it; what is left here is a multiply and an add per
  * point.
  *
+ * ### The route stays out from under the text
+ *
+ * [topInset] is how much of the top of the map belongs to something printed
+ * over it — the route card's title line. The route is framed below it (see
+ * [MapFrame.forRoute]); land still runs through it, since the band is part of
+ * the map, but an endpoint no longer sits on the title's baseline and an arc
+ * no longer runs under the letters. Zero where nothing is printed over the map.
+ *
+ * ### A short hop is a ring, not a smudge
+ *
+ * Below [MinArrowChordDp] between the projected ends, the two markers and the
+ * arrowhead would overlap into one blob that reads as a rendering fault. A hop
+ * that short is drawn as its cased line — which is all the direction it has
+ * room to state — under one hollow ring at its midpoint: the chart mark for "a
+ * place", standing for both ends at once. The same threshold decides whether
+ * a network leg carries an arrowhead, so the two maps agree on what "short" is.
+ *
  * The map carries no information the card does not state in text, so it is
  * hidden from accessibility services outright.
  */
@@ -68,6 +87,7 @@ fun RouteMap(
     arc: GeoArc,
     outline: WorldOutline,
     modifier: Modifier = Modifier,
+    topInset: Dp = 0.dp,
     landColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = WorldMapLandAlpha),
     coastColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = WorldMapCoastAlpha),
     routeColor: Color = MaterialTheme.colorScheme.primary,
@@ -83,6 +103,10 @@ fun RouteMap(
                     lats = arc.lats,
                     lons = arc.lons,
                     aspect = (size.width / size.height).toDouble(),
+                    // Clamped so a map shorter than its inset — a card squeezed
+                    // by a huge font scale — degrades to a symmetric frame
+                    // rather than to no frame at all.
+                    topInsetFraction = (topInset.toPx() / size.height).toDouble().coerceIn(0.0, MaxTopInsetFraction),
                 )
 
                 // A margin, so a coast just off the card still contributes the
@@ -122,12 +146,18 @@ fun RouteMap(
                 // samples either side of it, so it follows the curve rather than the
                 // straight line between the ends.
                 val midpoint = projected.size / 4
-                val arrow = arrowPath(projected, midpoint, size.width, size.height, ArrowLengthDp.dp.toPx())
+                val shortHop = projectedChord(projected, size.width, size.height) < MinArrowChordDp.dp.toPx()
+                val arrow = if (shortHop) {
+                    null
+                } else {
+                    arrowPath(projected, midpoint, size.width, size.height, ArrowLengthDp.dp.toPx())
+                }
                 val departure = Offset(projected[0] * size.width, projected[1] * size.height)
                 val destination = Offset(
                     projected[projected.size - 2] * size.width,
                     projected[projected.size - 1] * size.height,
                 )
+                val hop = Offset(projected[midpoint * 2] * size.width, projected[midpoint * 2 + 1] * size.height)
 
                 val coastWidth = CoastStrokeDp.dp.toPx()
                 val routeWidth = RouteStrokeDp.dp.toPx()
@@ -210,27 +240,45 @@ fun RouteMap(
                             drawPath(path = it, color = routeColor)
                         }
 
-                        // Departure hollow, destination filled: the chart convention
-                        // for "from here to there", which the arrowhead now states
-                        // outright rather than implying.
-                        drawCircle(
-                            color = casingColor,
-                            radius = endpointRadius + CasingDp.dp.toPx(),
-                            center = departure,
-                            style = Stroke(width = endpointStroke + 2f * CasingDp.dp.toPx()),
-                        )
-                        drawCircle(
-                            color = routeColor,
-                            radius = endpointRadius,
-                            center = departure,
-                            style = Stroke(width = endpointStroke),
-                        )
-                        drawCircle(
-                            color = casingColor,
-                            radius = endpointRadius + CasingDp.dp.toPx(),
-                            center = destination,
-                        )
-                        drawCircle(color = routeColor, radius = endpointRadius, center = destination)
+                        if (shortHop) {
+                            // One ring for both ends. The cased line under it is
+                            // the hop; the ring says "here" for a leg too short
+                            // for "from here to there" to have room on the card.
+                            drawCircle(
+                                color = casingColor,
+                                radius = endpointRadius + CasingDp.dp.toPx(),
+                                center = hop,
+                                style = Stroke(width = endpointStroke + 2f * CasingDp.dp.toPx()),
+                            )
+                            drawCircle(
+                                color = routeColor,
+                                radius = endpointRadius,
+                                center = hop,
+                                style = Stroke(width = endpointStroke),
+                            )
+                        } else {
+                            // Departure hollow, destination filled: the chart
+                            // convention for "from here to there", which the
+                            // arrowhead now states outright rather than implying.
+                            drawCircle(
+                                color = casingColor,
+                                radius = endpointRadius + CasingDp.dp.toPx(),
+                                center = departure,
+                                style = Stroke(width = endpointStroke + 2f * CasingDp.dp.toPx()),
+                            )
+                            drawCircle(
+                                color = routeColor,
+                                radius = endpointRadius,
+                                center = departure,
+                                style = Stroke(width = endpointStroke),
+                            )
+                            drawCircle(
+                                color = casingColor,
+                                radius = endpointRadius + CasingDp.dp.toPx(),
+                                center = destination,
+                            )
+                            drawCircle(color = routeColor, radius = endpointRadius, center = destination)
+                        }
                     }
                 }
             },
@@ -251,23 +299,48 @@ const val WorldMapLandAlpha = 0.08f
 /** The coast, at twice the fill, which is what makes a silhouette recognisable. */
 const val WorldMapCoastAlpha = 0.16f
 
-private const val CoastStrokeDp = 1f
-private const val RouteStrokeDp = 2.5f
+// The ink every map in this module draws with. Internal rather than private
+// because [NetworkMap] is the same map with more legs on it, and it used to
+// re-literalise these numbers in `:app` — where they drifted: a 1.5 dp leg under
+// a 2.5 dp route, a casing half as wide, a margin twice as wide. One set of
+// figures, one place to retune them.
+internal const val CoastStrokeDp = 1f
+internal const val RouteStrokeDp = 2.5f
 
 /** Half-width of the casing under each line, per side. */
-private const val CasingDp = 1.5f
+internal const val CasingDp = 1.5f
 
 /** Half-length of the direction arrowhead. */
-private const val ArrowLengthDp = 5f
+internal const val ArrowLengthDp = 5f
 
 /** The arrowhead's half-width as a fraction of its length: a narrow, chart-like head. */
-private const val ArrowHalfWidth = 0.62f
+internal const val ArrowHalfWidth = 0.62f
 
-private const val EndpointRadiusDp = 4f
-private const val EndpointStrokeDp = 2f
+internal const val EndpointRadiusDp = 4f
+internal const val EndpointStrokeDp = 2f
 
 /** Extra window projected around the card, as a fraction of each span. */
-private const val OutlineMargin = 0.05
+internal const val OutlineMargin = 0.05
+
+/**
+ * Below this projected chord between a leg's two ends, the ends are one place.
+ *
+ * At 24 dp the arrowhead, its casing and the two endpoint markers overlap into
+ * a mark that cannot be read, and a mark that cannot be read is worse than a
+ * leg with no stated direction. [RouteMap] draws such a hop as a single ring;
+ * [NetworkMap] keeps its per-node dots and drops the head. One threshold, so
+ * the plan card and the network card agree on what "short" is.
+ */
+internal const val MinArrowChordDp = 24f
+
+/**
+ * The most of a map's height the route will give up to text over it.
+ *
+ * A route card at font scale 2.0 is a tall card, not a small map, so this is
+ * rarely reached — it exists so a degenerate size degrades to a symmetric
+ * frame rather than to a frame with no room left for the route.
+ */
+private const val MaxTopInsetFraction = 0.5
 
 @LightDarkPreview
 @Composable
@@ -331,9 +404,11 @@ fun ProjectedRings.toPath(width: Float, height: Float, close: Boolean): Path {
  * entire signal. The direction comes from the samples *either side* of the
  * midpoint, so it follows the curve rather than the chord between the ends.
  *
+ * Internal: [NetworkMap] puts the same head on every leg of the visited network.
+ *
  * @return null when the arc is too short to have a direction at all.
  */
-private fun arrowPath(
+internal fun arrowPath(
     projected: FloatArray,
     index: Int,
     width: Float,
@@ -366,4 +441,20 @@ private fun arrowPath(
         lineTo(x - ux * length * 0.4f - px * half, y - uy * length * 0.4f - py * half)
         close()
     }
+}
+
+/**
+ * The straight-line distance in pixels between a projected leg's two ends.
+ *
+ * The chord, not the arc's length: what decides whether two markers and a
+ * head collide is how far apart the *ends* land on the canvas, and a bowed
+ * arc between two close ends is still two close ends. Compared against
+ * [MinArrowChordDp] by both maps.
+ */
+internal fun projectedChord(projected: FloatArray, width: Float, height: Float): Float {
+    if (projected.size < 4) return 0f
+    return hypot(
+        (projected[projected.size - 2] - projected[0]) * width,
+        (projected[projected.size - 1] - projected[1]) * height,
+    )
 }

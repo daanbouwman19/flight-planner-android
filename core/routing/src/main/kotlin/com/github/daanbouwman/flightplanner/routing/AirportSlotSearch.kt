@@ -65,6 +65,21 @@ object AirportSlotSearch {
     private val EMPTY = IntArray(0)
 
     /**
+     * [rank] over an [AirportIndex]'s own codes.
+     *
+     * The array form below is the one the scorer actually runs; this is how a
+     * caller outside `:core:routing` reaches it now that the index's arrays are
+     * `internal` — it hands over the index and never sees the array.
+     */
+    fun rank(
+        query: String,
+        index: AirportIndex,
+        names: Array<String>? = null,
+        municipalities: Array<String?>? = null,
+        limit: Int = DEFAULT_LIMIT,
+    ): IntArray = rank(query, index.codes, index.size, names, municipalities, limit)
+
+    /**
      * The best [limit] slots for [query], best first.
      *
      * A blank query returns **nothing**, not everything. The caller is a picker

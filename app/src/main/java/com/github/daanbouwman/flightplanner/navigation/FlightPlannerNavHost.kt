@@ -30,7 +30,6 @@ import com.github.daanbouwman.flightplanner.ui.fleet.toFleetDetailDestination
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.ui.profile.ProfileScreen
-import com.github.daanbouwman.flightplanner.ui.profile.ProfileSegment
 import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRoute
 import com.github.daanbouwman.flightplanner.ui.logbook.LogbookRow
 import com.github.daanbouwman.flightplanner.ui.settings.LicencesScreen
@@ -293,7 +292,9 @@ fun FlightPlannerNavHost(
 
             // Kept whole rather than restyled: it is a diagnostic, and its value is
             // that it reports exactly what it reported before the UI existed.
-            composable<Destination.SelfCheck> { StartupCheckScreen() }
+            composable<Destination.SelfCheck> {
+                StartupCheckScreen(onBack = { navController.popBackStack() })
+            }
 
             composable<Destination.Licences> {
                 LicencesScreen(onBack = { navController.popBackStack() })

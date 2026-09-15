@@ -27,7 +27,7 @@ class LatBandIndexTest {
             val visited = mutableSetOf<Int>()
             index.bands.forEachInLatRange(min, max) { visited += it }
 
-            val expected = (0 until index.size).filter { index.latDeg[it] in min..max }
+            val expected = (0 until index.size).filter { index.latDegOf(it) in min..max }
             // A superset is correct: bands have whole-degree granularity, and the
             // caller applies the exact distance test afterwards.
             visited shouldContainAll expected
@@ -108,8 +108,8 @@ class LatBandIndexTest {
             index.bands.forEachInWindow(min, max, centreLon, lonHalfWidth) { visited += it }
 
             val expected = (0 until index.size).filter {
-                index.latDeg[it] in min..max &&
-                    longitudeWithin(index.lonDeg[it], centreLon, lonHalfWidth)
+                index.latDegOf(it) in min..max &&
+                    longitudeWithin(index.lonDegOf(it), centreLon, lonHalfWidth)
             }
             visited shouldContainAll expected
         }

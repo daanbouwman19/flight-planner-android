@@ -92,7 +92,7 @@ internal fun buildAirportNameIndex(
     val countries = Array(size) { "" }
 
     for (slot in 0 until size) {
-        val id = index.ids[slot]
+        val id = index.idOf(slot)
         ids[slot] = id
         val pos = rowIds.binarySearch(id)
         if (pos >= 0) {

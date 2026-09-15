@@ -1,7 +1,9 @@
 package com.github.daanbouwman.flightplanner.feature.globe.render
 
+import android.graphics.Rect
 import android.view.Choreographer
 import android.view.Surface
+import androidx.tracing.trace
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
 import com.github.daanbouwman.flightplanner.feature.globe.math.VisibleTile
@@ -164,12 +166,61 @@ internal class GlobeRenderHost(
                 filamentView?.viewport = Viewport(0, 0, width, height)
                 viewport = GlobeViewport(width.toFloat(), height.toFloat())
                 onViewportChanged(viewport)
+                applyGestureExclusion()
             }
         }
     }
 
     /** The viewport the CPU projection must use — pixels, matching the surface. */
     fun currentViewport(): GlobeViewport = viewport
+
+    /**
+     * Whether the system's edge gestures are kept off this surface at all.
+     *
+     * True for a globe touch moves; false for one that is only looked at, where
+     * excluding the strip would break the back gesture for nothing. See
+     * [GestureExclusion] for what is excluded and what is deliberately left.
+     */
+    var excludeSystemGestures: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            applyGestureExclusion()
+        }
+
+    /**
+     * How much of the top of this surface the host covers with its own chrome,
+     * in px — the collapse button, or the app bar. The exclusion band starts
+     * below it, so the system's back gesture still works beside those controls.
+     */
+    var gestureExclusionTopPx: Int = 0
+        set(value) {
+            if (field == value) return
+            field = value
+            applyGestureExclusion()
+        }
+
+    /**
+     * Re-derives the exclusion rects from the surface's size and the two
+     * properties above. Called from [UiHelper.RendererCallback.onResized],
+     * which is where this class learns the view's size, and from the setters,
+     * because the host binds them from a Compose `update` block that can run
+     * after the surface has already been sized.
+     */
+    private fun applyGestureExclusion() {
+        val band = if (excludeSystemGestures) {
+            GestureExclusion.forSurface(
+                width = viewport.width.toInt(),
+                height = viewport.height.toInt(),
+                topChromePx = gestureExclusionTopPx,
+                maxBandPx = (MAX_EXCLUSION_DP * view.resources.displayMetrics.density).toInt(),
+            )
+        } else {
+            null
+        }
+        view.systemGestureExclusionRects =
+            listOfNotNull(band?.let { Rect(it.left, it.top, it.right, it.bottom) })
+    }
 
     /** The view has attached to its window. */
     fun onAttached() {
@@ -426,7 +477,11 @@ internal class GlobeRenderHost(
         // Built from *this* surface's camera, driver or not: the width, the lift
         // and the samples it keeps are all functions of the viewpoint, so the
         // driver's ribbon would be the wrong geometry for the other surface.
-        ribbon?.update(scene.routeArcs, scene.arcsGeneration, camera, basis, viewport)
+        // Its own trace section, like the scene's stages: `GlobeSpinBenchmark`
+        // reads the cost of each part of this callback separately.
+        trace("globe:ribbon") {
+            ribbon?.update(scene.routeArcs, scene.arcsGeneration, camera, basis, viewport)
+        }
         filamentCamera?.let { scene.applyCamera(it, camera, viewport) }
 
         // `beginFrame` returning false is the driver saying it would rather this
@@ -434,20 +489,23 @@ internal class GlobeRenderHost(
         // queue longer. What was rendered is recorded only when something was:
         // a declined frame has to be retried on the next vsync, not remembered
         // as drawn.
-        if (renderer.beginFrame(chain, frameTimeNanos)) {
-            renderer.render(view)
-            renderer.endFrame()
-            renderedCamera = camera
-            renderedViewport = viewport
-            renderedMeshGeneration = scene.meshGeneration
-            renderedArcsGeneration = scene.arcsGeneration
-            // The clear colour is *set* above, because the renderer has to carry
-            // it into the frame, but it is only *recorded as applied* here. Ticking
-            // the generation before the driver had accepted the frame lost a theme
-            // change outright on a still globe: the settled test then saw no change
-            // pending and returned early on every following vsync, so the colour
-            // sat on the renderer and was never drawn.
-            appliedSpaceGeneration = scene.spaceGeneration
+        trace("globe:render") {
+            if (renderer.beginFrame(chain, frameTimeNanos)) {
+                renderer.render(view)
+                renderer.endFrame()
+                renderedCamera = camera
+                renderedViewport = viewport
+                renderedMeshGeneration = scene.meshGeneration
+                renderedArcsGeneration = scene.arcsGeneration
+                // The clear colour is *set* above, because the renderer has to
+                // carry it into the frame, but it is only *recorded as applied*
+                // here. Ticking the generation before the driver had accepted the
+                // frame lost a theme change outright on a still globe: the settled
+                // test then saw no change pending and returned early on every
+                // following vsync, so the colour sat on the renderer and was never
+                // drawn.
+                appliedSpaceGeneration = scene.spaceGeneration
+            }
         }
 
         onFrame(tiles)
@@ -457,6 +515,16 @@ internal class GlobeRenderHost(
         }
     }
 }
+
+/**
+ * The most exclusion height the platform honours per edge, in dp.
+ *
+ * `View.setSystemGestureExclusionRects` documents the cap; above it the request
+ * is silently trimmed, so the band asks for exactly this much and places it
+ * where a spin starts rather than leaving the platform to choose. See
+ * [GestureExclusion].
+ */
+private const val MAX_EXCLUSION_DP = 200f
 
 /**
  * A view that draws the globe, whichever kind it is.

@@ -9,9 +9,25 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Pure grouping and ranking logic behind the Stats Dashboard. See [StatsUiState] for the shapes it produces. */
+/**
+ * Pure grouping and ranking logic behind the Stats Dashboard. See [StatsUiState] for the shapes it produces.
+ *
+ * Only figures with no desktop-app precedent live here: the timeframe filter,
+ * the monthly chart, the top-aircraft ranking and the visited network. Totals,
+ * the longest and shortest flight and the favourite airports come from
+ * `FlightStatisticsCalculator` in `:core:routing`, which carries the desktop's
+ * tie-break rules — they used to be duplicated here and the two copies could
+ * drift.
+ */
 object StatsGrouping {
 
+    /**
+     * The bar chart's month labels — "Jan", "Feb" — in a fixed locale, for the
+     * reason `asFigure` gives: these are chart labels under tabular figures, set
+     * in the app's own chart typography, and a translated three-letter month
+     * ("janv.", "März") breaks the fixed width the axis is laid out on. The
+     * Logbook's month *headers* are prose and follow the device locale.
+     */
     private val MonthLabelFormatter = DateTimeFormatter.ofPattern("MMM", Locale.US)
 
     /**
@@ -134,109 +150,15 @@ object StatsGrouping {
     }
 
     /**
-     * Computes favorite departure, favorite arrival, and most visited airport.
-     * Ties broken by alphabetically-first ICAO code.
-     */
-    fun computeAirportHighlights(
-        records: List<FlightRecord>,
-        airportMap: Map<String, Airport>,
-    ): Triple<AirportCount?, AirportCount?, AirportCount?> {
-        if (records.isEmpty()) return Triple(null, null, null)
-
-        val departureCounts = HashMap<String, Int>()
-        val arrivalCounts = HashMap<String, Int>()
-        val totalVisits = HashMap<String, Int>()
-
-        for (record in records) {
-            val dep = record.departureIcao.trim().uppercase()
-            val arr = record.arrivalIcao.trim().uppercase()
-
-            departureCounts[dep] = (departureCounts[dep] ?: 0) + 1
-            arrivalCounts[arr] = (arrivalCounts[arr] ?: 0) + 1
-            totalVisits[dep] = (totalVisits[dep] ?: 0) + 1
-            totalVisits[arr] = (totalVisits[arr] ?: 0) + 1
-        }
-
-        fun bestAirport(counts: Map<String, Int>): AirportCount? {
-            var bestIcao: String? = null
-            var bestCount = 0
-            for ((icao, count) in counts) {
-                val current = bestIcao
-                if (current == null || count > bestCount || (count == bestCount && icao < current)) {
-                    bestIcao = icao
-                    bestCount = count
-                }
-            }
-            return bestIcao?.let { icao ->
-                AirportCount(
-                    icao = icao,
-                    name = airportMap[icao]?.name,
-                    count = bestCount,
-                )
-            }
-        }
-
-        val favDeparture = bestAirport(departureCounts)
-        val favArrival = bestAirport(arrivalCounts)
-        val mostVisited = bestAirport(totalVisits)
-
-        return Triple(favDeparture, favArrival, mostVisited)
-    }
-
-    /**
-     * Finds the longest flight, keeping the last encounter on equal distance.
-     */
-    fun computeLongestFlight(records: List<FlightRecord>): LegStat? {
-        if (records.isEmpty()) return null
-        var maxDistance = Int.MIN_VALUE
-        var longest: FlightRecord? = null
-
-        for (record in records) {
-            val distance = record.distanceNm ?: 0
-            if (distance >= maxDistance) {
-                maxDistance = distance
-                longest = record
-            }
-        }
-
-        return longest?.let {
-            LegStat(
-                departureIcao = it.departureIcao,
-                arrivalIcao = it.arrivalIcao,
-                aircraftId = it.aircraftId,
-                distanceNm = it.distanceNm ?: 0,
-            )
-        }
-    }
-
-    /**
-     * Finds the shortest flight, keeping the first encounter on equal distance.
-     */
-    fun computeShortestFlight(records: List<FlightRecord>): LegStat? {
-        if (records.isEmpty()) return null
-        var minDistance = Int.MAX_VALUE
-        var shortest: FlightRecord? = null
-
-        for (record in records) {
-            val distance = record.distanceNm ?: 0
-            if (distance < minDistance) {
-                minDistance = distance
-                shortest = record
-            }
-        }
-
-        return shortest?.let {
-            LegStat(
-                departureIcao = it.departureIcao,
-                arrivalIcao = it.arrivalIcao,
-                aircraftId = it.aircraftId,
-                distanceNm = it.distanceNm ?: 0,
-            )
-        }
-    }
-
-    /**
-     * Builds visited airport coordinates and unique flight leg arcs for the 2D map.
+     * Builds visited airport coordinates and unique flight leg arcs for the network map.
+     *
+     * A leg is an unordered pair — EHAM–EGLL flown both ways is one leg — but
+     * its [VisitedLeg.arc] is sampled **in the direction it was first flown**,
+     * departure to arrival of the earliest record, and that is the direction
+     * the map's arrowhead states. The repository hands records out newest
+     * first, so they are put into date order here before the first one wins;
+     * without that the arrow would point the way the *latest* flight went, and
+     * flip every time a leg was flown back.
      */
     fun buildVisitedNetwork(
         records: List<FlightRecord>,
@@ -248,7 +170,11 @@ object StatsGrouping {
         val seenLegs = HashSet<Pair<String, String>>()
         val visitedLegs = ArrayList<VisitedLeg>()
 
-        for (record in records) {
+        // ISO-8601 dates sort as strings; the id breaks a same-day tie the way
+        // the logbook itself orders them.
+        val chronological = records.sortedWith(compareBy<FlightRecord> { it.date }.thenBy { it.id })
+
+        for (record in chronological) {
             val depIcao = record.departureIcao.trim().uppercase()
             val arrIcao = record.arrivalIcao.trim().uppercase()
 

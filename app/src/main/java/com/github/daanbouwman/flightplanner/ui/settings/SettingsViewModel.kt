@@ -9,6 +9,7 @@ import com.github.daanbouwman.flightplanner.settings.AppSettings
 import com.github.daanbouwman.flightplanner.settings.SettingsRepository
 import com.github.daanbouwman.flightplanner.settings.UnitSystem
 import com.github.daanbouwman.flightplanner.settings.WeatherProvider
+import com.github.daanbouwman.flightplanner.ui.STOP_TIMEOUT_MILLIS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -74,9 +75,6 @@ class SettingsViewModel @Inject constructor(
 
     fun setAvwxApiKey(key: String?) = repository.setAvwxApiKey(key)
 
-    private companion object {
-        const val STOP_TIMEOUT_MILLIS = 5_000L
-    }
 }
 
 /** The shipped airport dataset's provenance, for the About section. */

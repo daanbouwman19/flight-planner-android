@@ -14,9 +14,15 @@
         API 33 and minSdk is 35, so there is no fallback to keep and no version
         guard to write — it is simply on.
     -->
+    <!--
+        Backup is on, with rules: the settings DataStore carries the AVWX API key
+        and stays on the device. See res/xml/data_extraction_rules.xml for what
+        is excluded and why.
+    -->
     <application
         android:name=".FlightPlannerApplication"
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

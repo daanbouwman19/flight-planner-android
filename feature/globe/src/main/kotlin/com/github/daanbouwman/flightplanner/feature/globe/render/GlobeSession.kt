@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.github.daanbouwman.flightplanner.feature.globe.GlobeStatus
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeFit
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
@@ -28,18 +29,6 @@ import java.io.File
 import kotlin.math.max
 
 private const val TAG = "GlobeSession"
-
-/** Why the globe is or is not available on this device. */
-internal enum class GlobeSupport {
-    /** A renderer came up and there is memory for the atlas. */
-    Available,
-
-    /** Filament could not create an engine on any backend. */
-    NoRenderer,
-
-    /** The platform reports a low-RAM device; 32 MB of atlas is not affordable. */
-    LowMemory,
-}
 
 /**
  * The one Filament engine, the one tile atlas, and the camera they share.
@@ -160,12 +149,12 @@ internal class GlobeSession private constructor(
         loader.start()
         // Warm the permanent base levels immediately, so a coarse planet exists
         // from the first frames on and every leaf has an ancestor to fall back
-        // to. Deepest level first: the queue is newest-first within a level and
-        // coarse-first across them, so this order says what is wanted — z0/0/0
-        // out of the socket before anything else — rather than relying on the
-        // buckets to correct it. 21 tiles, and after the first run they come
-        // from the disk cache.
-        for (z in TileAtlas.PINNED_MAX_LEVEL downTo 0) {
+        // to. Coarsest first, which is also the order the queue would impose:
+        // it is coarse-first across levels and first-requested first within
+        // one, so z0/0/0 — the tile every other tile falls back to — is out of
+        // the socket before anything else. 21 tiles, and after the first run
+        // they come from the disk cache.
+        for (z in 0..TileAtlas.PINNED_MAX_LEVEL) {
             val span = 1 shl z
             for (x in 0 until span) {
                 for (y in 0 until span) {
@@ -242,7 +231,7 @@ internal class GlobeSession private constructor(
 
         private var instance: GlobeSession? = null
         private var attachedViews = 0
-        private var support: GlobeSupport? = null
+        private var support: GlobeStatus? = null
 
         /** What the session was showing, across a [forceTeardown]. See [reacquireIfNeeded]. */
         private var lastRouteKey: String? = null
@@ -253,6 +242,14 @@ internal class GlobeSession private constructor(
          * let go of its own Filament objects first. See [AttachedSurfaces].
          */
         private val surfaces = AttachedSurfaces()
+
+        /**
+         * Whether a session exists and has not been destroyed — for the
+         * instrumented lifecycle test, which has to know the teardown it is
+         * waiting on has happened and the rebuild it asserts against has too.
+         * Not a UI affordance: the UI asks [support] and [acquire].
+         */
+        internal val hasLiveInstance: Boolean get() = instance?.isDestroyed == false
 
         internal fun registerSurface(view: BackgroundReleasable) = surfaces.register(view)
 
@@ -371,13 +368,26 @@ internal class GlobeSession private constructor(
          * first use rather than at startup: nothing here may run before the
          * first frame.
          */
-        fun support(context: Context): GlobeSupport = support ?: resolveSupport(context).also {
+        fun support(context: Context): GlobeStatus = support ?: resolveSupport(context).also {
             support = it
         }
 
-        private fun resolveSupport(context: Context): GlobeSupport {
+        /**
+         * A renderer was asked for and could not be built, by someone other
+         * than [acquire] — the startup self-check's [com.github.daanbouwman.flightplanner.feature.globe.FilamentProbe].
+         *
+         * Recorded here so the globe's controls disappear on the same device
+         * the check reports as failed; the two used to reach different
+         * verdicts from the same hardware. A live session is proof to the
+         * contrary and wins.
+         */
+        internal fun markNoRenderer() {
+            if (instance == null) support = GlobeStatus.NoRenderer
+        }
+
+        private fun resolveSupport(context: Context): GlobeStatus {
             val activityManager = context.getSystemService(ActivityManager::class.java)
-            if (activityManager?.isLowRamDevice == true) return GlobeSupport.LowMemory
+            if (activityManager?.isLowRamDevice == true) return GlobeStatus.LowMemory
 
             // **A declared capability, not a built engine.** This runs inside
             // composition - the nav host asks it on every route detail, and so do
@@ -391,7 +401,7 @@ internal class GlobeSession private constructor(
             // `acquire` caches `NoRenderer` when `createEngine` returns null, and
             // the control is gone on the next composition.
             val glEsVersion = activityManager?.deviceConfigurationInfo?.reqGlEsVersion ?: 0
-            return if (glEsVersion >= GLES_3) GlobeSupport.Available else GlobeSupport.NoRenderer
+            return if (glEsVersion >= GLES_3) GlobeStatus.Available else GlobeStatus.NoRenderer
         }
 
         /** `reqGlEsVersion` packs the major version high: 3.0 is 0x0003_0000. */
@@ -404,9 +414,9 @@ internal class GlobeSession private constructor(
         private fun ensureInstance(context: Context): GlobeSession? {
             instance?.let { return it }
 
-            if (support(context) != GlobeSupport.Available) return null
+            if (support(context) != GlobeStatus.Available) return null
             val engine = createEngine() ?: run {
-                support = GlobeSupport.NoRenderer
+                support = GlobeStatus.NoRenderer
                 return null
             }
             return GlobeSession(context.applicationContext, engine).also { instance = it }

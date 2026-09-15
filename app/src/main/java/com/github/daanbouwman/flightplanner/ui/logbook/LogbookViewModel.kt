@@ -16,8 +16,9 @@ import com.github.daanbouwman.flightplanner.search.airportSearchScope
 import com.github.daanbouwman.flightplanner.search.rankedAircraftResults
 import com.github.daanbouwman.flightplanner.search.rankedAirportResults
 import com.github.daanbouwman.flightplanner.ui.plan.SearchScope
+import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
+import com.github.daanbouwman.flightplanner.ui.STOP_TIMEOUT_MILLIS
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,6 +71,16 @@ class LogbookViewModel @Inject constructor(
     private val _events = Channel<LogbookEvent>(capacity = Channel.CONFLATED)
     val events = _events.receiveAsFlow()
 
+    /**
+     * The one deletion that can be undone.
+     *
+     * A single slot, not a stack, and deliberately: the snackbar that offers
+     * the undo is the only way to reach it, and a snackbar shows one action for
+     * one event. A second swipe-delete while the first snackbar is still up
+     * replaces both the snackbar and this slot, so the first flight is gone for
+     * good — the same trade PlanViewModel makes for mark-as-flown, and the
+     * same one the platform's own snackbar makes.
+     */
     private var undoLog: LogbookRow? = null
 
     /**
@@ -212,15 +223,6 @@ class LogbookViewModel @Inject constructor(
         }
     }
 
-    private companion object {
-        /**
-         * How long the flow keeps running after the last collector goes away.
-         * Matches [com.github.daanbouwman.flightplanner.ui.plan.PlanViewModel]'s
-         * own constant: long enough to survive a configuration change, short
-         * enough that a backgrounded app stops observing the database.
-         */
-        const val STOP_TIMEOUT_MILLIS = 5_000L
-    }
 }
 
 /** Events the Logbook screen should act on, usually by showing a snackbar. */
@@ -228,13 +230,4 @@ sealed interface LogbookEvent {
     data object FlightDeleted : LogbookEvent
     data class FlightAdded(val departureIcao: String, val destinationIcao: String) : LogbookEvent
     data object FlightAddFailed : LogbookEvent
-}
-
-/** [runCatching] that lets cancellation through. See [com.github.daanbouwman.flightplanner.ui.plan.PlanViewModel] for why. */
-private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
-    Result.success(block())
-} catch (cancellation: CancellationException) {
-    throw cancellation
-} catch (failure: Throwable) {
-    Result.failure(failure)
 }

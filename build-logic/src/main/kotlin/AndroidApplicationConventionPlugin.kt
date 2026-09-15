@@ -2,6 +2,7 @@ import com.android.build.api.dsl.ApplicationExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
+import org.gradle.kotlin.dsl.dependencies
 
 class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
@@ -45,5 +46,26 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
         // repo writes them fails to compile for no apparent reason.
         configureUnitTestPlatform()
         configureInvariantChecks()
+
+        // A screen composed of a `SnackbarHost` and a `FloatingActionButton` as
+        // siblings (Logbook is the one screen this app has of that shape — see
+        // `LogbookOverlay`'s KDoc) can only be proven to lay its Undo action
+        // outside the FAB's bounds by actually composing and measuring it, which
+        // needs a real (if simulated) Android environment on the JVM test
+        // classpath: Robolectric plus Compose's own test harness. `testOptions.
+        // unitTests.isIncludeAndroidResources` above is already on, which is what
+        // lets Robolectric resolve this module's real resources rather than
+        // Compose's `isReturnDefaultValues` stub. `RobolectricTestRunner` is a
+        // plain JUnit 4 `Runner`, so the vintage engine is what lets the JUnit 5
+        // platform this module already runs on (`configureUnitTestPlatform`
+        // above) discover and execute it.
+        dependencies {
+            val composeBom = libs.findLibrary("compose-bom").get()
+            add("testImplementation", platform(composeBom))
+            add("testImplementation", libs.findLibrary("compose-ui-test-junit4").get())
+            add("testImplementation", libs.findLibrary("robolectric").get())
+            add("testImplementation", libs.findLibrary("junit4").get())
+            add("testRuntimeOnly", libs.findLibrary("junit5-vintage-engine").get())
+        }
     }
 }

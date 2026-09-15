@@ -17,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,21 +64,31 @@ fun TopAircraftCard(
                 )
             } else {
                 topAircraft.forEachIndexed { index, stat ->
+                    val rank = stringResource(
+                        R.string.stats_aircraft_rank_format,
+                        index + 1,
+                        stat.aircraft.displayName,
+                    )
+                    val flights = stringResource(
+                        R.string.stats_aircraft_flights_format,
+                        stat.flightCount,
+                        distanceText(stat.totalDistanceNm),
+                    )
+                    // The row's two texts as one sentence on the clickable node,
+                    // as FleetRowCard does — see MetricGrid for the reasoning.
+                    val description = stringResource(R.string.stats_aircraft_row_description, rank, flights)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(MaterialTheme.shapes.small)
+                            .semantics(mergeDescendants = true) { contentDescription = description }
                             .clickable { onAircraftClick(stat.aircraft) }
                             .padding(vertical = 8.dp, horizontal = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = stringResource(
-                                R.string.stats_aircraft_rank_format,
-                                index + 1,
-                                stat.aircraft.displayName,
-                            ),
+                            text = rank,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Medium,
@@ -85,11 +97,7 @@ fun TopAircraftCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = stringResource(
-                                R.string.stats_aircraft_flights_format,
-                                stat.flightCount,
-                                distanceText(stat.totalDistanceNm),
-                            ),
+                            text = flights,
                             style = MaterialTheme.typography.bodySmall.asChartFigure(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

@@ -55,7 +55,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
@@ -429,7 +429,7 @@ private fun FleetHeader(
 }
 
 @Composable
-private fun FleetRowCard(
+internal fun FleetRowCard(
     aircraft: AircraftSpec,
     onClick: () -> Unit,
     onToggleFlown: () -> Unit,
@@ -455,12 +455,23 @@ private fun FleetRowCard(
         if (aircraft.flown) R.string.fleet_action_mark_not_flown else R.string.fleet_action_mark_flown,
     )
 
+    // `clearAndSetSemantics`, not `semantics(mergeDescendants = true)`, and the
+    // click restated inside it. A merging node that has its own description
+    // *and* children is exported to accessibility services as two nodes: the
+    // description moves onto a synthetic first child so a screen reader speaks
+    // it before the children's text, and the click stays on the parent — so a
+    // `uiautomator dump` showed this card's sentence on a node that was not
+    // clickable. The sentence already says everything the children print, so
+    // the children are cleared instead, and the one node left carries the
+    // sentence, the click and the toggle action together. Clearing also drops
+    // the `Card`'s own click semantics, hence `onClick` is set here as well.
     Card(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
+            .clearAndSetSemantics {
                 contentDescription = description
+                onClick { onClick(); true }
                 customActions = listOf(
                     CustomAccessibilityAction(toggleActionLabel) {
                         onToggleFlown()

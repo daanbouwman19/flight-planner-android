@@ -37,6 +37,15 @@ object DatabaseModule {
      * `fallbackToDestructiveMigration` is correct here and only here: this
      * database is derived data with no user content, so discarding it costs
      * nothing. The installer guarantees a matching copy is put back immediately.
+     *
+     * The wait below is the one blocking call the installer exposes, and this
+     * is its one caller. The copy itself was started from `Application.onCreate`
+     * on an IO dispatcher and has normally finished long before anything asks
+     * for a DAO; this returns at once then. It blocks only for the remainder of
+     * a copy still in flight, and it never starts a second one — a completed
+     * copy is what makes it safe for Room to open the file, so it cannot be
+     * made asynchronous without `createFromAsset`, which the bundled driver
+     * rules out.
      */
     @Provides
     @Singleton
@@ -44,7 +53,7 @@ object DatabaseModule {
         @ApplicationContext context: Context,
         installer: AirportAssetInstaller,
     ): AirportDatabase {
-        installer.ensureInstalled()
+        installer.ensureInstalledBlocking()
         return Room.databaseBuilder(context, AirportDatabase::class.java, AirportDatabase.NAME)
             .setDriver(BundledSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)

@@ -120,6 +120,19 @@ class MetarFromRawTest {
     }
 
     @Test
+    fun `a 10+SM clear report with no provider category derives VFR`() {
+        // Ten miles or better under a clear sky is the best weather a station
+        // can report. It derived UNKNOWN because `10+SM` was not a visibility
+        // the parser recognised, so the report looked like one with no
+        // visibility group at all.
+        val metar = Metar.fromRaw(station = "KDEN", raw = "METAR KDEN 271853Z 08006KT 10+SM CLR 31/06 A3012")
+
+        metar.visibilityStatuteMiles shouldBe 10.0
+        metar.visibilityIsOrGreater shouldBe true
+        metar.flightRules shouldBe FlightRules.VFR
+    }
+
+    @Test
     fun `a provider category wins over the derived one, when there is a sky to have one about`() {
         // NOAA's fltCat is the official categorisation and local derivation is
         // the fallback — over a report whose sky the station actually measured.

@@ -15,6 +15,7 @@ import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
 import com.github.daanbouwman.flightplanner.model.FlightRecord
+import com.github.daanbouwman.flightplanner.model.FlightRules
 import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.model.Runway
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
@@ -26,6 +27,7 @@ import com.github.daanbouwman.flightplanner.settings.UnitSystem
 import com.github.daanbouwman.flightplanner.settings.WeatherProvider
 import com.github.daanbouwman.flightplanner.weather.WeatherRepository
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.Dispatchers
@@ -36,10 +38,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import java.io.IOException
 import java.time.LocalDate
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -237,7 +242,7 @@ private class FakeAirportRepository(private val world: Fixture) : AirportReposit
         icaos.mapNotNull { code -> world.airports.firstOrNull { it.icao == code } }
 
     override suspend fun airportsForSlots(index: AirportIndex, slots: IntArray): List<Airport> =
-        airportsByIds(slots.map { index.ids[it] })
+        airportsByIds(slots.map { index.idOf(it) })
 
     override suspend fun runwaysFor(airportId: Int): List<Runway> = emptyList()
     override fun prepareNameIndex(index: AirportIndex) {
@@ -264,10 +269,25 @@ private class FakeSettingsRepository(initial: AppSettings? = AppSettings()) : Se
     override fun setAvwxApiKey(key: String?) = update { it.copy(avwxApiKey = key) }
 }
 
-/** Never resolves anything — Plan's weather pipeline is exercised in its own test file, not here. */
-private class FakeWeatherRepository : WeatherRepository {
-    override suspend fun fetch(stations: List<String>): Map<String, Metar> = emptyMap()
+/**
+ * Resolves every station it is asked about as VFR, after failing the first
+ * [failuresBeforeSuccess] calls the way a dropped connection would. Nothing in
+ * this file asks about a station unless it is testing the retry, so the default
+ * of never failing leaves every other test as it was.
+ */
+private class FakeWeatherRepository(private val failuresBeforeSuccess: Int = 0) : WeatherRepository {
+    val requests = mutableListOf<List<String>>()
+
+    override suspend fun fetch(stations: List<String>): Map<String, Metar> {
+        requests += stations
+        if (requests.size <= failuresBeforeSuccess) throw IOException("offline")
+        return stations.associateWith { Metar(station = it, raw = "$it RAW", flightRules = FlightRules.VFR) }
+    }
 }
+
+/** PlanViewModel's own debounce and back-off, restated so a test reads as a timeline. */
+private const val VISIBLE_DEBOUNCE_MILLIS = 300L
+private const val RETRY_DELAY_MILLIS = 30_000L
 
 class PlanViewModelTest {
 
@@ -296,6 +316,7 @@ class PlanViewModelTest {
         index: AirportIndex? = fixture.index,
         fleetRepository: FakeFleetRepository = FakeFleetRepository(fleet),
         settingsRepository: FakeSettingsRepository = FakeSettingsRepository(),
+        weatherRepository: FakeWeatherRepository = FakeWeatherRepository(),
         body: suspend TestScope.(PlanViewModel) -> Unit,
     ) = runTest(dispatcher) {
         val model = PlanViewModel(
@@ -305,7 +326,7 @@ class PlanViewModelTest {
             airportRepository = airports,
             worldOutlineLoader = { WorldOutline.Empty },
             settingsRepository = settingsRepository,
-            weatherRepository = FakeWeatherRepository(),
+            weatherRepository = weatherRepository,
             defaultDispatcher = dispatcher,
         )
         backgroundScope.launch(dispatcher) { model.uiState.collect {} }
@@ -412,6 +433,35 @@ class PlanViewModelTest {
         grown.routes.first().id shouldBe firstId
     }
 
+    /**
+     * The screen resets its scroll on this and on nothing else, so it has to
+     * tick for every way a list is replaced and for no way a list is merely
+     * changed — an append must not send the user back to the top of a list
+     * they were half way down.
+     */
+    @Test
+    fun `the list generation ticks when the list is replaced and not when it grows`() = planTest { model ->
+        val opened = model.uiState.value.listGeneration
+
+        model.loadMore()
+        advanceUntilIdle()
+        model.uiState.value.listGeneration shouldBe opened
+
+        model.replace(model.uiState.value.routes[1])
+        advanceUntilIdle()
+        model.uiState.value.listGeneration shouldBe opened
+
+        // A mode change replaces the list without touching the refresh count.
+        model.setMode(PlanMode.NotFlown)
+        advanceUntilIdle()
+        val afterMode = model.uiState.value.listGeneration
+        (afterMode > opened) shouldBe true
+
+        model.generate()
+        advanceUntilIdle()
+        (model.uiState.value.listGeneration > afterMode) shouldBe true
+    }
+
     @Test
     fun `load more is dropped while a batch is already in flight`() = planTest { model ->
         model.generate()
@@ -427,6 +477,71 @@ class PlanViewModelTest {
         advanceUntilIdle()
 
         model.uiState.value.routes.size shouldBe before * 2
+    }
+
+    /**
+     * The entrance memory has to outlive the screen — that is why it is here —
+     * and has to forget a list that was thrown away, so a fresh batch arrives
+     * as one rather than appearing fully formed because an old id was kept.
+     */
+    @Test
+    fun `an entered row stays entered until the list is replaced`() = planTest { model ->
+        val row = model.uiState.value.routes.first()
+        model.hasEntered(row.id) shouldBe false
+
+        model.markEntered(row.id)
+        model.hasEntered(row.id) shouldBe true
+
+        // An append is the same list: what has entered stays entered.
+        model.loadMore()
+        advanceUntilIdle()
+        model.hasEntered(row.id) shouldBe true
+
+        // A swipe that is undone puts the same id back, and it must not rise
+        // into place again — it never left, as far as the user is concerned.
+        model.markFlown(row)
+        advanceUntilIdle()
+        model.undoMarkFlown()
+        advanceUntilIdle()
+        model.hasEntered(row.id) shouldBe true
+
+        model.generate()
+        advanceUntilIdle()
+        model.hasEntered(row.id) shouldBe false
+    }
+
+    @Test
+    fun `the list stops growing at the cap and says so, until a refresh`() = planTest { model ->
+        val batch = model.uiState.value.routes.size
+
+        // Up to the cap, every request is honoured.
+        while (model.uiState.value.routes.size + batch <= MAX_ROUTE_ROWS) {
+            model.loadMore()
+            advanceUntilIdle()
+            model.uiState.value.status shouldBe if (model.uiState.value.routes.size >= MAX_ROUTE_ROWS) {
+                PlanStatus.EndReached
+            } else {
+                PlanStatus.Ready
+            }
+        }
+        val capped = model.uiState.value
+        capped.status shouldBe PlanStatus.EndReached
+        capped.routes shouldHaveSize MAX_ROUTE_ROWS
+        // Not an empty result: the predicate the "nothing in range" state
+        // hangs off must not fire for a full list that merely stopped.
+        capped.isEmptyResult shouldBe false
+
+        // Past it, a request is declined rather than queued.
+        model.loadMore()
+        advanceUntilIdle()
+        model.uiState.value.routes shouldHaveSize MAX_ROUTE_ROWS
+        model.uiState.value.status shouldBe PlanStatus.EndReached
+
+        // A refresh is a new list, and the cap starts over with it.
+        model.generate()
+        advanceUntilIdle()
+        model.uiState.value.status shouldBe PlanStatus.Ready
+        model.uiState.value.routes shouldHaveSize batch
     }
 
     @Test
@@ -613,6 +728,60 @@ class PlanViewModelTest {
             row.arc.lons.none { it.isNaN() } shouldBe true
             // 450 kt cruise over hundreds of miles: never zero for a real leg.
             (row.flightTime.hours > 0 || row.flightTime.minutes > 0) shouldBe true
+        }
+    }
+
+    @Test
+    fun `a failed weather fetch is asked again after the back-off, without the visible set changing`() {
+        val weather = FakeWeatherRepository(failuresBeforeSuccess = 1)
+        planTest(weatherRepository = weather) { model ->
+            model.setVisibleIcaos(setOf("EHAM", "EGLL"))
+            advanceTimeBy(VISIBLE_DEBOUNCE_MILLIS + 1)
+            runCurrent()
+
+            // The first ask failed. Before the retry existed this was the end of
+            // it: the stations were unmarked, and nothing asked again until the
+            // user scrolled and the visible set changed.
+            weather.requests shouldHaveSize 1
+            model.uiState.value.weatherByStation.shouldBeEmpty()
+
+            // Just short of the back-off: nothing yet.
+            advanceTimeBy(RETRY_DELAY_MILLIS - 10)
+            runCurrent()
+            weather.requests shouldHaveSize 1
+
+            advanceTimeBy(20)
+            runCurrent()
+
+            weather.requests shouldHaveSize 2
+            weather.requests[1].toSet() shouldBe setOf("EHAM", "EGLL")
+            model.uiState.value.weatherByStation.keys shouldBe setOf("EHAM", "EGLL")
+        }
+    }
+
+    @Test
+    fun `a retry that fails schedules the next one, and a success ends the chain`() {
+        val weather = FakeWeatherRepository(failuresBeforeSuccess = 2)
+        planTest(weatherRepository = weather) { model ->
+            model.setVisibleIcaos(setOf("EHAM"))
+            advanceTimeBy(VISIBLE_DEBOUNCE_MILLIS + 1)
+            runCurrent()
+            weather.requests shouldHaveSize 1
+
+            advanceTimeBy(RETRY_DELAY_MILLIS + 1)
+            runCurrent()
+            weather.requests shouldHaveSize 2
+            model.uiState.value.weatherByStation.shouldBeEmpty()
+
+            advanceTimeBy(RETRY_DELAY_MILLIS + 1)
+            runCurrent()
+            weather.requests shouldHaveSize 3
+            model.uiState.value.weatherByStation.keys shouldBe setOf("EHAM")
+
+            // Resolved, so nothing is pending: another back-off produces no request.
+            advanceTimeBy(RETRY_DELAY_MILLIS + 1)
+            runCurrent()
+            weather.requests shouldHaveSize 3
         }
     }
 

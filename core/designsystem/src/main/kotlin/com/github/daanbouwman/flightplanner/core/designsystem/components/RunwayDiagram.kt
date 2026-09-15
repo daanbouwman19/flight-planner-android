@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -92,10 +93,20 @@ import kotlin.math.sin
  * strips) cannot be drawn either way and are skipped, with a one-line count
  * underneath rather than a silent omission — they still appear in the
  * caller's own textual runway list.
+ *
+ * **The drawing says nothing to a screen reader, so the caller has to.** The
+ * canvas is one semantics node with no children, and it used to clear that
+ * node and set nothing — a blank rectangle between the airport's name and its
+ * runway list. [contentDescription] is required rather than defaulted because
+ * only the caller knows what the diagram is *saying* for this airport: which
+ * ends are drawn, and which one the wind favours. The component knows how to
+ * draw them, which is not the same sentence.
  */
 @Composable
 fun RunwayDiagram(
     runways: List<Runway>,
+    /** What the diagram shows, in words — the idents drawn and, with [wind], the favoured end. */
+    contentDescription: String,
     modifier: Modifier = Modifier,
     /**
      * The reported surface wind, if there is one.
@@ -194,7 +205,7 @@ fun RunwayDiagram(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clearAndSetSemantics { }
+                .clearAndSetSemantics { this.contentDescription = contentDescription }
                 .then(
                     if (!draggable) {
                         Modifier
@@ -800,6 +811,7 @@ private fun RunwayDiagramPreview() {
                     surfaceKind = SurfaceKind.GRASS,
                 ),
             ),
+            contentDescription = "Runway diagram: 09, 27, 18R, 36L",
             modifier = Modifier.padding(16.dp),
         )
     }
@@ -830,6 +842,7 @@ private fun RunwayDiagramPositionedPreview() {
                 previewRunway("04", 41.0, 6_627, 148, lit = true, lat = 52.3004, lon = 4.78348),
                 previewRunway("22", 221.0, 6_627, 148, lit = true, lat = 52.3140, lon = 4.80302),
             ),
+            contentDescription = "Runway diagram: Schiphol's six runways at their true positions",
             modifier = Modifier.padding(16.dp),
         )
     }

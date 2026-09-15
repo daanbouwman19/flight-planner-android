@@ -72,7 +72,27 @@ sealed interface Destination {
         val aircraftId: Int,
         val distanceNm: Int,
         val alreadyFlown: Boolean = false,
-    ) : Destination
+    ) : Destination {
+
+        /**
+         * The route's identity as one string: `"EHAM>KJFK@7"`.
+         *
+         * Used as the list–detail scaffold navigator's content key and as the
+         * stem of every shared-element key, so that a pane, a scaffold and a
+         * transition all agree on which route is which. The distance is not part
+         * of it: two rows with the same codes and airframe are the same route,
+         * and the distance is a property of that route rather than of its
+         * identity. This used to be four private copies of the same template,
+         * which agreed only by luck.
+         */
+        fun key(): String = key(departureIcao, destinationIcao, aircraftId)
+
+        companion object {
+            /** [key], for a caller holding the three fields but not the route. */
+            fun key(departureIcao: String, destinationIcao: String, aircraftId: Int): String =
+                "$departureIcao>$destinationIcao@$aircraftId"
+        }
+    }
 
     /**
      * The globe with the window to itself, for one route.

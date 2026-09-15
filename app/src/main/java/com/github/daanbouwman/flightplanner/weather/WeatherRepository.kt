@@ -11,6 +11,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -85,11 +87,32 @@ internal class DefaultWeatherRepository @Inject constructor(
         return fresh + fetched.associateBy { it.station }
     }
 
-    /** AVWX has no batched endpoint, so the missing stations fan out concurrently instead of one request. */
+    /**
+     * Bounds how many AVWX requests are in flight at once, across every caller.
+     *
+     * A field on the singleton rather than a local in [fetchAvwx], so that two
+     * screens fetching at the same moment share the one budget instead of each
+     * getting four of their own.
+     */
+    private val avwxInFlight = Semaphore(AVWX_MAX_IN_FLIGHT)
+
+    /**
+     * AVWX has no batched endpoint, so the missing stations fan out concurrently
+     * instead of one request — but no more than [AVWX_MAX_IN_FLIGHT] at a time.
+     *
+     * Unbounded, a Plan screen with fifty visible cards opened a hundred sockets
+     * at once against a keyed, rate-limited API; the free tier answers that with
+     * `429`s, which `fetchMetar` reports as "no report", so the user saw weather
+     * for a random subset of the list. Four is well under any published limit
+     * and still finishes a full batch inside the debounce window.
+     */
     private suspend fun fetchAvwx(stations: List<String>, apiKey: String): List<Metar> = coroutineScope {
-        stations.map { station -> async { avwxClient.fetchMetar(station, apiKey) } }
+        stations.map { station -> async { avwxInFlight.withPermit { avwxClient.fetchMetar(station, apiKey) } } }
             .awaitAll()
             .filterNotNull()
     }
 
+    internal companion object {
+        const val AVWX_MAX_IN_FLIGHT = 4
+    }
 }

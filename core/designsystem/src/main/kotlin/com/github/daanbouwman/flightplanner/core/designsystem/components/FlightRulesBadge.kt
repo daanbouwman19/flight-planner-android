@@ -24,12 +24,16 @@ import com.github.daanbouwman.flightplanner.model.FlightRules
  * The category is stated in text as well as in colour, because roughly one man
  * in twelve cannot tell this particular green from this particular red, and
  * "IFR" printed on the chip costs three characters.
+ *
+ * One semantics node, not two: the description is set with `mergeDescendants`,
+ * so the "VFR" the chip prints folds into the node that says "Visual Flight
+ * Rules" rather than being announced again as a separate stop after it.
  */
 @Composable
 fun FlightRulesBadge(rules: FlightRules, modifier: Modifier = Modifier) {
     val colors = LocalFlightRulesColors.current[rules]
     Surface(
-        modifier = modifier.semantics {
+        modifier = modifier.semantics(mergeDescendants = true) {
             contentDescription = rules.description.substringBefore('\n')
         },
         shape = MaterialTheme.shapes.small,

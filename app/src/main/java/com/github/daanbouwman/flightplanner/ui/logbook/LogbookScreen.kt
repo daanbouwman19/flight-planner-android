@@ -55,12 +55,14 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -167,39 +169,10 @@ fun LogbookScreen(
             header = header,
         )
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 8.dp),
+        LogbookOverlay(
+            snackbarHostState = snackbarHostState,
+            onAddClick = { showAddFlightSheet = true },
         )
-
-        // The default (M3 "medium") FAB size, shape-morphing on press —
-        // copied verbatim from FleetScreen's own add-aircraft FAB. See its
-        // KDoc for why this is the shape Expressive actually prescribes here.
-        val fabInteractionSource = remember { MutableInteractionSource() }
-        val fabPressed by fabInteractionSource.collectIsPressedAsState()
-        val fabMorphProgress by animateFloatAsState(
-            targetValue = if (fabPressed) 1f else 0f,
-            animationSpec = FlightMotion.spatialFast(),
-            label = "fab-morph",
-        )
-        val fabMorph = remember { Morph(FlightShapes.Circle, FlightShapes.Cookie) }
-
-        FloatingActionButton(
-            onClick = { showAddFlightSheet = true },
-            interactionSource = fabInteractionSource,
-            shape = rememberMorphShape(fabMorph, fabMorphProgress),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
-                .padding(16.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_logbook_add),
-                contentDescription = stringResource(R.string.logbook_action_add_flight),
-            )
-        }
     }
 
     if (showAddFlightSheet) {
@@ -221,6 +194,68 @@ fun LogbookScreen(
             },
             onDismiss = { showAddFlightSheet = false },
         )
+    }
+}
+
+/**
+ * The add-flight FAB and its snackbar host, positioned so an Undo action can never land
+ * under the FAB that paints over it.
+ *
+ * The [SnackbarHost] and the [FloatingActionButton] are siblings in one [Box], and the FAB
+ * is composed last and aligned [Alignment.BottomEnd] — without this end clearance it simply
+ * paints over the last ~72 dp of whatever the host draws, occluding the "Undo" action on a
+ * delete snackbar (the one action in this screen a user actually needs to press in a hurry).
+ * A `Scaffold` would fix this too, but its `snackbarHost` slot changes how window insets are
+ * applied here, which the empty-system-bars invariant depends on; padding the host is the
+ * smaller, safer change.
+ *
+ * Extracted from [LogbookScreen] so [LogbookOverlayTest] (`app/src/test`) can drive it
+ * directly, without a Hilt-backed [LogbookViewModel].
+ */
+@Composable
+internal fun LogbookOverlay(
+    snackbarHostState: SnackbarHostState,
+    onAddClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.fillMaxSize()) {
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                // The FAB sits at BottomEnd with its own 16 dp margin; reserve its full
+                // width plus a 16 dp gap so the host — and any action inside it — never
+                // sits under it, however wide the action label gets.
+                .padding(start = 16.dp, end = 16.dp + FabWidth + 16.dp, bottom = 8.dp),
+        )
+
+        // The default (M3 "medium") FAB size, shape-morphing on press —
+        // copied verbatim from FleetScreen's own add-aircraft FAB. See its
+        // KDoc for why this is the shape Expressive actually prescribes here.
+        val fabInteractionSource = remember { MutableInteractionSource() }
+        val fabPressed by fabInteractionSource.collectIsPressedAsState()
+        val fabMorphProgress by animateFloatAsState(
+            targetValue = if (fabPressed) 1f else 0f,
+            animationSpec = FlightMotion.spatialFast(),
+            label = "fab-morph",
+        )
+        val fabMorph = remember { Morph(FlightShapes.Circle, FlightShapes.Cookie) }
+
+        FloatingActionButton(
+            onClick = onAddClick,
+            interactionSource = fabInteractionSource,
+            shape = rememberMorphShape(fabMorph, fabMorphProgress),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                .padding(16.dp)
+                .testTag(FabTestTag),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_logbook_add),
+                contentDescription = stringResource(R.string.logbook_action_add_flight),
+            )
+        }
     }
 }
 
@@ -319,15 +354,12 @@ private fun LogbookList(
     // count-up animation for a number that never actually changed.
     val unitSystem = LocalUnitSystem.current
     val distanceSuffix = distanceUnitSuffix(unitSystem)
-    // The tile's own caption, not just its value, names the unit — otherwise
-    // toggling Metric leaves "NM" captioning a distance now shown in km.
-    val distanceLabel = stringResource(
-        if (unitSystem == UnitSystem.METRIC) {
-            R.string.logbook_summary_distance_metric
-        } else {
-            R.string.logbook_summary_distance_aviation
-        },
-    )
+    // "DISTANCE", whatever the unit. The caption used to be the unit itself —
+    // "NM" or "KM", switched with the setting — which was one more place for
+    // the caption and the figure to disagree, to say a word the figure already
+    // says in its own suffix. FLIGHTS and HOURS beside it name quantities; so
+    // does this now.
+    val distanceLabel = stringResource(R.string.logbook_summary_distance)
 
     LazyColumn(
         state = listState,
@@ -450,7 +482,7 @@ private fun YearMonth.monthLabel(): String =
     format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault()))
 
 @Composable
-private fun LogbookRowCard(
+internal fun LogbookRowCard(
     row: LogbookRow,
     onClick: () -> Unit,
     onDelete: () -> Unit,
@@ -481,12 +513,18 @@ private fun LogbookRowCard(
     )
     val deleteActionLabel = stringResource(R.string.logbook_action_delete)
 
+    // `clearAndSetSemantics` with the click restated inside it, for the reason
+    // FleetRowCard gives: a merging node with its own description and children
+    // reaches accessibility services as two nodes, the sentence on a synthetic
+    // child and the click on the parent. The sentence says everything the row
+    // prints, so the children are cleared and one node carries all three.
     Card(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
+            .clearAndSetSemantics {
                 contentDescription = description
+                onClick { onClick(); true }
                 customActions = listOf(
                     CustomAccessibilityAction(deleteActionLabel) {
                         onDelete()
@@ -562,6 +600,12 @@ private const val SummaryKey = "summary"
 
 /** Extra bottom room so the FAB (56 dp, plus its own margin) never sits over the last card. Matches FleetScreen's own constant. */
 private val FabClearance = 112.dp
+
+/** The default (M3 "medium") FAB's footprint — see [LogbookOverlay]'s snackbar-host clearance. */
+private val FabWidth = 56.dp
+
+/** Lets [LogbookOverlayTest] find the FAB's bounds without depending on its content description string. */
+internal const val FabTestTag = "logbook_fab"
 
 /*
  * Previews.

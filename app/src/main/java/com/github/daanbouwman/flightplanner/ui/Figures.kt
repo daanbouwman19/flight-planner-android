@@ -5,6 +5,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.res.stringResource
 import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.model.AltimeterConvention
+import com.github.daanbouwman.flightplanner.model.Units
 import com.github.daanbouwman.flightplanner.settings.UnitSystem
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -94,8 +95,68 @@ fun ktToDisplaySpeed(kt: Int, unit: UnitSystem): Int =
  * lambda, rather than calling [distanceText] from within it.
  */
 internal fun distanceUnitSuffix(unit: UnitSystem) = if (unit == UnitSystem.METRIC) "km" else "NM"
-private fun lengthUnitSuffix(unit: UnitSystem) = if (unit == UnitSystem.METRIC) "m" else "ft"
-private fun speedUnitSuffix(unit: UnitSystem) = if (unit == UnitSystem.METRIC) "km/h" else "kt"
+internal fun lengthUnitSuffix(unit: UnitSystem) = if (unit == UnitSystem.METRIC) "m" else "ft"
+internal fun speedUnitSuffix(unit: UnitSystem) = if (unit == UnitSystem.METRIC) "km/h" else "kt"
+
+/*
+ * The inverse conversions, for a figure a user *typed* in the active unit that
+ * the app stores in its own -- range in nautical miles, cruise in knots and
+ * takeoff distance in metres (see `AircraftSpec` on that last asymmetry). The
+ * aircraft forms used to ask for the stored units under fixed labels, so a
+ * reader who had chosen Metric was shown "Range (NM)" and had to convert by
+ * hand in the one place the app asked them to type a figure.
+ *
+ * ### Round trips, and where the +-1 comes from
+ *
+ * Stored -> display -> stored is exact in every case. On the way out the figure
+ * is rounded to the display unit, and every display unit here is at least as
+ * fine as its stored one, or finer: a kilometre is 0.54 NM, a foot is 0.30 m.
+ * The rounding error on the way out (half a display unit) is therefore under
+ * half a stored unit on the way back and vanishes. Reopening a sheet under
+ * either unit system shows the figures the airframe actually has.
+ *
+ * Display -> stored -> display is the direction that can drift, and only when
+ * the *typed* unit is the finer one: a range typed as 1,001 km is stored as
+ * 540 NM and reopens as 1,000 km; a takeoff distance typed as 6,600 ft is
+ * stored as 2,012 m and reopens as 6,601 ft. The bound is half a stored unit --
+ * one kilometre for range and cruise, two feet for takeoff distance, because a
+ * metre is 3.3 ft -- and it is the stored unit's honest resolution rather than
+ * a defect. Aviation range and cruise never see it, because there the typed
+ * unit *is* the stored one.
+ *
+ * Both sheets validate a typed figure as `> 0` before converting, which is
+ * unit-invariant. Any future threshold that is not -- a minimum range, say --
+ * applies to the **stored** value after conversion, never to the text field.
+ */
+
+/** A distance typed in the active unit, back to the nautical miles the fleet stores. */
+fun displayDistanceToNm(value: Int, unit: UnitSystem): Int =
+    if (unit == UnitSystem.METRIC) (value / KM_PER_NM).roundToInt() else value
+
+/** A speed typed in the active unit, back to the knots the fleet stores. */
+fun displaySpeedToKt(value: Int, unit: UnitSystem): Int =
+    if (unit == UnitSystem.METRIC) (value / KM_PER_NM).roundToInt() else value
+
+/**
+ * A takeoff distance typed in the active unit, back to the metres the fleet stores.
+ *
+ * A positive figure stays positive: 1 ft is 0.3 m and would round to 0, which
+ * `AircraftSpec` reads as "no requirement" -- the opposite of what was typed.
+ */
+fun displayLengthToTakeoffMeters(value: Int, unit: UnitSystem): Int = when {
+    unit == UnitSystem.METRIC -> value
+    value <= 0 -> value
+    else -> (value * M_PER_FT).roundToInt().coerceAtLeast(1)
+}
+
+/**
+ * A stored takeoff distance, in the active unit's magnitude -- straight through
+ * under Metric, where the stored metre already is the display unit, and via
+ * [Units.takeoffDistanceToRunwayFeet] otherwise, which is the same conversion
+ * the fleet's hero chip shows so the field and the chip cannot disagree.
+ */
+fun takeoffMetersToDisplayLength(meters: Int, unit: UnitSystem): Int =
+    if (unit == UnitSystem.METRIC) meters else Units.takeoffDistanceToRunwayFeet(meters)
 
 /**
  * A distance, in the active unit — `"497 NM"` or `"920 km"`.

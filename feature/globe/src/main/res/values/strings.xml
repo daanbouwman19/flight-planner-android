@@ -14,6 +14,14 @@
     <string name="globe_zoom_out">Zoom out</string>
 
     <!--
+        Shown over the still map when no tile has ever arrived and the reason is
+        the network. Only then: a provider error or a decode failure is the
+        app's problem, and telling a user to go online for it would be a lie.
+    -->
+    <string name="globe_offline_title">Imagery unavailable offline</string>
+    <string name="globe_offline_message">The globe fetches its imagery the first time it shows a place. The flat map stays until a connection returns.</string>
+
+    <!--
         Read when TalkBack lands on the globe itself. It states what is drawn and
         where the view currently is, because neither is discoverable any other
         way: the surface has no children and the camera has no text.

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
+import com.github.daanbouwman.flightplanner.ui.STOP_TIMEOUT_MILLIS
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -54,9 +55,5 @@ class FleetDetailPaneViewModel @Inject constructor(
 
     fun clear() {
         selected.value = null
-    }
-
-    private companion object {
-        const val STOP_TIMEOUT_MILLIS = 5_000L
     }
 }

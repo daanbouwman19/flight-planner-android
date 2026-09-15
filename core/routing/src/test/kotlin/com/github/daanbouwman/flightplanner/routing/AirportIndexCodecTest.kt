@@ -106,4 +106,33 @@ class AirportIndexCodecTest {
         bytes[4] = 99
         shouldThrow<IllegalStateException> { AirportIndexCodec.decode(bytes) }
     }
+
+    /**
+     * The count is read off the wire, and the size check that guards the rest
+     * of the decode used to compute `count * 60` in `Int`. Past ~35 million
+     * airports that wraps, and a corrupt header could wrap to exactly the
+     * blob's real length and be accepted. The arithmetic is now `Long`.
+     */
+    @Test
+    fun `a header count too large for any blob is rejected, not overflowed`() {
+        val bytes = AirportIndexCodec.encode(randomWorld(100, seed = 77))
+        // Bytes 8..11 hold the little-endian airport count.
+        java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(8, Int.MAX_VALUE)
+
+        val failure = shouldThrow<IllegalStateException> { AirportIndexCodec.decode(bytes) }
+        failure.message shouldBe "Airport index blob declares ${Int.MAX_VALUE} airports, more than a blob can hold"
+    }
+
+    @Test
+    fun `encodedSize is exact for real counts and null past what a ByteArray holds`() {
+        val header = 16 + (LatBandIndex.BAND_COUNT + 1) * 4
+        AirportIndexCodec.encodedSize(0) shouldBe header
+        AirportIndexCodec.encodedSize(1) shouldBe header + 60
+        AirportIndexCodec.encodedSize(24_000) shouldBe header + 24_000 * 60
+        // The first count whose blob exceeds Int.MAX_VALUE, and the last that does not.
+        val limit = (Int.MAX_VALUE - header) / 60
+        (AirportIndexCodec.encodedSize(limit) != null) shouldBe true
+        AirportIndexCodec.encodedSize(limit + 1) shouldBe null
+        AirportIndexCodec.encodedSize(Int.MAX_VALUE) shouldBe null
+    }
 }

@@ -18,6 +18,8 @@
     <string name="plan_no_matches_title">Nothing in range</string>
     <string name="plan_no_matches_message">No route fits the current aircraft, departure and runway
         requirements. Try clearing the departure or choosing a longer-range aircraft.</string>
+    <!-- Footer under the last card once the list has reached its cap (six batches). -->
+    <string name="plan_end_reached">That is the end of this list. Pull down to refresh for more.</string>
 
     <string name="plan_pick_aircraft_title">Which aircraft?</string>
     <string name="plan_pick_aircraft_message">Choose an airframe and every route will be planned for it.</string>
@@ -84,10 +86,19 @@
         Spoken for a whole route card, so a screen reader reads one sentence
         instead of stopping on eleven separate nodes. In order: aircraft,
         departure code, departure name, destination code, destination name,
-        distance in nautical miles, hours, minutes.
+        distance in nautical miles, hours, minutes. The card clears its
+        children's semantics and speaks only this, so the two strings below
+        carry the figures the children print that this one does not: the
+        longest runway at each end (with the shortfall warning when the
+        aircraft cannot use it) and the flight category once weather has
+        resolved. "nautical miles" is also how :macrobenchmark finds a card.
     -->
     <string name="plan_route_content_description">%1$s, %2$s %3$s to %4$s %5$s, %6$,d nautical
         miles, %7$d hours %8$d minutes</string>
+    <!-- Airport code, then the runway length in the reader's units: "EHAM longest runway 12,467 ft". -->
+    <string name="plan_route_runway_spoken">%1$s longest runway %2$s</string>
+    <!-- Airport code, then the flight category spelled out: "EHAM Visual Flight Rules". -->
+    <string name="plan_route_weather_spoken">%1$s %2$s</string>
 
     <string name="plan_picker_departure_title">Departure airport</string>
     <string name="plan_picker_destination_title">Destination airport</string>
@@ -174,10 +185,18 @@
     <string name="fleet_add_variant">Variant</string>
     <string name="fleet_add_icao_code">ICAO type code</string>
     <string name="fleet_add_category">Category</string>
-    <string name="fleet_add_range">Range (NM)</string>
-    <string name="fleet_add_cruise">Cruise (kt)</string>
-    <!-- Metres, matching the field FleetCsv and AircraftSpec store — see AircraftSpec's KDoc on the unit asymmetry. -->
-    <string name="fleet_add_takeoff">Takeoff distance (m)</string>
+    <!--
+        The three envelope fields carry no unit of their own: the sheets append the
+        active unit system's suffix through fleet_add_field_unit, so a Metric
+        reader types kilometres into "Range (km)" rather than converting by hand
+        into a field fixed at the stored NM. The stored units (NM, kt, m) are the
+        sheets' concern, not the labels' — see Figures.kt's inverse conversions.
+    -->
+    <string name="fleet_add_range">Range</string>
+    <string name="fleet_add_cruise">Cruise</string>
+    <string name="fleet_add_takeoff">Takeoff distance</string>
+    <!-- %1$s is one of the three labels above, %2$s the unit suffix: "Range (km)". -->
+    <string name="fleet_add_field_unit">%1$s (%2$s)</string>
     <string name="fleet_add_submit">Add to fleet</string>
     <string name="fleet_add_error_required">Required</string>
     <string name="fleet_add_error_positive_number">Enter a positive number</string>
@@ -227,6 +246,7 @@
     <string name="stats_network_mode_globe">Globe</string>
     <string name="stats_network_mode_flat_description">Flat map</string>
     <string name="stats_network_mode_globe_description">3D globe</string>
+    <string name="stats_network_refit">Frame the whole network</string>
 
     <string name="stats_metric_total_flights">TOTAL FLIGHTS</string>
     <string name="stats_metric_avg_distance">AVG LEG DISTANCE</string>
@@ -243,13 +263,22 @@
     <string name="stats_aircraft_rank_format">%1$d. %2$s</string>
     <!-- %2$s already carries its own unit suffix (distanceText in Figures.kt). -->
     <string name="stats_aircraft_flights_format">%1$d flights · %2$s</string>
+    <!-- Spoken for one top-aircraft row: the two lines above as one sentence. -->
+    <string name="stats_aircraft_row_description">%1$s, %2$s</string>
+    <!-- Spoken for one bar of the activity chart. %1$s is the month label, %2$d the count / %2$s the distance with unit. -->
+    <plurals name="stats_activity_month_flights">
+        <item quantity="one">%1$s: %2$d flight</item>
+        <item quantity="other">%1$s: %2$d flights</item>
+    </plurals>
+    <string name="stats_activity_month_distance">%1$s: %2$s</string>
     <string name="stats_airport_count_format">%1$s · %2$d</string>
 
     <!-- Logbook (D1): the summary strip's three captions. Short and aviation-terse,
-         matching plan_chip_distance/plan_chip_time. -->
+         matching plan_chip_distance/plan_chip_time. The distance caption names the
+         quantity, not the unit: the figure under it carries its own suffix, and a
+         caption that repeated it had to be switched with the unit system. -->
     <string name="logbook_summary_flights">FLIGHTS</string>
-    <string name="logbook_summary_distance_aviation">NM</string>
-    <string name="logbook_summary_distance_metric">KM</string>
+    <string name="logbook_summary_distance">DISTANCE</string>
     <string name="logbook_summary_hours">HOURS</string>
 
     <!-- Logbook row. Shown when the flight has no recorded distance or duration. -->
@@ -329,6 +358,24 @@
 
     <!-- Opens the Sky Profile gallery: every weather state the scene can draw, one per tap. -->
     <string name="settings_self_check_action">Run on-device self-check</string>
+    <!--
+        The self-check screen itself, behind Settings. Its old subtitle promised
+        "the real interface arrives in the next milestone", a sentence written
+        before the app had one. The headline is built here rather than in the
+        state class so it can be plural-aware and translated.
+    -->
+    <string name="self_check_title">Self-check</string>
+    <string name="self_check_description">Diagnostics for the bundled data, index, fleet, routing and renderer.</string>
+    <string name="self_check_headline_checking">Checking…</string>
+    <plurals name="self_check_headline_failed">
+        <item quantity="one">%1$d check failed</item>
+        <item quantity="other">%1$d checks failed</item>
+    </plurals>
+    <plurals name="self_check_headline_notes">
+        <item quantity="one">Working, with %1$d note</item>
+        <item quantity="other">Working, with %1$d notes</item>
+    </plurals>
+    <string name="self_check_headline_ok">Everything works</string>
 
     <string name="licences_open_source_title">OPEN-SOURCE SOFTWARE</string>
     <string name="licences_open_source_body">AndroidX and Jetpack Compose, Material Components, Kotlin and
@@ -354,6 +401,14 @@
         which no other surface shows as a chip.
     -->
     <string name="route_detail_bearing_label">BRG</string>
+
+    <!--
+        The immersive globe with nothing to draw: one of the route's airports is
+        not in the dataset, so there is no arc. The screen has no other chrome,
+        so this — and the collapse control beside it — is all that is shown.
+    -->
+    <string name="immersive_globe_unavailable_title">No globe for this route</string>
+    <string name="immersive_globe_unavailable">One of these airports is not in the dataset, so there is no leg to draw.</string>
 
     <!-- Opens the globe with the window to itself. -->
     <!--
@@ -470,6 +525,15 @@
     <string name="weather_wind_speed">%1$s kt</string>
     <!-- An affirmative reading of a clear sky, not a missing figure. -->
     <string name="weather_ceiling_unlimited">Unlimited</string>
+    <!--
+        Spoken for the sky profile, a drawing a screen reader cannot read.
+        %1$s is the station, %2$s the flight category in words, %3$s the ceiling
+        and %4$s the visibility, each already in the reader's units or
+        weather_figure_not_reported.
+    -->
+    <string name="weather_scene_description">Sky profile for %1$s: %2$s. Ceiling %3$s, visibility %4$s.</string>
+    <string name="weather_scene_no_report">Sky profile for %1$s: no report.</string>
+    <string name="weather_figure_not_reported">not reported</string>
 
     <!-- Spoken by the accessibility service for the whole weather card, which
          toggles the raw report text. -->
@@ -508,5 +572,23 @@
     <string name="airport_detail_not_found_title">Airport not found</string>
     <string name="airport_detail_not_found_message">This airport may have been removed from the dataset.</string>
     <string name="airport_detail_fly_from_here">Fly from here</string>
+    <!--
+        Spoken for the runway diagram, which draws nothing a screen reader can
+        read. %1$d is the number of ends drawn, %2$s their idents, comma-separated.
+    -->
+    <plurals name="airport_runway_diagram_description">
+        <item quantity="one">Runway diagram: %1$d runway end, %2$s.</item>
+        <item quantity="other">Runway diagram: %1$d runway ends, %2$s.</item>
+    </plurals>
+    <string name="airport_runway_diagram_empty">Runway diagram: no runway headings are published for this airport.</string>
+    <!-- %1$s is the sentence above, %2$s the ident of the end the wind favours. -->
+    <string name="airport_runway_diagram_favoured">%1$s Favoured for the current wind: %2$s.</string>
+    <!--
+        The visible legend under the diagram, shown only when there is a wind to
+        decide by. The diagram already says it twice — a halo under the strip
+        and the end's ident in bold sock orange — but neither is a convention a
+        first-time reader knows; this line is the key to them. %1$s is the ident.
+    -->
+    <string name="airport_runway_favoured_caption">Favoured for current wind: %1$s</string>
 
 </resources>

@@ -45,9 +45,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -63,6 +65,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -203,6 +206,7 @@ fun PlanScreen(
 
     InfiniteScroll(listState = listState, itemCount = state.routes.size, onLoadMore = viewModel::loadMore)
     VisibleWeatherStations(listState = listState, routes = state.routes, onVisible = viewModel::setVisibleIcaos)
+    ScrollToTopOnNewList(listState = listState, listGeneration = state.listGeneration)
 
     // Tapping Plan in the navigation bar while already on Plan comes back here. It
     // matters more than usual on this screen: the controls are the list's first
@@ -329,6 +333,8 @@ fun PlanScreen(
                 onOpenRoute = onOpenRoute,
                 onMarkFlown = viewModel::markFlown,
                 onReplace = viewModel::replace,
+                hasEntered = viewModel::hasEntered,
+                markEntered = viewModel::markEntered,
                 onGenerate = viewModel::generate,
                 onPickAircraft = {
                     query = ""
@@ -588,6 +594,8 @@ private fun PlanContent(
     onOpenRoute: (RouteRow) -> Unit,
     onMarkFlown: (RouteRow) -> Unit,
     onReplace: (RouteRow) -> Unit,
+    hasEntered: (Long) -> Boolean,
+    markEntered: (Long) -> Unit,
     onGenerate: () -> Unit,
     onPickAircraft: () -> Unit,
 ) {
@@ -646,6 +654,8 @@ private fun PlanContent(
             onOpenRoute = onOpenRoute,
             onMarkFlown = onMarkFlown,
             onReplace = onReplace,
+            hasEntered = hasEntered,
+            markEntered = markEntered,
         )
     }
 }
@@ -721,17 +731,20 @@ private fun RouteList(
     onOpenRoute: (RouteRow) -> Unit,
     onMarkFlown: (RouteRow) -> Unit,
     onReplace: (RouteRow) -> Unit,
+    hasEntered: (Long) -> Boolean,
+    markEntered: (Long) -> Unit,
 ) {
-    // Which rows have already played their entrance.
+    // Which rows have already played their entrance is the ViewModel's to
+    // remember, and the two callbacks are how the rows ask.
     //
     // A `LaunchedEffect` inside a lazy item runs again every time that item is
     // recomposed, and scrolling an item off screen and back destroys and rebuilds
     // it — so an entrance animation driven from inside the item replays every
     // time the user scrolls past it, which is the single most common way to make
-    // a list feel broken. This set lives outside the items and outlives their
-    // composition, so a row animates exactly once.
-    val entered = remember { mutableSetOf<Long>() }
-
+    // a list feel broken. The memory has to live outside the items; it lived
+    // here first, in a `remember`, and that was still one lifetime too short —
+    // opening a route on a phone takes this whole screen out of composition,
+    // and coming back rebuilt the set empty and replayed every entrance.
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().testTag(PlanRouteListTag),
@@ -740,13 +753,26 @@ private fun RouteList(
     ) {
         // Keyed, so it survives the list being regenerated under it and does not
         // get rebuilt every time a batch arrives.
-        item(key = HeaderKey) { header() }
+        // Typed as well as keyed. A lazy list reuses the composition of an item
+        // that scrolled out for one scrolling in *of the same type*; with no
+        // type everything is one type, and the slot a header or a footer left
+        // behind is offered to a card, whose entire subtree then has to be
+        // torn down and rebuilt in it. Three literals keep cards recycling into
+        // cards, which is the only reuse that saves anything.
+        item(key = HeaderKey, contentType = HeaderType) { header() }
 
-        itemsIndexed(state.routes, key = { _, row -> row.id }) { index, row ->
+        itemsIndexed(
+            items = state.routes,
+            key = { _, row -> row.id },
+            contentType = { _, _ -> RouteType },
+        ) { index, row ->
             SwipeableRoute(
                 row = row,
                 outline = outline,
-                weatherByStation = state.weatherByStation,
+                // Looked up here so a card whose two ends have not changed is
+                // skipped when some other station resolves — see RouteCard.
+                departureMetar = state.weatherByStation[row.departure.icao],
+                destinationMetar = state.weatherByStation[row.destination.icao],
                 onOpen = { onOpenRoute(row) },
                 onMarkFlown = { onMarkFlown(row) },
                 onReplace = { onReplace(row) },
@@ -765,12 +791,12 @@ private fun RouteList(
                         fadeOutSpec = null,
                         placementSpec = FlightMotion.spatial(),
                     )
-                    .rowEntrance(index = index, row = row, entered = entered),
+                    .rowEntrance(index = index, row = row, hasEntered = hasEntered, markEntered = markEntered),
             )
         }
 
         if (state.status == PlanStatus.Appending) {
-            item(key = AppendingKey) {
+            item(key = AppendingKey, contentType = FooterType) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -779,6 +805,24 @@ private fun RouteList(
                 ) {
                     MorphingLoadingIndicator()
                 }
+            }
+        }
+
+        // The list is capped, and the cap has to be said. Scrolling to the end
+        // of an infinite list and finding it merely stops reads as a load that
+        // failed; one line saying what happened and what to do turns a limit
+        // into a state. Refresh is pull-to-refresh, which the user already has.
+        if (state.status == PlanStatus.EndReached) {
+            item(key = EndReachedKey, contentType = FooterType) {
+                Text(
+                    text = stringResource(R.string.plan_end_reached),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                )
             }
         }
     }
@@ -826,13 +870,22 @@ private fun RouteList(
  * than rely on Compose shortening it.
  */
 @Composable
-private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<Long>): Modifier {
+private fun Modifier.rowEntrance(
+    index: Int,
+    row: RouteRow,
+    hasEntered: (Long) -> Boolean,
+    markEntered: (Long) -> Unit,
+): Modifier {
     val rowId = row.id
     val replacing = row.arrivedAsReplacement
     val reduceMotion = LocalReduceMotion.current
-    // Read and record in one step, during composition, so the row knows whether
-    // this is its first appearance before any effect has had a chance to run.
-    val alreadyEntered = remember(rowId) { !entered.add(rowId) }
+    // Read during composition, so the row knows whether this is its first
+    // appearance before any effect has run — and *recorded* in the effect
+    // below, not here. Composition is allowed to be speculative and thrown
+    // away; a mutation inside `remember` would mark a row as entered in a
+    // composition that never reached the screen, and the row would then never
+    // animate. Effects run only for compositions that were applied.
+    val alreadyEntered = remember(rowId) { hasEntered(rowId) }
 
     // Only the first screenful of a batch animates.
     //
@@ -845,18 +898,38 @@ private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<
     // list, not how far it is from the user's attention.
     val animates = replacing || index < FlightMotion.EnterStaggerCap
 
-    var visible by remember(rowId) { mutableStateOf(alreadyEntered || reduceMotion || !animates) }
+    // Decided once, on the row's first composition, like the entrance itself.
+    val skipsEntrance = remember(rowId) { alreadyEntered || reduceMotion || !animates }
+    LaunchedEffect(rowId) { markEntered(rowId) }
+
+    // **A row with nothing to animate gets no layer.** `graphicsLayer` is a
+    // separate render node per item, and this used to hand one to every row
+    // for its whole life — including the forty-two rows of a batch past the
+    // stagger cap, every row scrolled back into view, and every row after its
+    // entrance had finished, all drawing through a layer that set alpha to one
+    // and translated by zero. During a fling that is every visible card paying
+    // for an animation none of them is running.
+    if (skipsEntrance) return this
+
+    var visible by remember(rowId) { mutableStateOf(false) }
     LaunchedEffect(rowId) {
-        if (!visible) {
-            if (!replacing) delay(FlightMotion.enterDelayMillis(index).toLong())
-            visible = true
-        }
+        if (!replacing) delay(FlightMotion.enterDelayMillis(index).toLong())
+        visible = true
     }
+
+    // Both springs report in, so the layer comes off only once the card is
+    // fully opaque *and* at rest: the effects spring is the shorter of the
+    // two, but which finishes last is the motion scheme's business, not this
+    // row's. `finishedListener` fires only for an animation that ran to its
+    // target uninterrupted, and the target here moves exactly once.
+    var faded by remember(rowId) { mutableStateOf(false) }
+    var travelled by remember(rowId) { mutableStateOf(false) }
 
     val alpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
         animationSpec = FlightMotion.effects(),
         label = "rowEntranceAlpha",
+        finishedListener = { faded = true },
     )
     // One progress value for either axis: 0 is "off its mark", 1 is home. The
     // spatial spring carries it past 1 and back, which is the overshoot that
@@ -866,7 +939,13 @@ private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<
         targetValue = if (visible) 1f else 0f,
         animationSpec = FlightMotion.spatial(),
         label = "rowEntranceTravel",
+        finishedListener = { travelled = true },
     )
+
+    // Entered: the row is drawn as its neighbours are, with no layer between
+    // it and the list. Swapping the modifier out costs one relayout of this
+    // item, once, against a layer composited on every frame after.
+    if (faded && travelled) return this
 
     val rise = with(LocalDensity.current) { EntranceRise.toPx() }
     // A swipe carries the card towards the start edge, so its replacement comes
@@ -917,7 +996,8 @@ private fun Modifier.rowEntrance(index: Int, row: RouteRow, entered: MutableSet<
 private fun SwipeableRoute(
     row: RouteRow,
     outline: WorldOutline,
-    weatherByStation: Map<String, Metar>,
+    departureMetar: Metar?,
+    destinationMetar: Metar?,
     onOpen: () -> Unit,
     onMarkFlown: () -> Unit,
     onReplace: () -> Unit,
@@ -1034,7 +1114,8 @@ private fun SwipeableRoute(
             onClick = onOpen,
             onMarkFlown = onMarkFlown,
             onReplace = onReplace,
-            weatherByStation = weatherByStation,
+            departureMetar = departureMetar,
+            destinationMetar = destinationMetar,
         )
     }
 }
@@ -1105,6 +1186,41 @@ private fun VisibleWeatherStations(
     }
 }
 
+/**
+ * Puts the list back at the top whenever it is a *new* list.
+ *
+ * Nothing else did. The ViewModel empties the rows on every mode, departure or
+ * airframe change and on refresh, `PlanContent` swaps the `LazyColumn` out for
+ * the skeletons while the batch generates, and `listState` — which lives above
+ * both — kept the old offset the whole time. So changing the mode from row forty
+ * reattached the list forty rows into a batch the user had not seen a single
+ * card of, with the controls they had just used scrolled off the top.
+ *
+ * Keyed on the generation and not on the routes: an appended batch, a swiped
+ * row and a replacement all change the list without making it a new one.
+ *
+ * The last generation acted on is **saved**, not remembered. On a phone the Plan
+ * screen leaves composition when a route is opened, and `rememberLazyListState`
+ * restores the offset when it comes back — which is exactly the offset a
+ * first-composition effect keyed on the generation would throw away. Saving it
+ * makes "back from a route" and "same list" the same thing. The one scroll it
+ * does issue on first composition is the ViewModel's own first batch arriving,
+ * against a list already at the top.
+ *
+ * `scrollToItem` is safe to call while the skeletons are up and no `LazyColumn`
+ * is attached: it records the position and remeasures only if there is a
+ * layout to remeasure, so the list reattaches at the top when the batch lands.
+ */
+@Composable
+private fun ScrollToTopOnNewList(listState: LazyListState, listGeneration: Long) {
+    var seenGeneration by rememberSaveable { mutableLongStateOf(listGeneration) }
+    LaunchedEffect(listGeneration) {
+        if (listGeneration == seenGeneration) return@LaunchedEffect
+        seenGeneration = listGeneration
+        listState.scrollToItem(0)
+    }
+}
+
 private const val SkeletonCount = 5
 
 /** Below this, the batch arrives before a placeholder could be understood. */
@@ -1132,6 +1248,17 @@ private const val LoadMoreThreshold = 20
 private const val PlanRouteListTag = "plan:routeList"
 
 private const val AppendingKey = "appending"
+
+private const val EndReachedKey = "endReached"
+
+/*
+ * Content types, so the lazy list recycles like with like. The two footers
+ * share one: neither is ever on screen with the other, and both are a single
+ * centred composable in a padded box.
+ */
+private const val HeaderType = "header"
+private const val RouteType = "route"
+private const val FooterType = "footer"
 
 private const val HeaderKey = "header"
 
@@ -1201,6 +1328,10 @@ private fun PreviewPlan(state: PlanUiState) {
                 onOpenRoute = {},
                 onMarkFlown = {},
                 onReplace = {},
+                // Already entered, so the preview renders the rows at rest
+                // rather than at the first frame of a fade.
+                hasEntered = { true },
+                markEntered = {},
                 onGenerate = {},
                 onPickAircraft = {},
             )
@@ -1234,6 +1365,13 @@ private fun PlanWithFiltersPreview() {
             status = PlanStatus.Ready,
         ),
     )
+}
+
+/** The footer a capped list ends on, in place of the loading indicator. */
+@LightDarkPreview
+@Composable
+private fun PlanEndReachedPreview() {
+    PreviewPlan(PlanUiState(routes = PlanPreviewData.batch, status = PlanStatus.EndReached))
 }
 
 @LightDarkPreview

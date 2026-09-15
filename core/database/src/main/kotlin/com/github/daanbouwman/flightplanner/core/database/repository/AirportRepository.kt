@@ -142,7 +142,7 @@ internal class DefaultAirportRepository @Inject constructor(
     }
 
     override suspend fun airportsForSlots(index: AirportIndex, slots: IntArray): List<Airport> =
-        airportsByIds(slots.map { index.ids[it] })
+        airportsByIds(slots.map { index.idOf(it) })
 
     override suspend fun runwaysFor(airportId: Int): List<Runway> =
         runwayDao.forAirport(airportId).map { it.toRunway() }

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -31,6 +30,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -120,10 +121,19 @@ enum class SkyPhase { DAY, TWILIGHT, NIGHT }
  * Everything that moves — the sun and moon at true positions, deck drift,
  * precipitation, the windsock and its drag — arrives separately. This draws the
  * parts that hold still.
+ *
+ * **It also says nothing to a screen reader on its own.** The scene is one
+ * childless node, and it used to carry no description at all — the largest
+ * element on the weather card was silent. [contentDescription] is required
+ * because the scene is a rendering of *this report*, and the sentence that
+ * stands in for it — the category, the ceiling, the visibility — is the
+ * caller's to compose in the reader's units and language.
  */
 @Composable
 fun SkyProfile(
     metar: Metar?,
+    /** The scene in words: the flight category and the ceiling and visibility it was drawn from. */
+    contentDescription: String,
     modifier: Modifier = Modifier,
     /**
      * Where the Sun and the Moon stood at the moment of the observation, or null
@@ -181,12 +191,21 @@ fun SkyProfile(
     // composable call that appears and disappears across recompositions corrupts
     // the slot table, and `polarityAgrees` changes whenever the theme does. This
     // works in every preview and fails on a theme switch if written the other way.
-    val steppedWeight by animateFloatAsState(
+    //
+    // A `State<Float>`, not unwrapped here, following `driftPhase` below: the
+    // spring runs for a few hundred milliseconds at frame rate, and reading it at
+    // this scope recomposed the whole panel — every `remember`, the text measure,
+    // the `drawWithCache` build with its paths — on each of those frames. Read in
+    // the draw scope instead it costs a redraw and nothing else. `bandNow` is
+    // where that read happens, and it is the only place the band is resolved.
+    val steppedWeight: State<Float> = animateFloatAsState(
         targetValue = if (blend.weight < 0.5f) 0f else 1f,
         animationSpec = FlightMotion.effects(),
         label = "skyBandPolarity",
     )
-    val band = blendBands(bandFrom, bandTo, if (polarityAgrees) blend.weight else steppedWeight)
+    val sunWeight = blend.weight
+    fun bandNow(): SkyBand =
+        blendBands(bandFrom, bandTo, if (polarityAgrees) sunWeight else steppedWeight.value)
     val nightWeight = blend.bandPosition() / 2f
     val airKnown = skyCover !is SkyCover.Unknown
     val ground = metar?.groundCondition ?: GroundCondition.Unknown
@@ -276,6 +295,7 @@ fun SkyProfile(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
+            .clearAndSetSemantics { this.contentDescription = contentDescription }
             .drawWithCache {
                 if (size.minDimension <= 0f) return@drawWithCache onDrawBehind { }
 
@@ -322,10 +342,16 @@ fun SkyProfile(
                 // bottom and effectively absent at the top. It follows the blend
                 // rather than switching off at night, because the quantity it stands
                 // for is continuous and there is no light down there to warm.
-                val airStepColors = AirSteps.map { step ->
+                //
+                // Resolved per frame in the draw block, not here: the band it lerps
+                // from is a function of the polarity spring, and a state read in this
+                // build phase would rebuild every path above on each frame of it.
+                // Four lerps a frame against a dozen paths is the right side of that.
+                val warmth = HorizonWarmth * (1f - nightWeight)
+                fun airStepColor(band: SkyBand, step: AirStep): Color {
                     val air = lerp(band.low, band.high, step.mix)
                     val reach = (1f - step.mix) * (1f - step.mix)
-                    lerp(air, colors.celestial.sunGlow, HorizonWarmth * (1f - nightWeight) * reach)
+                    return lerp(air, colors.celestial.sunGlow, warmth * reach)
                 }
                 val fogTopY = yOf(fogFraction)
                 val ceilingFt = (metar?.ceiling as? Ceiling.At)?.ft
@@ -430,12 +456,17 @@ fun SkyProfile(
                 }
 
                 onDrawBehind {
+                    // The band, read here so the polarity spring behind it invalidates
+                    // the drawing and nothing else — the same treatment `driftPhase`
+                    // gets a few lines down, for the same reason.
+                    val band = bandNow()
+
                     // 1 · the air, in four flat steps. See [AirSteps].
                     if (airKnown) {
-                        AirSteps.forEachIndexed { index, step ->
+                        AirSteps.forEach { step ->
                             val top = yOf(step.topFraction)
                             drawRect(
-                                color = airStepColors[index],
+                                color = airStepColor(band, step),
                                 topLeft = Offset(0f, top),
                                 size = Size(size.width, yOf(step.bottomFraction) - top),
                             )

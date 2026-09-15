@@ -1,22 +1,30 @@
 package com.github.daanbouwman.flightplanner.startup
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.daanbouwman.flightplanner.core.database.airport.AirportDao
 import com.github.daanbouwman.flightplanner.core.database.airport.AirportIndexLoader
 import com.github.daanbouwman.flightplanner.core.database.airport.DatasetMetaDao
+import com.github.daanbouwman.flightplanner.core.database.airport.LoadedIndex
 import com.github.daanbouwman.flightplanner.core.database.airport.RunwayDao
 import com.github.daanbouwman.flightplanner.core.database.user.AircraftDao
 import com.github.daanbouwman.flightplanner.core.database.user.FleetSeeder
 import com.github.daanbouwman.flightplanner.core.database.user.toSpec
+import com.github.daanbouwman.flightplanner.di.DefaultDispatcher
 import com.github.daanbouwman.flightplanner.feature.globe.FilamentProbe
+import com.github.daanbouwman.flightplanner.feature.globe.FilamentReport
+import com.github.daanbouwman.flightplanner.feature.globe.GlobeStatus
 import com.github.daanbouwman.flightplanner.model.DatasetMetaKeys
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.RouteGenerator
 import com.github.daanbouwman.flightplanner.routing.RouteMode
 import com.github.daanbouwman.flightplanner.routing.RouteRequest
 import com.github.daanbouwman.flightplanner.startup.CheckResult.Status
+import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,14 +47,64 @@ import kotlin.system.measureTimeMillis
  * synthetic fixture.
  */
 @HiltViewModel
-class StartupCheckViewModel @Inject constructor(
-    private val airportDao: AirportDao,
-    private val runwayDao: RunwayDao,
-    private val datasetMetaDao: DatasetMetaDao,
+class StartupCheckViewModel internal constructor(
+    /**
+     * Deferred, so that opening the database is something this screen *does*
+     * rather than something it needs in order to exist. Providing a DAO
+     * provides the database, which waits for the asset install and then opens
+     * the file; if either fails, an eager injection failed the ViewModel's
+     * construction and the self-check screen — whose whole job is to report
+     * that failure — could not appear. All three resolve inside
+     * [checkAirportDatabase]'s try, where a failure becomes a FAIL row.
+     *
+     * Three deferred DAOs rather than one deferred database: `:app` keeps Room
+     * off its compile classpath on purpose, and naming `AirportDatabase` here
+     * would put `RoomDatabase` on it.
+     */
+    private val airportDao: () -> AirportDao,
+    private val runwayDao: () -> RunwayDao,
+    private val datasetMetaDao: () -> DatasetMetaDao,
     private val aircraftDao: AircraftDao,
-    private val fleetSeeder: FleetSeeder,
-    private val indexLoader: AirportIndexLoader,
+    /** `FleetSeeder.seedIfEmpty`, or a fake. */
+    private val seedFleet: suspend () -> Int,
+    /** `AirportIndexLoader.load`, or a fake. */
+    private val loadIndex: suspend () -> LoadedIndex,
+    /** `FilamentProbe.run` against the application context, or a fake report. */
+    private val probeFilament: () -> FilamentReport,
+    /** Where the database is opened: the wait can block for the rest of a first-launch copy. */
+    private val ioDispatcher: CoroutineDispatcher,
+    /** Where the Filament engine is built and torn down. */
+    private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
+
+    /**
+     * The constructor Hilt uses. It only maps the graph's types onto the seams
+     * above — `dagger.Lazy` onto a function, the seeder and the loader onto
+     * their one method each, the context onto a probe call — so that the
+     * primary constructor can be handed fakes on the JVM, where neither Room
+     * nor Filament exists. The same shape `AirportAssetInstaller` has.
+     */
+    @Inject
+    constructor(
+        @ApplicationContext context: Context,
+        airportDao: Lazy<AirportDao>,
+        runwayDao: Lazy<RunwayDao>,
+        datasetMetaDao: Lazy<DatasetMetaDao>,
+        aircraftDao: AircraftDao,
+        fleetSeeder: FleetSeeder,
+        indexLoader: AirportIndexLoader,
+        @DefaultDispatcher defaultDispatcher: CoroutineDispatcher,
+    ) : this(
+        airportDao = airportDao::get,
+        runwayDao = runwayDao::get,
+        datasetMetaDao = datasetMetaDao::get,
+        aircraftDao = aircraftDao,
+        seedFleet = fleetSeeder::seedIfEmpty,
+        loadIndex = indexLoader::load,
+        probeFilament = { FilamentProbe.run(context) },
+        ioDispatcher = Dispatchers.IO,
+        defaultDispatcher = defaultDispatcher,
+    )
 
     private val _uiState = MutableStateFlow(StartupUiState())
     val uiState: StateFlow<StartupUiState> = _uiState.asStateFlow()
@@ -77,10 +135,17 @@ class StartupCheckViewModel @Inject constructor(
         return try {
             var airports = 0
             var runways = 0
+            // Resolving the first DAO is part of what is being timed and part of
+            // what can fail: it waits for the install and opens the file. Off the
+            // main thread, because the wait can block for the remainder of a
+            // first-launch copy.
             val millis = measureTimeMillis {
+                val airportDao = withContext(ioDispatcher) { airportDao() }
                 airports = airportDao.count()
-                runways = runwayDao.count()
+                runways = runwayDao().count()
             }
+            val airportDao = airportDao()
+            val datasetMetaDao = datasetMetaDao()
             if (airports == 0) {
                 report("Airport database", Status.FAIL, "opened but contains no airports")
                 return null
@@ -104,7 +169,7 @@ class StartupCheckViewModel @Inject constructor(
     }
 
     private suspend fun buildIndex(expected: Int): AirportIndex? = try {
-        val loaded = indexLoader.load()
+        val loaded = loadIndex()
         val timing = loaded.timing
         report(
             "In-memory index",
@@ -120,7 +185,7 @@ class StartupCheckViewModel @Inject constructor(
     }
 
     private suspend fun checkFleetSeeding(): Int = try {
-        val inserted = fleetSeeder.seedIfEmpty()
+        val inserted = seedFleet()
         val total = aircraftDao.count()
         report(
             "Fleet",
@@ -141,7 +206,10 @@ class StartupCheckViewModel @Inject constructor(
         }
         try {
             val fleet = aircraftDao.all().map { it.toSpec() }
-            val generator = RouteGenerator(index)
+            // On the injected dispatcher, not RouteGenerator's default: a test that
+            // drives this ViewModel with a test scheduler must see the generation
+            // finish, and work on the real Default pool is invisible to it.
+            val generator = RouteGenerator(index, dispatcher = defaultDispatcher)
             val shortest = fleet.minBy { it.rangeNm }
             val longest = fleet.maxBy { it.rangeNm }
 
@@ -181,10 +249,16 @@ class StartupCheckViewModel @Inject constructor(
      * Reported as a warning rather than a failure when Vulkan is unavailable:
      * Filament's OpenGL backend is a perfectly good fallback for this workload,
      * so it is information, not breakage.
+     *
+     * A device the globe itself has ruled out — `FilamentReport.support` other
+     * than `Available` — is a failure whatever the backend fields say, because
+     * that is the device on which the globe's controls are absent. The probe
+     * asks the session first, so this line and Settings' one cannot disagree.
      */
     private suspend fun checkFilament() {
-        val probe = withContext(Dispatchers.Default) { FilamentProbe.run() }
+        val probe = withContext(defaultDispatcher) { probeFilament() }
         val status = when {
+            probe.support != GlobeStatus.Available -> Status.FAIL
             probe.error != null -> Status.FAIL
             probe.vulkanActive -> Status.PASS
             else -> Status.WARN

@@ -3,6 +3,7 @@ package com.github.daanbouwman.flightplanner.feature.globe.ui
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.LocalSkyColors
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.LocalThemeChoice
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.ThemeChoice
@@ -21,20 +22,26 @@ import com.github.daanbouwman.flightplanner.feature.globe.render.GlobeInk
  * and the one a planet seen from outside its atmosphere actually is. Reaching
  * for `surface` instead would have made the globe a hole in the page rather than
  * a body in front of it.
+ *
+ * @param space what is painted where there is no planet. `surface` by default —
+ *   the page — because a full-bleed globe sits on the page. A globe embedded in
+ *   a card passes the card's own container colour instead, otherwise the band
+ *   is a `surface`-coloured rectangle inside a `surfaceContainer` card, which
+ *   is a hole in the card the moment the whole disc is on show.
  */
 @Composable
-internal fun rememberGlobeInk(): GlobeInk {
+internal fun rememberGlobeInk(space: Color? = null): GlobeInk {
     val scheme = MaterialTheme.colorScheme
     val sky = LocalSkyColors.current
     val dimImagery = LocalThemeChoice.current == ThemeChoice.COCKPIT
-    return remember(scheme, sky, dimImagery) {
+    return remember(scheme, sky, dimImagery, space) {
         GlobeInk(
             backdrop = sky.day.high,
             route = scheme.primary,
             routeCasing = scheme.surfaceContainer,
             limb = scheme.outline,
             atmosphere = scheme.primary,
-            space = scheme.surface,
+            space = space ?: scheme.surface,
             // Cockpit's dim, and only Cockpit's. A satellite photograph is the
             // same photograph at night; what changes is how much light the panel
             // throws at a dark-adapted eye.

@@ -17,13 +17,13 @@ Verified against the source tree, not against the plan.
 | Module | State |
 | --- | --- |
 | `:core:model` | **Complete.** `Airport`, `AircraftSpec`, `FlightRecord`, `FlightStatistics`, `FlightRules`, `Metar`, `Units`, `SurfaceKinds`, `FleetCsv` |
-| `:core:database` | **Complete for what exists.** Both Room DBs, all DAOs, asset installer, fleet seeder |
-| `:core:routing` | **Complete.** Index, codec, band index, great-circle, generator, `SearchScorer`, `FlightStatisticsCalculator`, `RouteArc` and `AirportSlotSearch` from Phase B, and `MapFrame`, `WorldOutline` and the two clippers from Phase B++ — all tested |
-| `:core:designsystem` | **Complete for what exists.** Theme, motion, shapes, and thirteen components (D1 added `MonthHeader` and `StatSummaryStrip`). See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
-| `:core:network` | **Empty.** No sources at all. Phase F |
-| `:feature:globe` | `FilamentProbe` only. Vulkan confirmed working, `FEATURE_LEVEL_3` |
-| `:app` | Shell, navigation, the self-check, the Plan screen, the route detail, Settings, Logbook (with swipe-to-delete and a two-pane flight-detail layout), Fleet (list, detail, management), Stats (dashboard with 9 metrics, monthly chart, 2D visited network map, and timeframe filters), and Airports (browse plus detail, E1/E2) — reached from an icon on Plan's header, not the bar, see F10 |
-| `:macrobenchmark` | **The instrument, from P2.** `FrameTimingMetric` over a scripted fling and `StartupTimingMetric` over a cold start, both on the `benchmarkRelease` variant, plus `BaselineProfileGenerator` from P1. See [the module README](../macrobenchmark/README.md) |
+| `:core:database` | **Complete for what exists.** Both Room DBs, all DAOs, the repositories, the fleet seeder, and the asset installer — a warm-started state machine since the 2026-09 review, awaited by the splash without a deadline. Has an `androidTest` source set: `UserDatabaseMigrationTest` runs the 1→2→3 auto-migrations on a device against the committed schema JSONs (`./gradlew :core:database:connectedDebugAndroidTest`) |
+| `:core:routing` | **Complete.** Index, codec, band index, great-circle, generator, `SearchScorer`, `FlightStatisticsCalculator` (the dashboard's one statistics pass, via `calculateDetailed`), `RouteArc` and `AirportSlotSearch` from Phase B, `MapFrame`, `WorldOutline` and the two clippers from Phase B++, and `NetworkFraming` from the review — all tested. The index's arrays are `internal`; consumers read per slot |
+| `:core:designsystem` | **Complete for what exists.** Theme, motion, shapes, and the component catalogue — the states, chips and headers from Phase A, `RouteMap` and `NetworkMap` (one ink family), `RunwayDiagram`, `SkyProfile`, the dialogs and the swipe background. See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
+| `:core:network` | **Complete for Phase F′.** `NetworkModule` (the OkHttp client and its cache), the NOAA and AVWX METAR clients with their DTOs, and the bindings module. The AVWX fan-out is bounded to four in flight |
+| `:feature:globe` | **Phase G, overhauled.** Filament renderer, tile pipeline (keyed Esri or GIBS imagery, z-bucketed queue, atlas), pure-JVM camera and quadtree, the gesture recogniser, the Compose hosts and labels, `FilamentProbe`, and the offline notice. Traced on hardware: §9 *The frame callback, measured* |
+| `:app` | Shell, navigation, the self-check (with a way back), the Plan screen, the route detail (screen and pane, sharing `RouteDetailLoader`), the immersive globe, Settings, Logbook (with swipe-to-delete, undo, an add-flight sheet and a two-pane flight-detail layout), Fleet (list, detail, management, unit-aware forms), Stats (dashboard with 9 metrics, monthly chart, the visited network flat and on the globe, and timeframe filters), and Airports (browse plus detail, E1/E2) — reached from an icon on Plan's header, not the bar, see F10 |
+| `:macrobenchmark` | **The instrument, from P2.** `FrameTimingMetric` over a scripted fling, `StartupTimingMetric` over a cold start, and `GlobeSpinBenchmark` with `TraceSectionSamplesMetric` over the globe's frame callback, all on the `benchmarkRelease` variant, plus `BaselineProfileGenerator` from P1. See [the module README](../macrobenchmark/README.md) |
 
 The three gaps the original plan did not cover — the index carrying no display
 data (**G-a**), the missing `SearchScorer` and `FlightStatisticsCalculator`
@@ -204,7 +204,7 @@ after. See Phase P.
 | **A5** | Airport display-data bridge | New DAO query fetching display rows by id set; a repository that batches the handful of visible rows. Plus a **lazily built name index** for search, loaded on a background scope *after* first frame so it never touches the startup path. Resolves **G-a** |
 | **A6** | Repository layer | `FleetRepository`, `LogbookRepository`, `AirportRepository`. Entity↔domain mapping, `Flow` throughout. Resolves **G-c** |
 | **A7** | `SearchScorer` in `:core:routing` | Field-for-field port of `TableItem::search_score_optimized`: code match 2, name/manufacturer/variant/category/date/runway 1, score-descending. Bounded min-heap for top-K. Resolves half of **G-b** |
-| **A8** | `FlightStatisticsCalculator` | Pure-Kotlin reference mirroring `StatsAccumulator`, including every tie-break rule. SQL aggregates in the DAO are the production path; this cross-checks them in tests. Resolves the rest of **G-b** |
+| **A8** | `FlightStatisticsCalculator` | Pure-Kotlin port of `StatsAccumulator`, including every tie-break rule. **It is the production path**: `StatsViewModel` calls `calculateDetailed()` on the filtered log and `FlightLogDao` has no aggregates beyond a `COUNT(*)` — the row used to say the opposite, and the dashboard had grown its own copies of the scan until the 2026-09 review (finding 3) collapsed them into the calculator. Resolves the rest of **G-b** |
 | **A9** | Navigation scaffold | Type-safe `@Serializable` routes in a sealed hierarchy, `NavigationSuiteScaffold`, edge-to-edge, `PredictiveBackHandler` |
 | **A10** | `AirportIndexProvider` | Process-scoped singleton, lazily `async`-built, warmed from `Application.onCreate` so it overlaps first-frame inflation. `SplashScreen.setKeepOnScreenCondition` capped at ~800 ms |
 
@@ -985,6 +985,41 @@ output of a command whose success you are about to depend on.** Every number in
 this document that came from an install is only as good as the install, and the
 one check that would have caught it — reading the `DEBUGGABLE` flag out of
 `dumpsys package` — takes one line.
+
+### The measurement, delivered — and the fade was not free
+
+Run on 14 September 2026 as part of the review fixes, the way P2 said it would
+have to be: `flingBaselineProfile` three times on the SM-S942B, one APK per run,
+the installed package's `pkgFlags` polled every twenty seconds through each run
+and read back afterwards — `HAS_CODE`, never `DEBUGGABLE`, ten samples a run.
+Same code otherwise (the rest of the Plan-scroll fixes were already in), runs
+minutes apart, the phone idle between them.
+
+| `fadeUnderStatusBar` | CPU P50 / P90 / P95 / P99 | overrun P50 / P90 / P95 / P99 |
+| --- | --- | --- |
+| Offscreen layer over the whole list — as shipped | 4.4 / 6.6 / 7.8 / 11.3 | 0.3 / 4.2 / 4.8 / 7.6 |
+| No fade at all | 4.2 / 6.2 / 7.1 / 10.9 | −0.8 / 2.8 / 3.5 / 5.9 |
+| **Layer the height of the inset, content drawn twice** | 4.5 / 6.5 / 7.2 / 10.5 | −0.3 / 3.5 / 4.0 / 7.1 |
+
+**The whole-list layer cost 1.4 ms of overrun at P90 and 1.7 ms at P99**, against
+a 0.4 ms move in CPU time. That split is the tell: an offscreen compositing layer
+is GPU work — every frame of a fling rendered to a full-screen texture and
+composited back — and `frameDurationCpu` does not see it, which is why the README
+says to read overrun. It is also why the void A/B would have been wrong even had
+its installs worked: it read `dumpsys gfxinfo`'s CPU-side buckets.
+
+What shipped is the third row. Erasing still needs a layer (`DstIn` against the
+window blends with the ground), so the layer is now bounded to the strip under
+the status bar: the content is drawn once straight to the window below the strip
+and once, clipped, into a `saveLayer` the strip's size, where the gradient erases
+it. That halves the bill — 0.7 ms at P90 over no fade — and pays a little CPU for
+recording the list's commands twice. The other half is the price of the effect,
+and the effect stays: a card parked under the clock with its ETE under the
+battery icon was a finding, not a preference. The bars remain empty; nothing is
+painted behind them, the strip is erased rather than covered.
+
+The retraction above is closed. What it said still stands as a method note; what
+it could not say — the number — is in the table.
 
 ## 4d. Phase P — Performance, before the next feature ✅ CLOSED
 
@@ -1882,8 +1917,8 @@ user sees first. All four live in `GlobeFit`.
 
 | Symptom | Cause |
 | --- | --- |
-| Both airports off the left and right edges, in the hero and worse in fullscreen | `frameRoute` takes no viewport. The projection's horizontal half-angle is `atan(tan(fovY/2) · w/h)`, so the near-square hero has about 0.7° of margin for a leg spanning ±14.9°, and the portrait immersive window has 6.4°. Moving between them multiplies every on-screen offset by 2.27 and carries the camera over unchanged, because `isNewSubject` is false. **Re-fit does not recover them**: it animates to the same aspect-blind camera. |
-| A long leg opens on a bare planet | `frameRoute` centres on the *degree* midpoint, not the arc midpoint — up to 68° off the great circle it is framing, and the comment excusing that is arithmetically false. Above roughly 12,000 km both airport plates are at zero alpha in the opening frame; at ~138° (KJFK→WSSS) the arc is behind the limb too. The A350-1000 and 777-200LR in the seeded fleet reach that. |
+| Both airports off the left and right edges, in the hero and worse in fullscreen · **FIXED** (`GlobeFit.frameRoute` takes the viewport; *What is still owed* item 1) | `frameRoute` takes no viewport. The projection's horizontal half-angle is `atan(tan(fovY/2) · w/h)`, so the near-square hero has about 0.7° of margin for a leg spanning ±14.9°, and the portrait immersive window has 6.4°. Moving between them multiplies every on-screen offset by 2.27 and carries the camera over unchanged, because `isNewSubject` is false. **Re-fit does not recover them**: it animates to the same aspect-blind camera. |
+| A long leg opens on a bare planet · **FIXED** (centred on the arc midpoint; *What is still owed* item 1) | `frameRoute` centres on the *degree* midpoint, not the arc midpoint — up to 68° off the great circle it is framing, and the comment excusing that is arithmetically false. Above roughly 12,000 km both airport plates are at zero alpha in the opening frame; at ~138° (KJFK→WSSS) the arc is behind the limb too. The A350-1000 and 777-200LR in the seeded fleet reach that. |
 | A wide visited network framed with its outliers behind the limb | `inverseZoom` is clamped to `[1, 8]`, so the fitted `distance` can never exceed **2.5** — a 66.4° horizon — while `MAX_DISTANCE` is 10, an 84.3° one. Every subject whose furthest point falls in that gap is hidden when a legal camera existed that would have shown it. |
 | Every leg under ~776 NM opens at the same altitude, and cannot be zoomed out of it | The same clamp binds from the other end: `0.9 / sin(θ/2) ≥ 8` whenever θ ≤ 0.2255 rad. A 71 NM leg is ~9% of the hero's height, drawn at the same camera as a 700 NM one. The Rust original has the same constants but `MAX_LOD` **18** against Android's **8**, so on the desktop you zoom in and recover the leg; here the imagery only stretches. The seeded ATR 42-600 has a 703 NM range and `minDistanceNm` defaults to null, so **every route it can fly** sits at or under the clamp. |
 
@@ -2100,7 +2135,7 @@ something, with the state after *The overhaul*:
    constants because the credit plate grows at font scale 2.0 and the stack
    grows a cell when the view is rotated. `cornerAlpha` is pure and tested
    (`GlobeLabelsAlphaTest`). Still open: the Esri offline-cache clause to
-   confirm in writing (PLAN.md §11); the 3 ms upload budget and `INCIDENCE_FLOOR` — which turned out to be the wrong knob entirely, see *Tilt destroyed the LOD* — unmeasured on hardware.
+   confirm in writing (PLAN.md §11). ~~The 3 ms upload budget and `INCIDENCE_FLOOR` — which turned out to be the wrong knob entirely, see *Tilt destroyed the LOD* — unmeasured on hardware.~~ Measured 2026-09-14, see *The frame callback, measured*: uploads are 0.1 ms at P90 against their 3 ms budget.
 
 ### A `SurfaceView` cannot be clipped, and that was the white flash
 
@@ -2121,7 +2156,8 @@ is why logcat was silent and why the absent `FEngine` line proved nothing.
 
 Two hypotheses were tested on the device and **both refuted**: it is not
 `fadeUnderStatusBar`'s `CompositingStrategy.Offscreen` layer (the spill is
-identical with it gone) and not the `Card`'s rounded clip (identical with a
+identical with it gone; that whole-list layer has since been measured and
+replaced, see §4c) and not the `Card`'s rounded clip (identical with a
 `RectangleShape`). Nor is it reachable from app code:
 `SurfaceView.setClipBounds` is inert without the `@hide`
 `setEnableSurfaceClipping`, and `setCornerRadius` is `@hide` *and* disables the
@@ -2237,10 +2273,11 @@ regress by exactly one level — mid-field, at tilt ≥ 1.0, where the budget is
 genuinely zero-sum. The trade is mid-field for near-field, and near-field is what
 was reported.
 
-**Separable follow-up:** `TileQueue.pop` takes `pollLast` within a level, which
+~~**Separable follow-up:** `TileQueue.pop` takes `pollLast` within a level, which
 with the new order systematically fetches the *least* important newly-appeared
-tile of each level first. Recording the visited nodes and issuing `request` in
-reverse after the traversal fixes it. Small, and independent of this change.
+tile of each level first.~~ Fixed 2026-09-14: a level is a FIFO now, so the
+queue hands the workers the traversal's own order — no reversal pass needed. See
+*The frame callback, measured* below for the trace that went with it.
 
 ### Five review findings against the fixes themselves
 
@@ -2291,8 +2328,9 @@ Still outstanding from the first pass, unchanged:
   Compose `clip` does not reach a below-window `SurfaceView` — so it does not
   round the corners, *and it does not bound the position either*. See **A
   SurfaceView cannot be clipped** below.
-- **H2's extension of `:macrobenchmark` to the globe**, and a check that nothing
-  in the globe path has moved into `Application.onCreate`.
+- ~~**H2's extension of `:macrobenchmark` to the globe**~~ — `GlobeSpinBenchmark`,
+  2026-09-14, see *The frame callback, measured* below. Still owed: a check that
+  nothing in the globe path has moved into `Application.onCreate`.
 - **The Esri question above**, unchanged.
 - ~~**Nothing makes a stale `.filamat` fail a build.**~~ Fixed 2026-09-08.
   `:feature:globe:verifyFilamatFreshness`, wired into `check`, hashes each
@@ -2330,6 +2368,151 @@ Found while fixing item 2 above, not fixed:
   4096² allocation. JVM-tested at the `graceFor` boundary; the timer itself is a
   device check (`adb logcat -s GlobeSession Filament`).
 
+### The frame callback, measured
+
+The one number Phase G had never taken on hardware was its own frame loop's:
+whether the quadtree traversal plus the mesh rebuild fits in a frame, or wants
+the carry-over budget the uploads already have (`UPLOAD_BUDGET_NANOS`). It is
+taken now. `GlobeScene.update` and `GlobeRenderHost.renderFrame` carry
+`androidx.tracing` sections — `globe:upload`, `globe:update` (traversal and
+rebuild together), `globe:traversal` and `globe:mesh` inside it, `globe:ribbon`,
+`globe:render` — and `:macrobenchmark`'s `GlobeSpinBenchmark` opens the first
+route, takes its globe full screen, and spins it through six flung drags per
+iteration, five iterations, reading each section off the Perfetto trace as a
+**distribution** (`TraceSectionSamplesMetric`) rather than the library's own
+per-iteration sum, because the frame a user sees is the P90 and not the mean.
+SM-S942B, `benchmarkRelease`, keyless GIBS imagery, 2026-09-14:
+
+| section (ms) | baseline profile, no warm-up — P50 / P90 / P99 | `Partial()` warmed — P50 / P90 / P99 |
+| --- | --- | --- |
+| `globe:update` (traversal + rebuild) | **0.8 / 1.1 / 1.5** | 0.9 / 1.2 / 1.7 |
+| `globe:traversal` | 0.4 / 0.6 / 0.9 | 0.4 / 0.6 / 0.8 |
+| `globe:mesh` (only frames that rebuild) | 0.5 / 0.6 / 0.9 | 0.6 / 0.8 / 1.1 |
+| `globe:ribbon` | 0.1 / 0.3 / 0.6 | 0.1 / 0.3 / 0.6 |
+| `globe:render` (Filament submit) | 0.3 / 0.5 / 0.7 | 0.3 / 0.4 / 0.6 |
+| `globe:upload` | 0.0 / 0.1 / 0.2 | 0.0 / 0.1 / 0.2 |
+| `frameDurationCpuMs` | 7.6 / 9.4 / 11.5 | 7.6 / 10.1 / 13.0 |
+
+**Decision: no traversal budget.** Traversal plus rebuild is 1.1 ms at P90 and
+1.5 ms at P99 on the first launch after an install, a quarter of the ~4 ms that
+would have justified carrying work over to the next frame; a budget would be
+machinery for a cost that is not there. The `Partial()` column is no faster —
+these sections are `FloatArray` arithmetic the JIT has little to add to — so the
+first-use case is not hiding a warm-up cliff either. **The keyed z18 provider is
+unmeasured** (no ArcGIS key in this checkout): a deeper tree is more nodes to
+visit, but the traversal's node count is bounded by the same `evictableSlots`
+gate at every depth, so the conclusion should carry; it is an expectation, not
+a figure, until someone with a key runs the same benchmark.
+
+**What the trace says instead, and is left open:** the whole globe callback is
+under 2 ms of a `frameDurationCpuMs` that sits at 7.6 ms P50 and ~10 ms P90
+against the 120 Hz panel's 8.3 ms — `frameOverrunMs` is 2.7 ms at P50. The
+frame's cost is therefore in the Compose glass over the sphere during a fling —
+the label plates re-laid out per projected pixel, the limb path rebuilt per
+draw — not in the renderer. That is a different investigation, with the same
+benchmark already in place to run it against.
+
+Two things about the instrument itself, for whoever runs it next: the
+`.perfetto-trace` files are not pulled to the host (`adb pull` refuses the
+`SM-S942B - 17` output directory AGP names, spaces and all — the JSON and the
+summary above still land), and the journey drives the app by content
+descriptions that are the app's own TalkBack strings, so a wording change on
+"Show the globe", "Open the globe full screen" or the route card sentence stops
+it at a named timeout rather than measuring the wrong screen.
+
+---
+
+## 9a. The 2026-09 review, and what it changed
+
+A full review on 2026-09-14 — eight module reviewers, an on-device walkthrough,
+and two deep dives the user added (the Plan list's infinite scroll and the
+visited-network map on Stats) — returned 3 High, 17 Medium and 19 Low findings
+against a green build. Every one was resolved on `review-2026-09-fixes`, one
+commit per finding, in eight clusters worked as parallel worktrees and merged in
+the order 1, 2, 3, 4, 7, 8, 5, 6. The tables below are the record: finding
+number, the commit, and what changed. Where a fix took a position the review
+did not ask for, the commit body says why, and the row says so briefly.
+
+### Cluster 1 — Undo and CI (High)
+
+| # | Commit | What changed |
+| --- | --- | --- |
+| 1 | `9f585ba` | Logbook's delete snackbar sat under the FAB, so Undo was unreachable. The host keeps an end gutter the FAB's width while a FAB is present; `LogbookOverlayTest` asserts Undo is displayed and its bounds do not meet the FAB's. This commit also wired Robolectric and the Compose UI test harness into `:app`'s unit tests, which every later semantics test runs on |
+| 2 | `eb6ec1f` | CI ran only `assembleDebug`. A `Verify` workflow runs `./gradlew build --no-daemon` on every PR and push to `main`, uploading lint and test reports on failure |
+
+### Cluster 2 — the data layer (Medium 4, 5, 6, 8, 13–16; Low 24)
+
+| # | Commit | What changed |
+| --- | --- | --- |
+| 4 | `4f941e5` | The airport database copy ran synchronously inside Hilt's provision, on the main thread at Plan's first composition. `AirportAssetInstaller` is a warm-started state machine (`Idle / Installing / Ready / Failed`) started from `Application.onCreate`; `DatabaseModule` awaits it. `StartupCheckViewModel` takes the DAOs as `dagger.Lazy` so a failed install is a FAIL row, not a crash. The residual — the first-launch copy outliving the splash deadline — is closed in cluster 6 below |
+| 5 | `0b63da1` | `RouteDetailLoader.load` and `withRunways` were bare; a Room read thrown into a `MutableStateFlow` inside `launch` took the process down. Each read degrades on its own; `runCatchingCancellable` became one `internal` helper in `ui/CancellationSafe.kt` in place of eight file-private copies |
+| 6 | `8c77b2b` | The immersive globe with no arc was a blank surface with no way out. The collapse control is composed in every branch; `immersiveGlobeStage` names Globe / Loading / Unavailable and only the last shows an `EmptyState` |
+| 8 | `7e26162` | `10+SM` did not parse, so a clear US report derived UNKNOWN. The `+` sets `visibilityIsOrGreater`, the flag ICAO `9999` already sets |
+| 13 | `2072710` | `UserDatabaseMigrationTest` (`core/database/src/androidTest`, new) runs the 1→2→3 auto-migrations on a device against the committed schema JSONs and asserts every user row survives. Passed on the SM-S942B |
+| 14 | `128dfc0` | `data_extraction_rules.xml` keeps the settings DataStore (the AVWX key lives in it) and the regenerable airport database out of cloud backup and device transfer |
+| 15 | `a815f14` | `FleetCsv` toggled quoting on any `"`; a quote mid-field is literal now, per RFC 4180 |
+| 16 | `f5e6bc9` | `AirportIndex` and `LatBandIndex` published mutable primitive arrays; they are `internal`, read through per-slot accessors |
+| 24 | `f9cb29f`, `4505d76` | `asin` clamped in `CelestialFrames`; `sampleInto` requires two samples; the codec computes `encodedSize` in `Long`; two KDocs (the `use_cache` divergence, ETL code uniqueness). The AVWX fan-out is bounded by a `Semaphore(4)` on the singleton |
+
+### Cluster 3 — Stats through the calculator (High 3)
+
+| # | Commit | What changed |
+| --- | --- | --- |
+| 3 | `b38c75f`, `0c54ea3`, `c2583cd` | The dashboard computed its figures three times over — `StatsGrouping`'s copies of the calculator's scan, and inline totals in the ViewModel. `FlightStatisticsCalculator.calculateDetailed()` returns the records and tallies with their identities; `calculate()` is a projection of it; `StatsViewModel` calls it and looks the airport names up itself. The duplicated functions are gone, their tie-break tests moved, and `StatsViewModelTest` cross-checks the dashboard against `calculate()` on a fixture with every tie. The KDoc, PLAN.md and row A8 that called the calculator test-only are corrected |
+
+### Cluster 4 — UI polish and adaptive state (Medium 7, 9, 10, 11, 17, 20; Low 21–23)
+
+| # | Commit | What changed |
+| --- | --- | --- |
+| 7 | `3d5c8c6` | The pane and the immersive plate headed themselves with the spoken "EHAM to KJFK"; all three hosts draw `RouteTitle`'s codes-and-arrow. Globe codes slide inward so a dot at the edge keeps its label on the glass |
+| 9 | `be085d7` | The aircraft forms took stored units under fixed labels. They load and save through `Figures.kt`'s conversions with live unit suffixes; `UnitConversionRoundTripTest` pins the round trips |
+| 10 | `b786cc8` | The two-pane Plan re-selects a restored key and clears a pane whose route left the list; `RouteDetailPaneViewModelTest` is new. The route key is `Destination.RouteDetail.key()` in place of four copies (also Low 23) |
+| 11 | `c279729` | `RouteCard` takes its two `Metar`s rather than the whole map, so an unchanged card skips. A failed weather chunk arms one 30 s retry |
+| 17 | `5a6e963` | `RunwayDiagram` and `SkyProfile` take a required `contentDescription`; `FlightRulesBadge` merges; Stats tiles, rows and bars are one node each. The cards' `clickable=false` was answered here with a semantics-tree test and turned out to be real — see cluster 6 |
+| 20 | `a9c3cb1` | A caption under the runway diagram names the favoured end in words; the diagram is capped at 280 dp |
+| 21 | `70188a1` | The self-check has an app bar with a way back, resourced strings and a plural-aware headline |
+| 22 | `ec0ce73` | The Logbook summary's distance caption is DISTANCE, not the unit |
+| 23 | `d17ecdf`, `1013c00` | One `STOP_TIMEOUT_MILLIS`; `ProfileScreen`'s dead segment enum gone; `windowWidthDp` deleted; a row's entrance recorded in an effect rather than in `remember`; `mutableFloatStateOf`; two KDocs |
+
+### Cluster 5 — the globe (Medium 12, Low 25)
+
+| # | Commit | What changed |
+| --- | --- | --- |
+| 12 | `037cb31`, `a42a842` | A 200 dp band of `systemGestureExclusionRects` in the middle of the sphere keeps the back gesture off a spin; `TileStats.imageryUnreachable` drives an offline notice that hides the camera controls. The offline poll stops on teardown and the notice fits a 132 dp hero |
+| 25 | `8020096`, `83703df`, `719c2c2`, `e51e9da`, `24b90cf`, `e0f3a69`, `7b4297f`, `53ee36d` | `TileQueue` pops a level's first request first; `FilamentProbe` asks `GlobeSession.support` before building an engine and both speak `GlobeStatus`; one `UserAgent` in `:core:model`; `GlobeLifecycleTest` backgrounds the process for real; `SkyProfile` reads its polarity spring in the draw phase; the frame callback carries trace sections and `GlobeSpinBenchmark` measured it on hardware (§9 *The frame callback, measured*: `globe:update` P90 1.1 ms, no budget needed); the benchmark finds the route card by its description |
+
+### Cluster 7 — the Plan list's infinite scroll (26–32)
+
+| # | Commit | What changed |
+| --- | --- | --- |
+| 26 | `67e8962` | The status-bar fade's offscreen layer was measured (§4c) and cost 1.4 ms of overrun at P90; it is now a layer the height of the inset, not the list |
+| 27 | `4e6815d` | A new list starts at the top: `listGeneration` on `PlanUiState`, reset in the screen |
+| 28 | `63f39b3` | The list stops at 300 rows with an `EndReached` footer rather than growing forever |
+| 29 | `5ad4e50` | Which rows have played their entrance is remembered by the ViewModel, so coming back from a route does not replay it |
+| 30 | `2ca7c19` | A row keeps its `graphicsLayer` only while its entrance runs |
+| 31 | `5817fb3` | The list names its three content types |
+| 32 | `94dd8b1` | `MapFrame.forRoute` takes a `topInsetFraction` so the route keeps clear of the card's title; a hop under `MinArrowChordDp` is one ring |
+
+### Cluster 8 — the visited-network map on Stats (33–37)
+
+| # | Commit | What changed |
+| --- | --- | --- |
+| 33 | `ccc436a` | `NetworkMap` in `:core:designsystem` draws the network in `RouteMap`'s ink — arrowheads first-flown way, visit-sized dots, graticule fallback — replacing the second map in `:app` |
+| 34 | `8c80f69` | `NetworkFraming` unwraps the network's longitudes as a set, so Fiji and Samoa frame ten degrees, not 350 |
+| 35 | `5c8812c` | The globe band is square on the card's width, whole planet or clean window, with the camera stack gone and the credit a caption under it |
+| 36 | `e36c50d` | Airport-highlight rows keep a gap between label and value and wrap the value |
+| 37 | `f1269db` | The Stats skeleton is the loaded list's silhouette |
+
+### Cluster 6 — docs, tests and what the other clusters carried in
+
+| # | Commit | What changed |
+| --- | --- | --- |
+| 18 | `0639aec`, `6fc62dc`, and the commit adding this section | PLAN.md, this file, DESIGN-SYSTEM.md, API-GROUND-TRUTH.md, the catalog comment and the `RouteLinks` KDoc brought back in line with the tree — the module tables here and in PLAN.md, `:microbench`, adaptive 1.3.0, the statistics path, `lateralEnter` / `lateralExit` / `flingDecay` / `LocalThemeChoice` / `SystemBarsOverMedia`, the two GlobeFit rows above marked fixed |
+| 19 | `932e36b` | `StartupCheckViewModelTest` and `RouteDetailViewModelTest` are new, `RouteDetailPaneViewModelTest` gains the degraded-load and three-publish cases. Both ViewModels gained a seam constructor (an `internal` primary taking function types; the `@Inject` secondary maps Hilt's types onto it) so they compose against fakes on the JVM |
+| 4, residual | `0d433fd` | The splash's keep-on-screen rule is `splashShouldHold`, pure and tested: the database install is waited for **without** the deadline, because past it the first DAO request ran `runBlocking` on the main thread for the rest of a first-launch copy behind a half-drawn Plan; the index and the settings keep the deadline, and `Failed` counts as settled |
+| 17, `clickable=false` | `9ef21b0` | Not a dump artefact. A node that merges its descendants and has its own description *and* children is exported by Compose's accessibility delegate as two nodes — the sentence on a synthetic first child, the click on the parent — so the described node was never clickable to a service. `RouteCard`, `FleetRowCard` and `LogbookRowCard` now `clearAndSetSemantics` with the click restated inside, and `RouteCard`'s sentence absorbs what its children printed (category, runways, resolved categories). `CardSemanticsTest` asks the bridge itself |
+| network dots | `42c2baa` | Every dot on a one-visit-each logbook was drawn at the maximum, and two fields 90 NM apart merged. `nodeSizeFraction` scales from the set's least-visited field; equal counts are all small dots; both maps use it |
+
 ---
 
 ## 10. Phase H — Polish and ship
@@ -2337,7 +2520,7 @@ Found while fixing item 2 above, not fixed:
 | ID | Task | Notes |
 | --- | --- | --- |
 | **H1** | ~~Baseline profile~~ | **Moved to P1.** It is the instrument, not the polish |
-| **H2** | ~~Macrobenchmark~~ | **Done as P2.** `:macrobenchmark` exists and reports. What stays in H is extending it to the globe, once there is a globe |
+| **H2** | ~~Macrobenchmark~~ | **Done as P2**, and extended to the globe on 2026-09-14 (`GlobeSpinBenchmark`, §9 *The frame callback, measured*) |
 | **H3** | Glance widget | "Today's challenge" — one route seeded by `LocalDate.toEpochDay()`, deterministic across the day. Nearly free given the seeded RNG |
 | **H4** | Shortcuts | Generate route, log a flight, last route |
 | **H5** | Screenshot goldens | Roborazzi across light/dark, LTR/RTL, font scale 1.0/2.0, three window sizes. The globe is stubbed — it is covered by G1's math tests plus a device smoke check |

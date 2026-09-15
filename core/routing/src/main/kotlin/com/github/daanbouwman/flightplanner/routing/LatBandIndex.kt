@@ -22,12 +22,18 @@ import kotlin.math.floor
  * sorted by longitude turns the query into a binary search plus a contiguous
  * slice, which is what makes short-range generation cheap rather than merely
  * cheaper than a full scan.
+ *
+ * The three arrays are `internal` for the reason [AirportIndex]'s are: a public
+ * mutable array is a way to break the sort the binary search depends on, from a
+ * module that has no business knowing there is one. The query methods are the
+ * API; [startOfBand], [slotAt] and [keyAt] are what the inline queries read
+ * through.
  */
 class LatBandIndex internal constructor(
     /** Where each band begins in [bandSlots]; [BAND_COUNT] + 1 entries. */
-    val bandStart: IntArray,
+    internal val bandStart: IntArray,
     /** Slots grouped by band, ascending by [bandLonKey] within a band. */
-    val bandSlots: IntArray,
+    internal val bandSlots: IntArray,
     /**
      * Quantised longitude of `bandSlots[i]`, ascending within each band.
      *
@@ -36,7 +42,7 @@ class LatBandIndex internal constructor(
      * quantum keeps the window an over-approximation, which is all it has to be:
      * membership is decided by the caller's distance test, never here.
      */
-    val bandLonKey: IntArray,
+    internal val bandLonKey: IntArray,
 ) {
 
     /**

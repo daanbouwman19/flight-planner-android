@@ -19,24 +19,48 @@ import kotlin.math.sin
  * **Rows are sorted ascending by [longestRunwayFt], and that ordering is
  * load-bearing** — [firstSlotWithRunway] binary-searches it, which turns
  * "airports this aircraft can use" into an O(log n) slice rather than a scan.
+ *
+ * **The arrays are `internal`; other modules read through the per-slot
+ * accessors.** A primitive array is mutable and a public one is a hole in every
+ * invariant above: one `index.longestRunwayFt[slot] = 0` from a screen would
+ * silently break the binary search for the rest of the process, and the compiler
+ * cannot see it. The accessors cost nothing after inlining and are the whole
+ * API a consumer outside this module needs — the sampling loop, which does want
+ * the arrays, lives here.
  */
 class AirportIndex internal constructor(
     val size: Int,
     /** Upstream airport id, for joining to display data. */
-    val ids: IntArray,
+    internal val ids: IntArray,
     /** Four-character codes packed via [IcaoCode]. */
-    val codes: IntArray,
-    val latDeg: DoubleArray,
-    val lonDeg: DoubleArray,
-    val latRad: FloatArray,
-    val sinLat: FloatArray,
-    val cosLat: FloatArray,
-    val sinLon: FloatArray,
-    val cosLon: FloatArray,
-    val longestRunwayFt: IntArray,
-    val flags: IntArray,
+    internal val codes: IntArray,
+    internal val latDeg: DoubleArray,
+    internal val lonDeg: DoubleArray,
+    internal val latRad: FloatArray,
+    internal val sinLat: FloatArray,
+    internal val cosLat: FloatArray,
+    internal val sinLon: FloatArray,
+    internal val cosLon: FloatArray,
+    internal val longestRunwayFt: IntArray,
+    internal val flags: IntArray,
     internal val bands: LatBandIndex,
 ) {
+
+    /** Upstream airport id at a slot, for joining to display data. */
+    fun idOf(slot: Int): Int = ids[slot]
+
+    /** The packed [IcaoCode] at a slot; see [icaoOf] for the text. */
+    fun codeOf(slot: Int): Int = codes[slot]
+
+    fun latDegOf(slot: Int): Double = latDeg[slot]
+
+    fun lonDegOf(slot: Int): Double = lonDeg[slot]
+
+    /** The longest runway at a slot, in feet. Ascending in slot order. */
+    fun longestRunwayFt(slot: Int): Int = longestRunwayFt[slot]
+
+    /** The packed flag word at a slot; see [packFlags] and the `has…` accessors. */
+    fun flagsOf(slot: Int): Int = flags[slot]
 
     /**
      * Code-to-slot lookup, built on first use.
@@ -54,7 +78,18 @@ class AirportIndex internal constructor(
             .also { it.sort() }
     }
 
-    /** Slot for a packed code, or -1. */
+    /**
+     * Slot for a packed code, or -1.
+     *
+     * **Codes are unique per index, and that is guaranteed upstream rather than
+     * here.** The ETL in `:tools:airportdb` collapses airports that share a code
+     * before writing the database (`deduplicateByCode`, keeping the larger
+     * airport and then the longer runway), and its verifier fails the build if
+     * any code appears twice in the shipped file. So the binary search below has
+     * exactly one match to find and no tie to break. Were duplicates ever fed in
+     * through [AirportIndexBuilder] directly, whichever the search landed on would
+     * win — there is no keep-first rule, because there is no case that needs one.
+     */
     fun slotOfCode(packedCode: Int): Int {
         if (packedCode < 0) return -1
         val table = codeLookup

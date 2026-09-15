@@ -11,7 +11,9 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.R
@@ -22,8 +24,10 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.Skeleto
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SkyProfileHeight
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.model.Airport
+import com.github.daanbouwman.flightplanner.model.FlightRules
 import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.model.Runway
+import com.github.daanbouwman.flightplanner.routing.SurfaceWind
 import com.github.daanbouwman.flightplanner.ui.chrome.MaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.WideMaxContentWidth
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
@@ -35,6 +39,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.Compact
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.ui.plan.PlanPreviewData
+import kotlin.math.roundToInt
 
 /**
  * Everything the Airport detail screen says, with no opinion about where it
@@ -95,22 +100,59 @@ private fun AirportDetailBody(
         }
     }
 
-    RunwayDiagram(
-        runways = runways,
-        // The wind belongs on the diagram, not only in the weather panel below:
-        // a direction in degrees has to be compared against a runway heading, and
-        // in the same frame as the runways that comparison stops being arithmetic.
-        wind = metar?.let {
-            val speed = it.windSpeedKt
-            if (speed == null) null else DiagramWind(
-                directionFromDeg = it.windDirectionDeg,
-                speedKt = speed,
-                gustKt = it.windGustKt,
-                variable = it.windVariable,
-            )
-        },
+    // The wind belongs on the diagram, not only in the weather panel below:
+    // a direction in degrees has to be compared against a runway heading, and
+    // in the same frame as the runways that comparison stops being arithmetic.
+    val wind = metar?.let {
+        val speed = it.windSpeedKt
+        if (speed == null) null else DiagramWind(
+            directionFromDeg = it.windDirectionDeg,
+            speedKt = speed,
+            gustKt = it.windGustKt,
+            variable = it.windVariable,
+        )
+    }
+    // The ends the diagram draws, and the one the wind favours among them —
+    // the same call the diagram itself makes, so the words and the picture
+    // cannot name different ends.
+    val diagrammed = remember(runways) { runways.filter { it.trueHeadingDeg != null } }
+    val favouredIdent = remember(diagrammed, wind) {
+        SurfaceWind.favouredEnd(
+            runwayHeadingsDeg = diagrammed.map { requireNotNull(it.trueHeadingDeg).roundToInt() },
+            windFromDeg = wind?.directionFromDeg?.takeIf { wind.hasDirection },
+            windSpeedKt = wind?.speedKt,
+        )?.let { diagrammed[it].ident }
+    }
+
+    Column(
         modifier = Modifier.fillMaxWidth(),
-    )
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        // The diagram is a square of its own width, and its detail stops
+        // improving well before a phone's. Uncapped it was 328 dp on a compact
+        // window -- a third of the screen for a drawing that reads fully at
+        // 280 -- and 840 dp on a wide one, where this column is allowed to be
+        // that wide. Capped and centred, it is the same size everywhere.
+        RunwayDiagram(
+            runways = runways,
+            contentDescription = runwayDiagramDescription(diagrammed, favouredIdent),
+            wind = wind,
+            modifier = Modifier
+                .widthIn(max = RunwayDiagramMaxSize)
+                .fillMaxWidth(),
+        )
+        // The legend for the halo and the bold ident: both are conventions the
+        // diagram invented, and a reader who has not met them sees a strip lit
+        // for no stated reason. Absent, not blank, when the wind decides nothing.
+        if (favouredIdent != null) {
+            Text(
+                text = stringResource(R.string.airport_runway_favoured_caption, favouredIdent),
+                style = MaterialTheme.typography.bodySmall.asChartFigure(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 
     if (runways.isEmpty()) {
         Text(
@@ -130,6 +172,28 @@ private fun AirportDetailBody(
 
     Button(onClick = onFlyFromHere, modifier = Modifier.fillMaxWidth()) {
         Text(stringResource(R.string.airport_detail_fly_from_here))
+    }
+}
+
+/**
+ * The runway diagram in words, for the screen reader the drawing cannot reach:
+ * which ends are drawn and, when the wind decides one, which end it favours.
+ * Ends with no published heading are not named — they are not in the picture,
+ * and the runway list below names them.
+ */
+@Composable
+private fun runwayDiagramDescription(diagrammed: List<Runway>, favouredIdent: String?): String {
+    if (diagrammed.isEmpty()) return stringResource(R.string.airport_runway_diagram_empty)
+    val ends = pluralStringResource(
+        R.plurals.airport_runway_diagram_description,
+        diagrammed.size,
+        diagrammed.size,
+        diagrammed.joinToString(", ") { it.ident },
+    )
+    return if (favouredIdent == null) {
+        ends
+    } else {
+        stringResource(R.string.airport_runway_diagram_favoured, ends, favouredIdent)
     }
 }
 
@@ -157,6 +221,13 @@ private fun AirportWeatherBlock(icao: String, metar: Metar?) {
     }
 }
 
+/**
+ * Where the diagram stops growing. Chosen by eye against Schiphol's six
+ * runways: the idents are still legible at `labelSmall` and the lanes still
+ * separate, and past it the drawing only gets emptier.
+ */
+private val RunwayDiagramMaxSize = 280.dp
+
 @LightDarkPreview
 @CompactWidthPreview
 @Composable
@@ -166,6 +237,32 @@ private fun AirportDetailContentPreview() {
             state = AirportDetailUiState(
                 airport = PlanPreviewData.schiphol,
                 runways = PlanPreviewData.schipholRunways,
+                loading = false,
+            ),
+            onFlyFromHere = {},
+            snackbarHostState = remember { SnackbarHostState() },
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+/** With a wind: the halo, the bold ident and the caption that explains them. */
+@LightDarkPreview
+@CompactWidthPreview
+@Composable
+private fun AirportDetailContentWindPreview() {
+    FlightPlannerTheme(dynamicColor = false) {
+        AirportDetailContent(
+            state = AirportDetailUiState(
+                airport = PlanPreviewData.schiphol,
+                runways = PlanPreviewData.schipholRunways,
+                metar = Metar(
+                    station = "EHAM",
+                    raw = "EHAM 121325Z 27012KT 9999 FEW040 18/09 Q1015",
+                    flightRules = FlightRules.VFR,
+                    windDirectionDeg = 270,
+                    windSpeedKt = 12,
+                ),
                 loading = false,
             ),
             onFlyFromHere = {},

@@ -115,7 +115,14 @@ object MetarParser {
     private val TEMP_DEW = Regex("""^(M?\d{2})/(M?\d{2})?$""")
     private val ALTIMETER_INHG = Regex("""^A(\d{4})$""")
     private val ALTIMETER_HPA = Regex("""^Q(\d{4})$""")
-    private val VIS_STATUTE = Regex("""^(M)?(\d{1,2})?(?:(\d)/(\d))?SM$""")
+    /**
+     * `10SM`, `1/2SM`, `M1/4SM`, and `10+SM` — the trailing `+` is "or better",
+     * the statute-mile twin of the ICAO `9999`. US automated stations report it
+     * routinely, and without the group a report whose visibility is *unlimited*
+     * parsed as one whose visibility was *not reported* — which
+     * [FlightRules.derive] then, correctly, refused to call VFR.
+     */
+    private val VIS_STATUTE = Regex("""^(M)?(\d{1,2})?(?:(\d)/(\d))?(\+)?SM$""")
     private val VIS_METRES = Regex("""^(\d{4})(NDV)?$""")
     private val PRESENT_WEATHER = Regex(
         """^([-+]|VC)?(MI|PR|BC|DR|BL|SH|TS|FZ)?((?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)*)$""",
@@ -345,15 +352,17 @@ object MetarParser {
     private class Visibility(val miles: Double, val orGreater: Boolean)
 
     /**
-     * `10SM`, `7SM`, `1/2SM`, `M1/4SM`, and the trailing half of `1 1/2SM`.
+     * `10SM`, `7SM`, `1/2SM`, `M1/4SM`, `10+SM`, and the trailing half of `1 1/2SM`.
      *
      * `M` means "less than"; the prefix is dropped rather than made negative,
      * because the reportable minimum is the information and a negative distance
-     * is not a thing.
+     * is not a thing. `+` means "or greater" and is carried as [Visibility.orGreater],
+     * the same flag the ICAO `9999` group sets.
      */
     private fun parseStatuteVisibility(token: String, wholeFromPrevious: Int?): Visibility? {
         val match = VIS_STATUTE.find(token) ?: return null
         val (lessThan, whole, numerator, denominator) = match.destructured
+        val orGreater = match.groups[5] != null
 
         val fraction = if (numerator.isNotEmpty() && denominator.isNotEmpty()) {
             val n = numerator.toDoubleOrNull() ?: return null
@@ -368,7 +377,7 @@ object MetarParser {
 
         val total = wholePart + fraction
         if (total <= 0.0 && lessThan.isEmpty()) return null
-        return Visibility(miles = total, orGreater = false)
+        return Visibility(miles = total, orGreater = orGreater)
     }
 
     /**

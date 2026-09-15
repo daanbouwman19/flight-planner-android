@@ -4,20 +4,56 @@ import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.FlightRecord
 import com.github.daanbouwman.flightplanner.model.FlightStatistics
 
+/** How many times one ICAO appeared in the role being counted. */
+data class AirportTally(
+    val icao: String,
+    val count: Int,
+)
+
+/**
+ * The one-pass statistics with their identities intact: the winning
+ * [FlightRecord]s rather than `"EHAM to KJFK"`, the winning ICAO with its count
+ * rather than the code alone, and the most-flown aircraft *id* rather than a
+ * name that needs a fleet to resolve.
+ *
+ * [FlightStatistics] is the desktop-shaped projection of this and is produced
+ * from it by [FlightStatisticsCalculator.calculate]; the dashboard maps it onto
+ * its own UI shapes. Every tie-break documented on [FlightStatisticsCalculator]
+ * applies unchanged, because both are the same scan.
+ *
+ * The defaults are the empty-log answer and line up with [FlightStatistics]'s,
+ * so an empty log projects to `FlightStatistics()` without a special case.
+ */
+data class DetailedFlightStatistics(
+    val totalFlights: Int = 0,
+    val totalDistanceNm: Int = 0,
+    val averageFlightDistanceNm: Double = 0.0,
+    val mostFlownAircraftId: Int? = null,
+    val longestFlight: FlightRecord? = null,
+    val shortestFlight: FlightRecord? = null,
+    val favoriteDepartureAirport: AirportTally? = null,
+    val favoriteArrivalAirport: AirportTally? = null,
+    val mostVisitedAirport: AirportTally? = null,
+)
+
 /**
  * Computes logbook statistics in one pass, porting the desktop app's
  * `StatsAccumulator`.
  *
- * This is the *reference* implementation. Production reads the same numbers from
- * SQL aggregates in `FlightLogDao`, which stay reactive and never load the whole
- * log into memory; this exists so those aggregates can be cross-checked against
- * something small enough to read in full.
+ * This is the implementation the app ships, not a test-only reference.
+ * `StatsViewModel` calls [calculateDetailed] on the timeframe-filtered log and
+ * maps the result onto the dashboard's shapes; `FlightLogDao` has no aggregate
+ * queries beyond a row count, so nothing else computes these figures and there
+ * is no second implementation for this one to drift from. [calculate] is the
+ * desktop-shaped view of the same pass — formatted legs, an aircraft name
+ * resolved through a lookup — and exists so the port can be asserted against
+ * the desktop app's `FlightStatistics` field for field.
  *
  * ## The tie-breaks are the specification
  *
  * Every "most" and "favourite" figure has to resolve ties somehow, and the
- * desktop app's choices are observable behaviour that the two implementations
- * must agree on. They are reproduced here exactly:
+ * desktop app's choices are observable behaviour that this port must agree
+ * with. They are reproduced here exactly, once, for both entry points:
  *
  *  - **Most-visited / favourite airport:** highest count wins; on a tie the
  *    **alphabetically first** ICAO wins.
@@ -31,27 +67,28 @@ import com.github.daanbouwman.flightplanner.model.FlightStatistics
  * which the original comments call out explicitly (`use <` for min, `use >=` for
  * max). Two different logged flights of identical length therefore report
  * different winners depending on which end of the range is asked about. Do not
- * "fix" it to be symmetric without also changing `FlightLogDao` and the desktop
- * app — otherwise the reference and the production path silently disagree on
- * every duplicate distance.
+ * "fix" it to be symmetric: the desktop app is the behavioural reference, and
+ * the dashboard would then silently disagree with it on every duplicate
+ * distance.
  *
  * A missing [FlightRecord.distanceNm] counts as `0`, matching the desktop's
  * `unwrap_or(0)`, so a flight logged without a distance is the shortest flight
  * rather than being skipped.
+ *
+ * ICAO codes are counted exactly as the record stores them, as the desktop
+ * does. The app writes them from the airport database, which holds them
+ * upper-case, so no normalisation is needed here and none is applied.
  */
 object FlightStatisticsCalculator {
 
     /**
+     * The single scan over the log. Everything else in this object is a
+     * projection of its result.
+     *
      * @param records the logbook, in any order.
-     * @param aircraftLookup resolves an aircraft id to its spec; return `null`
-     *   for an id no longer in the fleet, which leaves
-     *   [FlightStatistics.mostFlownAircraft] null rather than inventing a name.
      */
-    fun calculate(
-        records: List<FlightRecord>,
-        aircraftLookup: (Int) -> AircraftSpec?,
-    ): FlightStatistics {
-        if (records.isEmpty()) return FlightStatistics()
+    fun calculateDetailed(records: List<FlightRecord>): DetailedFlightStatistics {
+        if (records.isEmpty()) return DetailedFlightStatistics()
 
         var totalDistance = 0
         var minDistance = Int.MAX_VALUE
@@ -88,18 +125,42 @@ object FlightStatisticsCalculator {
             airportCounts.increment(record.arrivalIcao)
         }
 
-        val mostFlownAircraftId = aircraftCounts.bestKey()
-
-        return FlightStatistics(
+        return DetailedFlightStatistics(
             totalFlights = records.size,
             totalDistanceNm = totalDistance,
-            mostFlownAircraft = mostFlownAircraftId?.let(aircraftLookup)?.displayName,
-            mostVisitedAirport = airportCounts.bestKey(),
             averageFlightDistanceNm = totalDistance.toDouble() / records.size,
-            longestFlight = longest?.leg(),
-            shortestFlight = shortest?.leg(),
-            favoriteDepartureAirport = departureCounts.bestKey(),
-            favoriteArrivalAirport = arrivalCounts.bestKey(),
+            mostFlownAircraftId = aircraftCounts.bestEntry()?.first,
+            longestFlight = longest,
+            shortestFlight = shortest,
+            favoriteDepartureAirport = departureCounts.bestTally(),
+            favoriteArrivalAirport = arrivalCounts.bestTally(),
+            mostVisitedAirport = airportCounts.bestTally(),
+        )
+    }
+
+    /**
+     * The desktop app's `FlightStatistics`, projected from [calculateDetailed].
+     *
+     * @param records the logbook, in any order.
+     * @param aircraftLookup resolves an aircraft id to its spec; return `null`
+     *   for an id no longer in the fleet, which leaves
+     *   [FlightStatistics.mostFlownAircraft] null rather than inventing a name.
+     */
+    fun calculate(
+        records: List<FlightRecord>,
+        aircraftLookup: (Int) -> AircraftSpec?,
+    ): FlightStatistics {
+        val detailed = calculateDetailed(records)
+        return FlightStatistics(
+            totalFlights = detailed.totalFlights,
+            totalDistanceNm = detailed.totalDistanceNm,
+            mostFlownAircraft = detailed.mostFlownAircraftId?.let(aircraftLookup)?.displayName,
+            mostVisitedAirport = detailed.mostVisitedAirport?.icao,
+            averageFlightDistanceNm = detailed.averageFlightDistanceNm,
+            longestFlight = detailed.longestFlight?.leg(),
+            shortestFlight = detailed.shortestFlight?.leg(),
+            favoriteDepartureAirport = detailed.favoriteDepartureAirport?.icao,
+            favoriteArrivalAirport = detailed.favoriteArrivalAirport?.icao,
         )
     }
 
@@ -116,15 +177,18 @@ object FlightStatisticsCalculator {
         this[key] = (this[key] ?: 0) + 1
     }
 
+    private fun Map<String, Int>.bestTally(): AirportTally? =
+        bestEntry()?.let { (icao, count) -> AirportTally(icao, count) }
+
     /**
-     * The key with the highest count, ties broken by the **smallest** key.
+     * The entry with the highest count, ties broken by the **smallest** key.
      *
      * Written as an explicit scan rather than `maxByOrNull` because the tie-break
      * is the whole point: `maxByOrNull` returns the *first* maximum in iteration
      * order, and a `HashMap`'s iteration order is not something to build
      * behaviour on.
      */
-    private fun <K : Comparable<K>> Map<K, Int>.bestKey(): K? {
+    private fun <K : Comparable<K>> Map<K, Int>.bestEntry(): Pair<K, Int>? {
         var bestKey: K? = null
         var bestCount = 0
         for ((key, count) in this) {
@@ -134,6 +198,6 @@ object FlightStatisticsCalculator {
                 bestCount = count
             }
         }
-        return bestKey
+        return bestKey?.let { it to bestCount }
     }
 }

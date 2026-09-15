@@ -114,7 +114,7 @@ internal fun equatorialFromEcliptic(
         sin(lambda) * cos(eps) - tan(beta) * sin(eps),
         cos(lambda),
     )
-    val declination = asin(sin(beta) * cos(eps) + cos(beta) * sin(eps) * sin(lambda))
+    val declination = asin(unitClamped(sin(beta) * cos(eps) + cos(beta) * sin(eps) * sin(lambda)))
     return Equatorial(
         rightAscensionDeg = normaliseDeg(Math.toDegrees(rightAscension)),
         declinationDeg = Math.toDegrees(declination),
@@ -152,7 +152,9 @@ internal fun localHourAngleDeg(
  * **Always defined, at every latitude, on every date.** The elevation is `asin` of
  * a value the spherical identity confines to −1..1, which is why the polar fields
  * need no branch: what does not exist at PABR in December is a *rise time*, and
- * nothing here asks for one.
+ * nothing here asks for one. The identity holds in exact arithmetic; in `Double`
+ * it can land a few ulps past 1 with the body at the zenith, and `asin` of that is
+ * `NaN` — hence [unitClamped].
  */
 internal fun horizontalFrom(
     equatorial: Equatorial,
@@ -163,7 +165,7 @@ internal fun horizontalFrom(
     val decl = Math.toRadians(equatorial.declinationDeg)
     val h = Math.toRadians(hourAngleDeg)
 
-    val elevation = asin(sin(phi) * sin(decl) + cos(phi) * cos(decl) * cos(h))
+    val elevation = asin(unitClamped(sin(phi) * sin(decl) + cos(phi) * cos(decl) * cos(h)))
     // atan2 in this form measures azimuth from south, westward positive; the +180
     // is what puts it on the navigation convention.
     val azimuth = atan2(sin(h), cos(h) * sin(phi) - tan(decl) * cos(phi))
@@ -227,3 +229,15 @@ internal fun normaliseDeg(deg: Double): Double {
     val reduced = deg % 360.0
     return if (reduced < 0.0) reduced + 360.0 else reduced
 }
+
+/**
+ * The argument of an `asin`, held to its domain.
+ *
+ * Both conversions in this file take `asin` of a sum of products that the
+ * spherical identity bounds to −1..1 — in exact arithmetic. In `Double`, with the
+ * body at the zenith or the pole, `sin²φ + cos²φ` comes out as `1.0000000000000002`
+ * often enough to matter, and `asin` of anything past 1 is `NaN`, which then
+ * propagates into an elevation, a sky gradient and a drawn Sun that is simply
+ * absent. Clamping costs two comparisons and turns that into 90° exactly.
+ */
+private fun unitClamped(value: Double): Double = value.coerceIn(-1.0, 1.0)

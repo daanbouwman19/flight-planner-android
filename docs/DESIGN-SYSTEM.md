@@ -50,6 +50,31 @@ until a settings screen offers Light, Dark or Cockpit, at which point a near-bla
 app under a light system would lose its status bar entirely. This is the one place
 the design system touches the window, and it is a `SideEffect` of two field writes.
 
+```kotlin
+val LocalThemeChoice: ProvidableCompositionLocal<ThemeChoice>   // provided by FlightPlannerTheme
+
+@Composable fun SystemBarsOverMedia(active: Boolean)
+```
+
+**`LocalThemeChoice` is not for picking colours** — every colour is a role in the
+resolved scheme, and asking "which theme is on" to choose one is how Chart and
+Cockpit go wrong. It exists for the one thing that is not a colour: the globe dims
+its satellite imagery under Cockpit, and "how much light may a photograph throw at
+a dark-adapted eye" has no role in a Material scheme. That is the only sanctioned
+read.
+
+**`SystemBarsOverMedia(active)` asks for light status-bar glyphs while media fills
+the strip under the clock** — the globe hero once it has scrolled up under the bar,
+the immersive globe always. It does not touch the window: it **registers a
+request** that `FlightPlannerTheme` folds into the appearance it already sets,
+because the theme writes the insets controller on every recomposition and a second
+writer simply loses. The request is a *count* (`BarsOverMediaRequests`), not a flag:
+during a navigation two screens are composed at once, and the first version wrote
+`false` from every caller's `onDispose`, so the outgoing screen's teardown cancelled
+the incoming screen's request and the immersive globe ran full-bleed imagery under
+dark glyphs. Only the status bar; the navigation bar sits over ordinary content on
+every screen that uses this.
+
 ## Flight-rules colours
 
 ```kotlin
@@ -94,16 +119,38 @@ object FlightMotion {
     fun enterDelayMillis(index: Int): Int
     @Composable fun navEnter(): EnterTransition
     @Composable fun navExit(): ExitTransition
+    @Composable fun lateralEnter(): EnterTransition     // a page pushed in from the trailing edge
+    @Composable fun lateralExit(): ExitTransition       // and slid back off it
 
     @Composable fun sharedEnter(): EnterTransition      // fade only, no scale
     @Composable fun sharedExit(): ExitTransition
     @Composable fun paneContent(): ContentTransform     // content replaced in place
     @Composable fun boundsTransform(): BoundsTransform  // how a shared element travels
     @Composable fun rememberCountUp(target: Int): Int   // one-shot emphasis on a figure
+
+    fun <T> flingDecay(): DecayAnimationSpec<T>        // momentum after a fling; friction 0.6
 }
 
 @Composable fun rememberReduceMotion(): Boolean
 ```
+
+**`lateralEnter` / `lateralExit` are for a self-contained page you open and leave
+as a unit** — Settings, reached from a section's app bar — and neither of the other
+two entrances fits it: `navEnter` is a fade-through for screens that replace each
+other in place, `sharedEnter` for a screen that grows out of an element. The slide
+is across the **trailing** edge (right in LTR, left in RTL) so it reads as
+"forward" in either writing direction, spatial spring for the movement and effects
+spring for the fade. Predictive back falls out for free: `NavHost` seeks this same
+transition to the gesture's progress.
+
+**`flingDecay` is the one motion here that is not a spring, and it is here anyway**
+because a screen that reached for `exponentialDecay` itself would be picking a
+friction coefficient, which is the same mistake as picking a damping ratio. A decay
+has no target and no duration — it is a speed that runs out — so it is a
+`DecayAnimationSpec` used with `animateDecay`, not `animateTo`. The friction is
+lighter than the platform's default fling because the thing being flung is a
+planet, with no edges to run into. Under reduce motion, switch it **off**: inertia
+the user did not ask for is precisely what that setting is about.
 
 **`sharedEnter` / `sharedExit` exist because `navEnter` scales.** A shared element
 is drawn in an overlay, and an overlay does not inherit the transform on the screen
@@ -244,17 +291,27 @@ data class StatTile(val label: String, val value: Int,
 
 
 @Composable fun RouteMap(arc: GeoArc, outline: WorldOutline, modifier: Modifier = Modifier,
+                         topInset: Dp = 0.dp,
                          landColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                          coastColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
                          routeColor: Color = MaterialTheme.colorScheme.primary,
                          casingColor: Color = MaterialTheme.colorScheme.surfaceContainer)
+
+@Immutable class NetworkNode(val latitude: Double, val longitude: Double, val visits: Int)
+
+@Composable fun NetworkMap(nodes: List<NetworkNode>, legs: List<GeoArc>, outline: WorldOutline,
+                           modifier: Modifier = Modifier,
+                           landColor: Color = …, coastColor: Color = …,
+                           routeColor: Color = MaterialTheme.colorScheme.primary,
+                           casingColor: Color = MaterialTheme.colorScheme.surfaceContainer)
 
 @Immutable data class DiagramWind(val directionFromDeg: Int?, val speedKt: Int,
                                   val gustKt: Int? = null, val variable: Boolean = false) {
     val hasDirection: Boolean
 }
 
-@Composable fun RunwayDiagram(runways: List<Runway>, modifier: Modifier = Modifier,
+@Composable fun RunwayDiagram(runways: List<Runway>, contentDescription: String,
+                              modifier: Modifier = Modifier,
                               wind: DiagramWind? = null,
                               hardColor: Color = MaterialTheme.colorScheme.onSurface,
                               softColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -327,6 +384,59 @@ Notes that are easy to get wrong:
   off-window coastline had the whole screen to draw on. The crop is a `clipRect`
   inside the draw scope rather than `Modifier.clipToBounds()`, which is a
   `graphicsLayer` and would put an offscreen layer on every card in the list.
+  **The route stays out from under the text.** `topInset` is how much of the top of
+  the map belongs to something printed over it — the route card passes its padding
+  plus the airframe title's line height. `MapFrame.forRoute` frames the route in the
+  region *below* that band, with its usual 12 % padding applied within the region,
+  and then extends the window north to cover the whole canvas: land runs through
+  the band, the route does not, and the projected aspect is unchanged. Before it,
+  a north–south leg parked its northern marker on the title's baseline. The detail
+  hero and `NetworkMap` have nothing printed over them and leave it at zero.
+  **A short hop is one ring.** Below `MinArrowChordDp` (24 dp) between the
+  projected ends, the departure ring, destination dot and arrowhead collapsed into
+  a blob — a 66 NM hop on a phone. Such a leg is drawn as its cased line under a
+  single hollow ring at the arc's midpoint, and no head. The threshold is the one
+  `NetworkMap` uses to drop a leg's arrowhead, declared once in `RouteMap.kt`.
+- **`RunwayDiagram` and `SkyProfile` take a required `contentDescription`.**
+  Both are one childless canvas node, and both used to be silent to a screen
+  reader — the diagram cleared its semantics and set nothing, the scene set
+  nothing at all. The sentence that stands in for a drawing is the caller's to
+  compose: only `AirportDetailContent` knows which ends are drawn and which the
+  wind favours, and only the weather panel knows the reader's units for a ceiling.
+  Required rather than defaulted so a new host cannot forget it. `FlightRulesBadge`
+  merges its descendants for the same reason: "VFR" folds into "Visual Flight
+  Rules" instead of being announced again after it.
+- **`NetworkMap` is `RouteMap` with more legs on it, and it shares the ink by
+  construction.** The Stats screen's visited network used to draw itself in
+  `:app` from its own numbers — a 1.5 dp leg beside the route card's 2.5 dp, a
+  casing half as wide, legs at 80 % alpha under opaque dots, twice the margin,
+  no arrowhead, no graticule — and the two maps read as sketches of each other.
+  The stroke, casing, endpoint, arrowhead and margin constants in `RouteMap.kt`
+  are `internal` so this component draws from the same figures (`RouteStrokeDp`,
+  `CasingDp`, `EndpointRadiusDp`, `ArrowLengthDp`, `OutlineMargin`, `arrowPath`);
+  retune one and both maps move. What a network adds: an arrowhead per leg in
+  the direction the leg was **first** flown (the `GeoArc` is sampled that way by
+  the caller, which is the only fact the map cannot know), dropped when the
+  projected chord is under `MinArrowChordDp` — `RouteMap`'s own short-hop
+  threshold — so a short leg is not a smudge; dots whose
+  radius runs 4–9 dp by `nodeSizeFraction(visits, minVisits, maxVisits)` — the
+  least-visited field is the small dot, the most-visited the large one, and
+  between them the radius is the *square root* of the visits above the least, so
+  the dot's area is the count, and a log where every field has the same count is
+  all small dots (scaling from zero drew a one-visit-each logbook entirely at the
+  maximum). The function is public and the globe's node layer draws by it too,
+  so the two views of one logbook agree; every leg's casing
+  before any leg's line, so crossings read as one drawing. The frame is fitted to
+  the nodes, not the arcs, because a great circle bows poleward of its endpoints
+  and framing the bow frames empty ocean — and to the nodes' longitudes
+  **unwrapped as a set** by `NetworkFraming` in `:core:routing`: Fiji at +177°
+  and Samoa at −172° are ten degrees apart, and a frame fitted to the raw values
+  spanned the other 350° with the leg between them leaving one edge of the card
+  as a diagonal and re-entering at the other. Each leg is brought into the
+  frame's turn before projection, and a leg whose ends fall in different turns
+  (a network wider than a hemisphere) is drawn at both, as a wall map does. It
+  takes `NetworkNode`, a geometry type, rather than the app's `VisitedAirport` —
+  this module knows shapes and nothing about where they were read from.
 - **`RunwayDiagram` draws a true plan when the data has one, and a compass when
   it does not.** OurAirports publishes real threshold coordinates for every end
   of most well-documented fields and for very few small ones, so there are two
@@ -473,7 +583,8 @@ enum class SkyPhase { DAY, TWILIGHT, NIGHT }
 
 object SkyProfileHeight { val AirportDetail: Dp = 220.dp; val RouteDetail: Dp = 168.dp }
 
-@Composable fun SkyProfile(metar: Metar?, modifier: Modifier = Modifier,
+@Composable fun SkyProfile(metar: Metar?, contentDescription: String,
+                           modifier: Modifier = Modifier,
                            celestial: CelestialState? = null,
                            phase: SkyPhase = SkyPhase.DAY,
                            height: Dp = SkyProfileHeight.AirportDetail,

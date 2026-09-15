@@ -19,7 +19,7 @@ it.
 | --- | --- |
 | `androidx.compose.ui:ui` | 1.12.0 (from BOM `2026.08.00`) |
 | `androidx.compose.material3:material3` | **1.5.0-alpha26**, pinned above the BOM |
-| `androidx.compose.material3:material3-adaptive-*` | 1.4.0 |
+| `androidx.compose.material3.adaptive:adaptive-*` | 1.3.0 (`m3Adaptive` in the catalog; `material3-adaptive-navigation-suite` comes from the BOM) |
 | `androidx.graphics:graphics-shapes` | 1.1.0 |
 
 ## Why material3 is pinned above the BOM

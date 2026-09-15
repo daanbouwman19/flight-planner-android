@@ -67,13 +67,6 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # The runner ships an Android SDK already; this is here to accept the
-      # licences, without which AGP will not fetch `platforms;android-37` or the
-      # build-tools the pinned AGP wants. Naming versions here instead would be
-      # one more place `compileSdk` has to be kept in step with
-      # `libs.versions.toml`.
-      - uses: android-actions/setup-android@v4
-
       - uses: gradle/actions/setup-gradle@v6
         with:
           # `gradle.properties` turns the configuration cache on, and the action

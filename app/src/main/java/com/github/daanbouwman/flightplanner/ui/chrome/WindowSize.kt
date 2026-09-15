@@ -25,11 +25,6 @@ fun windowHeightDp(): Dp = with(LocalDensity.current) {
     LocalWindowInfo.current.containerSize.height.toDp()
 }
 
-@Composable
-fun windowWidthDp(): Dp = with(LocalDensity.current) {
-    LocalWindowInfo.current.containerSize.width.toDp()
-}
-
 /**
  * True when the window is too short to spend height the way a portrait phone
  * can.

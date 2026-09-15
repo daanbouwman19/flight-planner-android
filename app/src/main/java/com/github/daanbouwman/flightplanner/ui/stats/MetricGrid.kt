@@ -15,6 +15,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -92,8 +94,14 @@ private fun MetricTile(
     subtitle: String? = null,
     onClick: (() -> Unit)? = null,
 ) {
+    // One node per tile: the caption, the figure and the subtitle as a single
+    // announcement, on the node that carries the click — the same shape
+    // FleetRowCard gives its rows, so a tile is "LONGEST FLIGHT, EHAM → KJFK,
+    // 3,163 NM, button" rather than three stops and a fourth for the action.
+    val description = listOfNotNull(title, value, subtitle).joinToString(", ")
     Card(
         modifier = modifier
+            .semantics(mergeDescendants = true) { contentDescription = description }
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,

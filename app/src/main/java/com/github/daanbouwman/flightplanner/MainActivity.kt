@@ -15,8 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.github.daanbouwman.flightplanner.core.database.airport.AirportAssetInstaller
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.index.AirportIndexProvider
+import com.github.daanbouwman.flightplanner.startup.splashShouldHold
 import com.github.daanbouwman.flightplanner.ui.FlightPlannerApp
 import com.github.daanbouwman.flightplanner.ui.LocalUnitSystem
 import dagger.hilt.android.AndroidEntryPoint
@@ -29,6 +31,9 @@ class MainActivity : ComponentActivity() {
     lateinit var airportIndexProvider: AirportIndexProvider
 
     @Inject
+    lateinit var airportAssetInstaller: AirportAssetInstaller
+
+    @Inject
     lateinit var settingsRepository: SettingsRepository
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -39,21 +44,27 @@ class MainActivity : ComponentActivity() {
         // read after this line — hence the keep-on-screen condition below it.
         super.onCreate(savedInstanceState)
 
-        // The index build was started in Application.onCreate and normally
-        // finishes inside single-digit milliseconds, so this condition usually
-        // never holds the splash at all. The deadline is what makes it safe: an
-        // uncapped `!ready` is an infinite splash the first time the asset is
-        // missing or corrupt. Past the cap the app appears and shows skeletons,
-        // which is a worse first frame but a recoverable one.
+        // The index build and the database install were started in
+        // Application.onCreate and normally settle inside single-digit
+        // milliseconds, so this condition usually never holds the splash at all.
+        // The rule itself — which of the three waits the deadline bounds, and
+        // why the install is the one it does not — is `splashShouldHold`, kept
+        // pure so it is tested rather than trusted. In short: the deadline caps
+        // the index and the stored theme, because for them it is what turns a
+        // corrupt asset into skeletons instead of an infinite splash; the
+        // install is waited out, because past the deadline the first DAO
+        // request would block the main thread for the rest of the copy behind
+        // a half-drawn Plan, and `Failed` counts as settled so a broken asset
+        // still releases it.
         val deadline = SystemClock.uptimeMillis() + SPLASH_HOLD_MILLIS
-        // Also waits for the stored theme. Without it the first frame draws with
-        // the defaults and flips a few milliseconds later — a light flash in front
-        // of someone who chose Cockpit precisely so they would not get one. It is
-        // one small file read, running in parallel with the index, under the same
-        // deadline.
         splashScreen.setKeepOnScreenCondition {
-            (!airportIndexProvider.isSettled || settingsRepository.settings.value == null) &&
-                SystemClock.uptimeMillis() < deadline
+            splashShouldHold(
+                indexSettled = airportIndexProvider.isSettled,
+                installSettled = airportAssetInstaller.isSettled,
+                settingsLoaded = settingsRepository.settings.value != null,
+                now = SystemClock.uptimeMillis(),
+                deadline = deadline,
+            )
         }
 
         setContent {

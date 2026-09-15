@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -37,6 +38,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.components.Compact
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
+import com.github.daanbouwman.flightplanner.core.designsystem.components.SkeletonBox
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SkeletonCard
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
@@ -108,12 +110,10 @@ fun StatsScreen(
                             top = topClearance,
                             bottom = bottomPadding,
                         ),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     StatsHeader(onOpenSettings = onOpenSettings)
-                    SkeletonCard(modifier = Modifier.height(110.dp))
-                    SkeletonCard(modifier = Modifier.height(180.dp))
-                    SkeletonCard(modifier = Modifier.height(160.dp))
+                    StatsLoadingSkeleton()
                 }
             }
 
@@ -242,6 +242,49 @@ fun StatsScreen(
     }
 }
 
+/**
+ * The loaded list's silhouette, before the list is there.
+ *
+ * Three identical generic cards used to stand in for seven of different
+ * shapes, and the point of a skeleton — that the layout does not jump when the
+ * content lands — was lost at every one of them. Each placeholder here is a
+ * card of the loaded list at roughly its resting height, in the loaded list's
+ * order and spacing: the timeframe chips, the hero, the activity chart, the
+ * network map, and the first row of the metric grid, which is as far down as a
+ * phone shows before the fold. Nothing below it is drawn, because a placeholder
+ * nobody sees is only a layout cost.
+ */
+@Composable
+private fun StatsLoadingSkeleton(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        // The timeframe chips: three pills at a FilterChip's height.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SkeletonBox(modifier = Modifier.width(84.dp).height(32.dp), shape = MaterialTheme.shapes.small)
+            SkeletonBox(modifier = Modifier.width(92.dp).height(32.dp), shape = MaterialTheme.shapes.small)
+            SkeletonBox(modifier = Modifier.width(128.dp).height(32.dp), shape = MaterialTheme.shapes.small)
+        }
+        // The hero: a label over a display figure over a chip.
+        SkeletonCard(modifier = Modifier.height(SkeletonHeroHeight))
+        // The activity chart: a heading row over 150 dp of bars.
+        SkeletonCard(modifier = Modifier.height(SkeletonActivityHeight))
+        // The network: heading, mode chips, a 180 dp map.
+        SkeletonCard(modifier = Modifier.height(SkeletonNetworkHeight))
+        // The first row of the metric grid.
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SkeletonCard(modifier = Modifier.weight(1f).height(SkeletonMetricHeight))
+            SkeletonCard(modifier = Modifier.weight(1f).height(SkeletonMetricHeight))
+        }
+    }
+}
+
+private val SkeletonHeroHeight = 136.dp
+private val SkeletonActivityHeight = 230.dp
+private val SkeletonNetworkHeight = 286.dp
+private val SkeletonMetricHeight = 96.dp
+
 @Composable
 private fun StatsHeader(
     onOpenSettings: () -> Unit,
@@ -314,6 +357,23 @@ private fun StatsScreenPreview() {
 
         StatsScreen(
             uiState = sampleSuccess,
+            onSelectTimeframe = {},
+            onSelectMetric = {},
+            onOpenSettings = {},
+            onOpenRoute = {},
+            onOpenAircraft = {},
+            onPlanFlight = {},
+            worldOutline = WorldOutline.Empty,
+        )
+    }
+}
+
+@LightDarkPreview
+@Composable
+private fun StatsScreenLoadingPreview() {
+    FlightPlannerTheme(dynamicColor = false) {
+        StatsScreen(
+            uiState = StatsUiState.Loading,
             onSelectTimeframe = {},
             onSelectMetric = {},
             onOpenSettings = {},

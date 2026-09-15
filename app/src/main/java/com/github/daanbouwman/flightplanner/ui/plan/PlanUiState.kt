@@ -67,7 +67,18 @@ sealed interface PlanStatus {
     /** Rows are on screen and more are being appended beneath them. */
     data object Appending : PlanStatus
 
+    /** Rows are on screen and another batch may be appended. */
     data object Ready : PlanStatus
+
+    /**
+     * Rows are on screen and the list will not grow any further.
+     *
+     * The list is capped — see `PlanViewModel.MAX_ROUTE_ROWS` — and this is
+     * what the cap looks like from the screen: the same rows as [Ready], a
+     * footer instead of the loading indicator, and a `loadMore` that is
+     * declined. A refresh starts a new list and lifts it.
+     */
+    data object EndReached : PlanStatus
 
     data class Failed(val reason: PlanFailure) : PlanStatus
 }
@@ -154,6 +165,15 @@ data class PlanUiState(
     val status: PlanStatus = PlanStatus.Idle,
     /** Resolved weather, keyed by ICAO. See `PlanViewModel`'s `weatherByStation` for why it only ever grows. */
     val weatherByStation: Map<String, Metar> = emptyMap(),
+    /**
+     * Which list [routes] belongs to. Changes whenever the list is replaced —
+     * a refresh, a mode, departure or airframe change — and never when rows are
+     * merely appended, removed or swapped. The screen keys its scroll reset on
+     * it: an offset forty rows into the old list is meaningless against the new
+     * one, and nothing else about the state says the list was swapped rather
+     * than grown.
+     */
+    val listGeneration: Long = 0L,
 ) {
     /**
      * The user chose "this aircraft" without choosing one. Generation is held

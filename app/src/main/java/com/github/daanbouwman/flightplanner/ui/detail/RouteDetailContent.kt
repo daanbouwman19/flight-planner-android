@@ -797,7 +797,12 @@ internal fun MetarPanel(
             // Edge to edge inside the card, so the horizon meets the rounded
             // corners. A cross-section inset on all four sides reads as a picture
             // of a diagram rather than as the diagram.
-            SkyProfile(metar = metar, celestial = celestial, height = sceneHeight)
+            SkyProfile(
+                metar = metar,
+                contentDescription = skyProfileDescription(icao, metar),
+                celestial = celestial,
+                height = sceneHeight,
+            )
             Column(
                 modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -861,6 +866,36 @@ internal fun MetarPanel(
             }
         }
     }
+}
+
+/**
+ * The scene in words, for the screen reader the drawing cannot reach: the
+ * category, then the two figures the category was decided from, in the reader's
+ * own units — the same `lengthText` and [visibilityText] the chips below use, so
+ * the sentence and the figures cannot disagree. A figure the station did not
+ * send is said to be missing rather than skipped, because "ceiling not reported"
+ * is a fact about the field and an absent clause is not.
+ */
+@Composable
+private fun skyProfileDescription(icao: String?, metar: Metar?): String {
+    val station = icao ?: EmptyFigure
+    if (metar == null) return stringResource(R.string.weather_scene_no_report, station)
+    val notReported = stringResource(R.string.weather_figure_not_reported)
+    val ceiling = when (val ceiling = metar.ceiling) {
+        is Ceiling.At -> lengthText(ceiling.ft)
+        Ceiling.Unlimited -> stringResource(R.string.weather_ceiling_unlimited)
+        Ceiling.Unknown -> notReported
+    }
+    val visibility = metar.visibilityStatuteMiles
+        ?.let { visibilityText(miles = it, orGreater = metar.visibilityIsOrGreater) }
+        ?: notReported
+    return stringResource(
+        R.string.weather_scene_description,
+        station,
+        metar.flightRules.description.substringBefore('\n'),
+        ceiling,
+        visibility,
+    )
 }
 
 /**

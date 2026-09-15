@@ -1,6 +1,7 @@
 package com.github.daanbouwman.flightplanner.feature.globe.render
 
 import android.content.Context
+import androidx.tracing.trace
 import com.github.daanbouwman.flightplanner.feature.globe.math.CameraBasis
 import com.github.daanbouwman.flightplanner.feature.globe.math.CameraMatrices
 import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeCamera
@@ -417,44 +418,60 @@ internal class GlobeScene(
      * Returns the visible tile list, which the caller needs for the diagnostics
      * overlay and which the label layer does not — labels project their own two
      * points and are not part of the tile pipeline at all.
+     *
+     * ### The trace sections
+     *
+     * Three `trace(...)` sections, read by `:macrobenchmark`'s
+     * `GlobeSpinBenchmark` off a Perfetto trace of the spinning globe:
+     * `globe:upload` is the budgeted hand-off of decoded tiles, `globe:update`
+     * is everything that follows it — the traversal and, when it is owed, the
+     * mesh rebuild — with `globe:traversal` and `globe:mesh` nested inside for
+     * the split. `globe:update` is the number the frame is judged on: the
+     * uploads already carry a time budget, and whether traversal-plus-rebuild
+     * needs one too is a question only that section's P90 can answer.
      */
     fun update(camera: GlobeCamera, basis: CameraBasis, viewport: GlobeViewport): List<VisibleTile> {
         nowSeconds = (System.nanoTime() - startNanos) / 1e9f
-        uploadReadyTiles()
+        trace("globe:upload") { uploadReadyTiles() }
 
-        // Forgotten before the traversal and re-armed by it: every visible tile
-        // that is resting after a failure folds its due time back in as it is
-        // requested, so what remains describes exactly the tiles still wanted.
-        loader.resetRetryDue()
-        visibleTiles = Quadtree.collectVisibleTiles(
-            camera = camera,
-            basis = basis,
-            viewport = viewport,
-            maxLod = loader.maxLevel,
-            pinnedMaxLevel = atlas.pinnedMaxLevel,
-            evictableSlots = atlas.evictableSlots,
-            request = requestTile,
-            prefetch = prefetchTile,
-        )
-
-        val signature = signatureOf(visibleTiles)
-        val stale = meshDirty ||
-            signature != lastVisibleSignature ||
-            atlasGeneration != lastBuiltGeneration ||
-            nowSeconds >= nextFadeExpiry
-        if (stale) {
-            meshDirty = !rebuildTileMesh()
-            if (!meshDirty) {
-                lastVisibleSignature = signature
-                lastBuiltGeneration = atlasGeneration
+        trace("globe:update") {
+            // Forgotten before the traversal and re-armed by it: every visible
+            // tile that is resting after a failure folds its due time back in as
+            // it is requested, so what remains describes exactly the tiles still
+            // wanted.
+            loader.resetRetryDue()
+            visibleTiles = trace("globe:traversal") {
+                Quadtree.collectVisibleTiles(
+                    camera = camera,
+                    basis = basis,
+                    viewport = viewport,
+                    maxLod = loader.maxLevel,
+                    pinnedMaxLevel = atlas.pinnedMaxLevel,
+                    evictableSlots = atlas.evictableSlots,
+                    request = requestTile,
+                    prefetch = prefetchTile,
+                )
             }
-        }
 
-        tileInstance.setParameter(
-            "fade",
-            basis.facingUnit.x, basis.facingUnit.y, basis.facingUnit.z, camera.cullThreshold(),
-        )
-        tileInstance.setParameter("clock", nowSeconds, sharpenSeconds, 0f, 0f)
+            val signature = signatureOf(visibleTiles)
+            val stale = meshDirty ||
+                signature != lastVisibleSignature ||
+                atlasGeneration != lastBuiltGeneration ||
+                nowSeconds >= nextFadeExpiry
+            if (stale) {
+                meshDirty = !trace("globe:mesh") { rebuildTileMesh() }
+                if (!meshDirty) {
+                    lastVisibleSignature = signature
+                    lastBuiltGeneration = atlasGeneration
+                }
+            }
+
+            tileInstance.setParameter(
+                "fade",
+                basis.facingUnit.x, basis.facingUnit.y, basis.facingUnit.z, camera.cullThreshold(),
+            )
+            tileInstance.setParameter("clock", nowSeconds, sharpenSeconds, 0f, 0f)
+        }
 
         // The ribbon is deliberately absent here. Its width, its lift and the
         // samples it drops are all functions of the camera looking at it, so it
@@ -499,13 +516,14 @@ internal class GlobeScene(
     }
 
     /**
-     * Hands decoded tiles to the atlas, newest first, until the budget is spent.
+     * Hands decoded tiles to the atlas, in the order they were fetched, until the
+     * budget is spent.
      *
-     * Newest first for the reason the loader's queue is: the tile decoded a
-     * moment ago is for where the camera is, and one from the start of a pan
-     * may be for a place that has scrolled off. A tile the atlas declines — no
-     * evictable slot, which the current budgets make impossible — is un-held so
-     * it can be asked for again rather than lost.
+     * Coarsest first, because that is what the loader's queue fetches first and
+     * what its ready deque hands back first — see `TileLoader.pollReady`: a leaf
+     * whose ancestor lands before it has something to be drawn from meanwhile. A
+     * tile the atlas declines — no evictable slot, which the current budgets make
+     * impossible — is un-held so it can be asked for again rather than lost.
      */
     private fun uploadReadyTiles() {
         val deadline = System.nanoTime() + UPLOAD_BUDGET_NANOS

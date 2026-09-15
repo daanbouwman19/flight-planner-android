@@ -26,12 +26,14 @@ import com.github.daanbouwman.flightplanner.search.airportSearchScope
 import com.github.daanbouwman.flightplanner.search.rankedAircraftResults
 import com.github.daanbouwman.flightplanner.search.rankedAirportResults
 import com.github.daanbouwman.flightplanner.settings.SettingsRepository
+import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
+import com.github.daanbouwman.flightplanner.ui.STOP_TIMEOUT_MILLIS
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -46,9 +48,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -56,6 +61,18 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 private const val TAG = "PlanViewModel"
+
+/**
+ * The most rows one list will hold: six batches of [DEFAULT_ROUTE_BATCH].
+ *
+ * A row is a few hundred bytes of airport text plus two `DoubleArray`s of arc
+ * samples, which is small — and was unbounded, since the list only ever grew
+ * until the next refresh. Six batches is more than anyone reads before
+ * refreshing, and it bounds the entered-row set and the visible-station
+ * bookkeeping along with it. `internal` so the test can name the cap it is
+ * asserting rather than restate it.
+ */
+internal const val MAX_ROUTE_ROWS = 6 * DEFAULT_ROUTE_BATCH
 
 /**
  * Drives the Plan screen: what to generate, what was generated, and what
@@ -158,6 +175,17 @@ class PlanViewModel @Inject constructor(
     private val routes = MutableStateFlow<List<RouteRow>>(emptyList())
     private val status = MutableStateFlow<PlanStatus>(PlanStatus.Idle)
 
+    /**
+     * Ticks every time [runSelection] throws the list away, so the screen can
+     * tell "a new list" from "the same list with more rows in it".
+     *
+     * Not [Selection.generation], which is a different question: that counts
+     * explicit refreshes and stays put across a mode, departure or airframe
+     * change, all of which replace the list just as thoroughly. The screen
+     * needs the union, and this is it.
+     */
+    private val listGeneration = MutableStateFlow(0L)
+
     /** ICAOs currently on screen, fed by [PlanScreen]'s `LazyListState`. See [setVisibleIcaos]. */
     private val visibleIcaos = MutableStateFlow<Set<String>>(emptySet())
 
@@ -185,6 +213,47 @@ class PlanViewModel @Inject constructor(
      * would only re-open the hole it exists to close.
      */
     private val weatherAskedAt = mutableMapOf<String, Long>()
+
+    /**
+     * Fires once, [WEATHER_RETRY_DELAY_MILLIS] after a failed chunk, and re-asks for
+     * whatever is on screen *then*.
+     *
+     * A failed fetch unmarks its stations so they are not silenced for the cache's
+     * fifteen minutes — but nothing re-asked. The collector below only runs when
+     * the visible set *changes*, so a dropped connection on a list the user was
+     * reading left every chip on screen unresolved until they scrolled. Merged
+     * into the same collector as a second trigger, so a retry is subject to the
+     * same cancellation and the same asked-lately filter as a scroll.
+     *
+     * Same shape as [appendRequests]: no replay, one slot, drop the oldest.
+     */
+    private val weatherRetries = MutableSharedFlow<Unit>(
+        replay = 0,
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /** The one pending retry. A screenful of failed chunks schedules one, not one each. */
+    private var weatherRetry: Job? = null
+
+    /**
+     * Which rows have already played their entrance, by id.
+     *
+     * Held here rather than in the screen because the screen does not live as
+     * long as the list does. On a phone, opening a route takes Plan out of
+     * composition and returning rebuilds it, and a `remember`ed set rebuilt
+     * empty meant every row on screen rose into place a second time — an
+     * arrival animation for a list that had never left. The ViewModel outlives
+     * that trip, so the set does too.
+     *
+     * A plain `HashSet`, not state, for the reason [weatherAskedAt] is: nothing
+     * observes it. It is read during composition through [hasEntered] and
+     * written from an effect through [markEntered], both on the main thread,
+     * and an observable set would recompose the list every time a row arrived.
+     * Cleared with the list in [runSelection]: ids are minted once and never
+     * reused, so an id from a discarded list can never be asked about again.
+     */
+    private val enteredRows = HashSet<Long>()
 
     /**
      * One-shot events, as a channel rather than as state.
@@ -231,7 +300,16 @@ class PlanViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), WorldOutline.Empty)
 
     val uiState: StateFlow<PlanUiState> =
-        combine(selection, routes, status, notFlownCount, weatherByStation) { selected, rows, phase, notFlown, weather ->
+        combine(
+            // Paired first because `combine` takes five typed flows and this is
+            // the sixth; the selection and the list generation change together
+            // anyway, since every selection change starts a new list.
+            combine(selection, listGeneration) { selected, generation -> selected to generation },
+            routes,
+            status,
+            notFlownCount,
+            weatherByStation,
+        ) { (selected, generation), rows, phase, notFlown, weather ->
             PlanUiState(
                 mode = selected.mode,
                 lockedDeparture = selected.lockedDeparture,
@@ -240,6 +318,7 @@ class PlanViewModel @Inject constructor(
                 routes = rows,
                 status = phase,
                 weatherByStation = weather,
+                listGeneration = generation,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), PlanUiState())
 
@@ -277,10 +356,13 @@ class PlanViewModel @Inject constructor(
             // set cancels whatever fetch was in flight for the previous one,
             // rather than letting a stale batch's request race the current
             // screenful's.
-            visibleIcaos
-                .debounce(VISIBLE_ICAO_DEBOUNCE_MILLIS)
-                .distinctUntilChanged()
-                .collectLatest { icaos ->
+            merge(
+                visibleIcaos.debounce(VISIBLE_ICAO_DEBOUNCE_MILLIS).distinctUntilChanged(),
+                // Whatever is visible *now*, not what was visible when the chunk
+                // failed: the user may have scrolled on, and the stations they
+                // left behind will be asked about again if they come back.
+                weatherRetries.map { visibleIcaos.value },
+            ).collectLatest { icaos ->
                     if (icaos.isEmpty()) return@collectLatest
                     // Only what has not been asked about lately.
                     //
@@ -306,12 +388,15 @@ class PlanViewModel @Inject constructor(
                         // Marked before the call, so a station that legitimately has
                         // no report backs off. Unmarked again if the call *failed*,
                         // because a dropped connection is not an answer and must not
-                        // buy fifteen minutes of silence.
+                        // buy fifteen minutes of silence — and asked again once,
+                        // later, through [weatherRetries], because unmarking alone
+                        // only helps a station that scrolls back into view.
                         chunk.forEach { weatherAskedAt[it] = now }
                         val fetched = runCatchingCancellable { weatherRepository.fetch(chunk) }
                             .onFailure {
                                 Log.w(TAG, "Fetching weather for $chunk failed", it)
                                 chunk.forEach { station -> weatherAskedAt.remove(station) }
+                                scheduleWeatherRetry()
                             }
                             .getOrNull()
                             .orEmpty()
@@ -368,6 +453,33 @@ class PlanViewModel @Inject constructor(
         visibleIcaos.value = icaos
     }
 
+    /** Whether the row with this id has already played its entrance. See [enteredRows]. */
+    fun hasEntered(rowId: Long): Boolean = rowId in enteredRows
+
+    /** Records that the row with this id has been shown, so it never animates in again. */
+    fun markEntered(rowId: Long) {
+        enteredRows += rowId
+    }
+
+    /**
+     * Arms the one retry, if none is pending.
+     *
+     * Launched on [viewModelScope] rather than inside the collector that failed,
+     * because `collectLatest` cancels that collector on the next visible-set
+     * change and a delay inside it would go with it — a user who scrolled after
+     * a failure would never get the retry. Bounded to a single pending job: a
+     * fifty-row screenful failing in one chunk of fifty is one failure, and a
+     * retry per chunk on a flaky connection would be a slow denial of service
+     * against a quota'd key.
+     */
+    private fun scheduleWeatherRetry() {
+        if (weatherRetry?.isActive == true) return
+        weatherRetry = viewModelScope.launch {
+            delay(WEATHER_RETRY_DELAY_MILLIS)
+            weatherRetries.tryEmit(Unit)
+        }
+    }
+
     /** Generates a fresh batch, replacing whatever is on screen. */
     fun generate() {
         // A failed index has to be discarded before retrying, or the retry cannot
@@ -383,7 +495,13 @@ class PlanViewModel @Inject constructor(
         selection.update { it.copy(generation = it.generation + 1) }
     }
 
-    /** Appends another batch beneath the current one. Ignored while one is already in flight. */
+    /**
+     * Appends another batch beneath the current one.
+     *
+     * Ignored while one is already in flight, and ignored once the list has
+     * reached [MAX_ROUTE_ROWS] — both are states other than `Ready`, which is
+     * what makes one comparison cover both.
+     */
     fun loadMore() {
         if (status.value != PlanStatus.Ready) return
         appendRequests.tryEmit(Unit)
@@ -622,6 +740,11 @@ class PlanViewModel @Inject constructor(
 
     private suspend fun runSelection(selected: Selection, icaoOnly: Boolean) {
         batch = null
+        // Every path below empties the list, including the two early returns,
+        // so the tick is unconditional: whatever the screen was scrolled to
+        // belonged to a list that no longer exists.
+        listGeneration.update { it + 1 }
+        enteredRows.clear()
         if (selected.generation == 0L) {
             routes.value = emptyList()
             status.value = PlanStatus.Idle
@@ -653,8 +776,15 @@ class PlanViewModel @Inject constructor(
                 .onFailure { Log.w(TAG, "Appending a batch failed; keeping what is shown", it) }
                 .getOrNull()
                 .orEmpty()
-            routes.update { it + more }
-            status.value = PlanStatus.Ready
+            val grown = routes.updateAndGet { it + more }
+            // The list is bounded. Every row holds two sampled arcs, and an
+            // infinite scroll that is never refreshed would keep them all for
+            // the session — a fling of a few minutes was a few thousand rows
+            // nobody would scroll back to. Past the cap the append is declined
+            // at `loadMore` and the screen says so; the rows on screen are
+            // untouched, because dropping from the head would shift every
+            // index under the user's thumb.
+            status.value = if (grown.size >= MAX_ROUTE_ROWS) PlanStatus.EndReached else PlanStatus.Ready
         }
     }
 
@@ -746,7 +876,7 @@ class PlanViewModel @Inject constructor(
             slots += route.destinationSlot
         }
         val slotList = slots.toIntArray()
-        val ids = slotList.map { current.index.ids[it] }
+        val ids = slotList.map { current.index.idOf(it) }
         val airportsById = airportRepository.airportsByIdMap(ids)
 
         val bySlot = HashMap<Int, Airport>(slotList.size)
@@ -866,13 +996,6 @@ class PlanViewModel @Inject constructor(
 
     private companion object {
         /**
-         * How long a flow keeps running after the last collector goes away.
-         * Long enough to survive a configuration change, short enough that a
-         * backgrounded app stops observing the database.
-         */
-        const val STOP_TIMEOUT_MILLIS = 5_000L
-
-        /**
          * How many destinations [replace] generates to choose one from. Small,
          * because the only thing the spares buy is a way past the destination
          * just discarded, and a route is a binary search plus a bounded scan —
@@ -885,21 +1008,13 @@ class PlanViewModel @Inject constructor(
 
         /** NOAA's documented ceiling per request; also what docs/PLAN.md's "chunk by 50" specifies. */
         const val WEATHER_BATCH_SIZE = 50
-    }
-}
 
-/**
- * [runCatching] that lets cancellation through.
- *
- * `runCatching` swallows `CancellationException` along with everything else,
- * which quietly breaks structured concurrency: a cancelled generation would be
- * reported to the user as a failure, and the coroutine would carry on running
- * code after the point it was supposed to stop.
- */
-private inline fun <T> runCatchingCancellable(block: () -> T): Result<T> = try {
-    Result.success(block())
-} catch (cancellation: CancellationException) {
-    throw cancellation
-} catch (failure: Throwable) {
-    Result.failure(failure)
+        /**
+         * How long after a failed chunk the visible stations are asked about again.
+         * Long enough for a dropped connection to come back and to not hammer a
+         * provider that is refusing; short enough that a list the user is still
+         * reading resolves while they are reading it.
+         */
+        const val WEATHER_RETRY_DELAY_MILLIS = 30_000L
+    }
 }
