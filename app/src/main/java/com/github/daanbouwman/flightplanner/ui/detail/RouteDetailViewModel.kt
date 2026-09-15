@@ -74,15 +74,24 @@ data class RouteDetailUiState(
  * part that is genuinely about being a ViewModel: a scope to load in, and a
  * `StateFlow` to publish into.
  *
- * It publishes twice, deliberately; see [RouteDetailLoader] for why.
+ * It publishes three times, deliberately; see [RouteDetailLoader] for why.
+ *
+ * The primary constructor takes the route itself and is `internal` so a test can
+ * construct the ViewModel with a fake loader and no `SavedStateHandle`; the
+ * `@Inject` secondary is the one Hilt uses and only reads the route out of the
+ * navigation arguments.
  */
 @HiltViewModel
-class RouteDetailViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
+class RouteDetailViewModel internal constructor(
+    private val route: Destination.RouteDetail,
     private val loader: RouteDetailLoader,
 ) : ViewModel() {
 
-    private val route: Destination.RouteDetail = savedStateHandle.toRoute()
+    @Inject
+    constructor(
+        savedStateHandle: SavedStateHandle,
+        loader: RouteDetailLoader,
+    ) : this(route = savedStateHandle.toRoute<Destination.RouteDetail>(), loader = loader)
 
     private val _state = MutableStateFlow(RouteDetailUiState(distanceNm = route.distanceNm))
     val state: StateFlow<RouteDetailUiState> = _state.asStateFlow()

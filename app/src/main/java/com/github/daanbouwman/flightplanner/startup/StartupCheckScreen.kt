@@ -120,9 +120,13 @@ fun StartupCheckScreen(
     }
 }
 
-/** The one-line verdict: still running, how many failed, how many notes, or all clear. */
+/**
+ * The one-line verdict: still running, how many failed, how many notes, or all
+ * clear. `internal` so `StartupHeadlineTest` can compose it on its own and pin
+ * the plurals; a state class has no resources, so it cannot live there.
+ */
 @Composable
-private fun headline(state: StartupUiState): String = when {
+internal fun headline(state: StartupUiState): String = when {
     !state.finished -> stringResource(R.string.self_check_headline_checking)
     state.failures > 0 -> pluralStringResource(R.plurals.self_check_headline_failed, state.failures, state.failures)
     state.warnings > 0 -> pluralStringResource(R.plurals.self_check_headline_notes, state.warnings, state.warnings)

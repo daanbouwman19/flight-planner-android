@@ -9,12 +9,16 @@ import com.github.daanbouwman.flightplanner.core.database.repository.FleetReposi
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.AirportSizeClass
+import com.github.daanbouwman.flightplanner.model.FlightRules
 import com.github.daanbouwman.flightplanner.model.Metar
 import com.github.daanbouwman.flightplanner.model.Runway
+import com.github.daanbouwman.flightplanner.model.SurfaceKind
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.weather.WeatherRepository
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -29,6 +33,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import java.io.IOException
 import java.time.LocalDate
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -75,12 +80,23 @@ private val boeing = AircraftSpec(
 private class GatedAirportRepository(
     private val airports: List<Airport>,
     private val gates: Map<String, CompletableDeferred<Unit>> = emptyMap(),
+    /** Runways per airport id; the read waits at [runwayGate] first. */
+    private val runways: Map<Int, List<Runway>> = emptyMap(),
+    val runwayGate: CompletableDeferred<Unit> = CompletableDeferred(Unit),
+    /** Thrown by every airport lookup, to exercise the loader's guards. */
+    private val airportFailure: Throwable? = null,
 ) : AirportRepository {
     override val nameIndexState: StateFlow<NameIndexState> = MutableStateFlow(NameIndexState.Idle)
 
     override suspend fun findByIcao(icao: String): Airport? {
         gates[icao]?.await()
+        airportFailure?.let { throw it }
         return airports.firstOrNull { it.icao == icao }
+    }
+
+    override suspend fun runwaysFor(airportId: Int): List<Runway> {
+        runwayGate.await()
+        return runways[airportId].orEmpty()
     }
 
     override suspend fun findById(id: Int): Airport? = airports.firstOrNull { it.id == id }
@@ -88,10 +104,41 @@ private class GatedAirportRepository(
     override suspend fun airportsByIdMap(ids: List<Int>): Map<Int, Airport> = airportsByIds(ids).associateBy { it.id }
     override suspend fun airportsByIcao(icaos: List<String>): List<Airport> = airports.filter { it.icao in icaos }
     override suspend fun airportsForSlots(index: AirportIndex, slots: IntArray): List<Airport> = emptyList()
-    override suspend fun runwaysFor(airportId: Int): List<Runway> = emptyList()
     override fun prepareNameIndex(index: AirportIndex) = Unit
     override fun nameIndexOrNull(): AirportNameIndex? = null
 }
+
+private fun runway(airportId: Int, ident: String) = Runway(
+    id = airportId * 10 + ident.length,
+    airportId = airportId,
+    ident = ident,
+    trueHeadingDeg = 183.0,
+    lengthFt = 12467,
+    widthFt = 148,
+    surface = "ASP",
+    surfaceKind = SurfaceKind.HARD,
+    latitude = null,
+    longitude = null,
+    elevationFt = 0,
+    lighted = true,
+)
+
+/** Weather held at a gate, so the third publish can be told apart from the second. */
+private class GatedWeatherRepository(
+    private val reports: Map<String, Metar>,
+    val gate: CompletableDeferred<Unit> = CompletableDeferred(Unit),
+) : WeatherRepository {
+    override suspend fun fetch(stations: List<String>): Map<String, Metar> {
+        gate.await()
+        return reports.filterKeys { it in stations }
+    }
+}
+
+private fun metar(station: String) = Metar(
+    station = station,
+    raw = "$station 121225Z 24012KT 9999 FEW040 18/09 Q1015",
+    flightRules = FlightRules.VFR,
+)
 
 private class PaneFleetRepository(private val fleet: List<AircraftSpec>) : FleetRepository {
     override fun observeFleet(): Flow<List<AircraftSpec>> = flowOf(fleet)
@@ -144,14 +191,87 @@ class RouteDetailPaneViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(gates: Map<String, CompletableDeferred<Unit>> = emptyMap()) = RouteDetailPaneViewModel(
+    private fun viewModel(
+        gates: Map<String, CompletableDeferred<Unit>> = emptyMap(),
+        airports: AirportRepository = GatedAirportRepository(listOf(eham, kjfk, egll), gates),
+        weather: WeatherRepository = NoWeather,
+    ) = RouteDetailPaneViewModel(
         RouteDetailLoader(
-            airportRepository = GatedAirportRepository(listOf(eham, kjfk, egll), gates),
+            airportRepository = airports,
             fleetRepository = PaneFleetRepository(listOf(boeing)),
             worldOutlineLoader = { WorldOutline.Empty },
-            weatherRepository = NoWeather,
+            weatherRepository = weather,
         ),
     )
+
+    @Test
+    fun `a selection publishes three times - airports, then runways, then weather - under one identity`() =
+        runTest(dispatcher) {
+            val airports = GatedAirportRepository(
+                airports = listOf(eham, kjfk, egll),
+                runways = mapOf(1 to listOf(runway(1, "18R"), runway(1, "36L")), 2 to listOf(runway(2, "04L"))),
+                runwayGate = CompletableDeferred(),
+            )
+            val weather = GatedWeatherRepository(
+                reports = mapOf("EHAM" to metar("EHAM"), "KJFK" to metar("KJFK")),
+                gate = CompletableDeferred(),
+            )
+            val model = viewModel(airports = airports, weather = weather)
+
+            model.select(toKennedy)
+            advanceUntilIdle()
+            val loaded = model.state.value.shouldNotBeNull()
+            loaded.route shouldBe toKennedy
+            loaded.detail.departure shouldBe eham
+            loaded.detail.loading shouldBe false
+            loaded.detail.departureRunways.shouldBeEmpty()
+            loaded.detail.departureMetar.shouldBeNull()
+
+            airports.runwayGate.complete(Unit)
+            advanceUntilIdle()
+            val withRunways = model.state.value.shouldNotBeNull()
+            withRunways.route shouldBe toKennedy
+            withRunways.detail.departureRunways shouldHaveSize 2
+            withRunways.detail.destinationRunways shouldHaveSize 1
+            withRunways.detail.departureMetar.shouldBeNull()
+
+            weather.gate.complete(Unit)
+            advanceUntilIdle()
+            val settled = model.state.value.shouldNotBeNull()
+            settled.route shouldBe toKennedy
+            settled.detail.departureMetar shouldBe metar("EHAM")
+            settled.detail.destinationMetar shouldBe metar("KJFK")
+            settled.detail.departureRunways shouldHaveSize 2
+        }
+
+    @Test
+    fun `a throwing airport read degrades the pane instead of propagating out of the selection`() =
+        runTest(dispatcher) {
+            val model = viewModel(
+                airports = GatedAirportRepository(
+                    airports = listOf(eham, kjfk),
+                    airportFailure = IOException("database mid-install"),
+                ),
+            )
+
+            model.select(toKennedy)
+            advanceUntilIdle()
+
+            // The identity is intact and the content settled as "loaded, empty":
+            // the pane heads itself from the selection and shows no skeleton
+            // forever, and nothing escaped the launch.
+            val state = model.state.value.shouldNotBeNull()
+            state.route shouldBe toKennedy
+            state.detail.loading shouldBe false
+            state.detail.departure.shouldBeNull()
+            state.detail.destination.shouldBeNull()
+            state.detail.aircraft shouldBe boeing
+            state.detail.distanceNm shouldBe 3163
+
+            // And the pane is still usable: the next selection loads normally.
+            model.clear()
+            model.state.value.shouldBeNull()
+        }
 
     @Test
     fun `select publishes the route at once and the loaded detail after`() = runTest(dispatcher) {
