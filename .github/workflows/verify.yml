@@ -45,8 +45,11 @@ jobs:
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
-      - name: Build
-        run: ./gradlew build --no-daemon
+      # `check`, not `build`: the same unit tests, lint and checkInvariants, without
+      # assembling the release and benchmark variants and their R8 passes. The
+      # Debug APK workflow already proves the app assembles.
+      - name: Check
+        run: ./gradlew check --no-daemon
 
       # Only on failure: a green run's reports are not worth the upload time,
       # and lint's HTML report is per-module (`lint-results-debug.html` etc.),
