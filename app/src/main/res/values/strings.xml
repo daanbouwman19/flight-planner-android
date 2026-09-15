@@ -86,10 +86,19 @@
         Spoken for a whole route card, so a screen reader reads one sentence
         instead of stopping on eleven separate nodes. In order: aircraft,
         departure code, departure name, destination code, destination name,
-        distance in nautical miles, hours, minutes.
+        distance in nautical miles, hours, minutes. The card clears its
+        children's semantics and speaks only this, so the two strings below
+        carry the figures the children print that this one does not: the
+        longest runway at each end (with the shortfall warning when the
+        aircraft cannot use it) and the flight category once weather has
+        resolved. "nautical miles" is also how :macrobenchmark finds a card.
     -->
     <string name="plan_route_content_description">%1$s, %2$s %3$s to %4$s %5$s, %6$,d nautical
         miles, %7$d hours %8$d minutes</string>
+    <!-- Airport code, then the runway length in the reader's units: "EHAM longest runway 12,467 ft". -->
+    <string name="plan_route_runway_spoken">%1$s longest runway %2$s</string>
+    <!-- Airport code, then the flight category spelled out: "EHAM Visual Flight Rules". -->
+    <string name="plan_route_weather_spoken">%1$s %2$s</string>
 
     <string name="plan_picker_departure_title">Departure airport</string>
     <string name="plan_picker_destination_title">Destination airport</string>

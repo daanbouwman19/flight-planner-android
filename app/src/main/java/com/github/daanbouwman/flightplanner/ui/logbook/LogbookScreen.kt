@@ -59,9 +59,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -512,12 +513,18 @@ internal fun LogbookRowCard(
     )
     val deleteActionLabel = stringResource(R.string.logbook_action_delete)
 
+    // `clearAndSetSemantics` with the click restated inside it, for the reason
+    // FleetRowCard gives: a merging node with its own description and children
+    // reaches accessibility services as two nodes, the sentence on a synthetic
+    // child and the click on the parent. The sentence says everything the row
+    // prints, so the children are cleared and one node carries all three.
     Card(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
+            .clearAndSetSemantics {
                 contentDescription = description
+                onClick { onClick(); true }
                 customActions = listOf(
                     CustomAccessibilityAction(deleteActionLabel) {
                         onDelete()

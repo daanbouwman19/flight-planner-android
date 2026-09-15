@@ -23,8 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -134,20 +136,14 @@ fun RouteCard(
 ) {
     // One description for the whole card. Left to itself the card announces
     // eleven separate nodes — two codes, two names, two "N/A" chips and three
-    // labelled figures — which is technically complete and unusable. Merging
-    // them into a sentence is the difference between a list a screen-reader user
-    // can skim and one they have to decode.
-    val description = stringResource(
-        R.string.plan_route_content_description,
-        row.aircraft.displayName,
-        row.departure.icao,
-        row.departure.name,
-        row.destination.icao,
-        row.destination.name,
-        row.distanceNm,
-        row.flightTime.hours,
-        row.flightTime.minutes,
-    )
+    // labelled figures — which is technically complete and unusable. One
+    // sentence is the difference between a list a screen-reader user can skim
+    // and one they have to decode. The children's semantics are *cleared* below
+    // rather than merged, so this sentence is all a reader gets, and it must
+    // therefore say everything the children print: the airframe's category,
+    // the longest runway at each end (and the shortfall when the airframe
+    // cannot use it) and the flight category once weather has resolved.
+    val description = routeCardDescription(row, departureMetar, destinationMetar)
 
     // The two actions exist as swipes, and a swipe is not an action a screen
     // reader can perform. Declared here they become entries in TalkBack's actions
@@ -163,12 +159,24 @@ fun RouteCard(
     // exactly the frame the transition is looked at in.
     val cardShape = MaterialTheme.shapes.largeIncreased
 
+    // `clearAndSetSemantics`, not `semantics(mergeDescendants = true)`, with the
+    // click restated inside it. A merging node that has a description of its
+    // own *and* children is exported to accessibility services as two nodes:
+    // Compose moves the description onto a synthetic first child so a screen
+    // reader speaks it before the children's text, and the click stays on the
+    // parent. A `uiautomator dump` therefore showed this card's sentence on a
+    // node that was not clickable, and `By.clickable(true).desc(…)` matched
+    // nothing — which is what an accessibility service sees. Clearing the
+    // children leaves one node carrying the sentence, the click and both swipe
+    // actions. Clearing also drops the `Card`'s own click semantics, hence the
+    // `onClick` here; the tap itself is pointer input and is unaffected.
     Card(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
+            .clearAndSetSemantics {
                 contentDescription = description
+                onClick { onClick(); true }
                 customActions = listOf(
                     CustomAccessibilityAction(markFlownLabel) { onMarkFlown(); true },
                     CustomAccessibilityAction(replaceLabel) { onReplace(); true },
@@ -256,6 +264,56 @@ fun RouteCard(
             }
         }
     }
+}
+
+/**
+ * The one sentence a screen reader gets for a route card.
+ *
+ * The base sentence — airframe, the two ends by code and name, distance, time
+ * — is followed by the figures the card prints that it does not already say:
+ * the airframe's category, each end's longest runway with the shortfall
+ * warning when the airframe cannot use it, and each end's flight category
+ * once its report has resolved. Nothing is said for a category still unknown,
+ * for the same reason the chip's slot is empty until then.
+ *
+ * `:macrobenchmark` finds a card by the "nautical miles" of the base sentence;
+ * the additions go after it and leave that phrase alone.
+ */
+@Composable
+private fun routeCardDescription(row: RouteRow, departureMetar: Metar?, destinationMetar: Metar?): String {
+    val base = stringResource(
+        R.string.plan_route_content_description,
+        row.aircraft.displayName,
+        row.departure.icao,
+        row.departure.name,
+        row.destination.icao,
+        row.destination.name,
+        row.distanceNm,
+        row.flightTime.hours,
+        row.flightTime.minutes,
+    )
+    val tooShort = stringResource(R.string.plan_runway_short)
+    val parts = buildList {
+        add(base)
+        add(row.aircraft.category)
+        add(stringResource(R.string.plan_route_runway_spoken, row.departure.icao, lengthText(row.departureRunwayFt)))
+        if (row.departureRunwayTooShort) add(tooShort)
+        add(stringResource(R.string.plan_route_runway_spoken, row.destination.icao, lengthText(row.destinationRunwayFt)))
+        if (row.destinationRunwayTooShort) add(tooShort)
+        spokenRules(row.departure.icao, departureMetar)?.let(::add)
+        spokenRules(row.destination.icao, destinationMetar)?.let(::add)
+    }
+    return parts.joinToString(", ")
+}
+
+/** "EHAM Visual Flight Rules", or null while the category is unknown. */
+@Composable
+private fun spokenRules(icao: String, metar: Metar?): String? {
+    val rules = metar?.flightRules ?: return null
+    if (rules == FlightRules.UNKNOWN) return null
+    // The first line of the description is the category's name; the rest are
+    // the ceiling and visibility thresholds, which FlightRulesBadge also drops.
+    return stringResource(R.string.plan_route_weather_spoken, icao, rules.description.substringBefore('\n'))
 }
 
 @Composable
