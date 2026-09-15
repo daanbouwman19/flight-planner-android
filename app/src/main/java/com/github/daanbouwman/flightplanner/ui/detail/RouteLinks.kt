@@ -62,9 +62,16 @@ object RouteLinks {
      * Fixed decimals rather than `%s`. `Double.toString` switches to scientific
      * notation below 1e-3, so an airport within about 100 m of the equator or of
      * the prime meridian would produce `query=4.0E-4,32.1`, which Maps does not
-     * resolve. Six decimals is roughly 0.1 m, well past what a reference point is
-     * published to, and it makes the linked coordinate and the copyable one agree
-     * instead of one being rounded and the other full `Double` precision.
+     * resolve.
+     *
+     * Six decimals here against the four of `coordinates()` in `Figures.kt`, and
+     * the two differ on purpose. The copyable figure is four decimals because the
+     * desktop app copies four and a coordinate copied here must be the same
+     * string as one copied there. This one is never read by a person — it is a
+     * query parameter — so it keeps all the precision the reference point has
+     * (six decimals is roughly 0.1 m) rather than rounding a link for the sake of
+     * matching text that is rounded for legibility. An earlier version of this
+     * comment claimed the two agreed; they never did.
      */
     fun googleMaps(latitude: Double, longitude: Double): String =
         "https://www.google.com/maps/search/?api=1&query=" +

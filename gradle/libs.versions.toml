@@ -5,14 +5,20 @@
 # / Maven Central) rather than copied from documentation. Two pairings
 # are load-bearing and must be changed together:
 #
-#   kotlin <-> ksp        KSP tracks the Kotlin minor version. As of this
-#                         writing the newest KSP is 2.3.11, so Kotlin is
-#                         pinned to 2.3.21 even though 2.4.10 is stable.
-#                         Bumping Kotlin to 2.4.x strands Room and Hilt,
-#                         both of which run through KSP.
+#   kotlin <-> ksp        Room and Hilt both run through KSP, so a Kotlin
+#                         bump that KSP does not yet support strands both.
+#                         The pair below - Kotlin 2.4.10 over KSP 2.3.11 -
+#                         builds and passes every test, which is the only
+#                         evidence that counts; an earlier version of this
+#                         comment pinned Kotlin to 2.3.21 on the assumption
+#                         that KSP had to match the Kotlin minor, and
+#                         Dependabot's 2.4.10 bump showed it did not. Treat a
+#                         Room or Hilt processing error after a Kotlin bump
+#                         as this pairing before anything else.
 #
-#   agp <-> compileSdk    AGP 9.3.1 is the newest stable and supports the
-#                         installed platform (android-37).
+#   agp <-> compileSdk    AGP 9.4.0 supports the installed platform
+#                         (android-37); check the AGP release notes for the
+#                         supported compileSdk before bumping either.
 ########################################################################
 
 [versions]
