@@ -2524,7 +2524,7 @@ did not ask for, the commit body says why, and the row says so briefly.
 | **H3** ✅ | Glance widget | "Today's challenge", 2026-09-16. `RouteGenerator.dailyChallenge` (`:core:routing`, tested) draws eight attempts from `Random(date.toEpochDay())` over the fleet sorted by id in `AllAircraft` mode and keeps the first survivor — so the route is the same for everyone with your fleet, unchanged by marking airframes flown, changed by adding one. `ChallengeWidget` in `app/…/widget/` is the glass, and it is the route card on the home screen: the route drawn on the world it crosses (see *What Phase H found* for how a map reaches Glance), the airframe and the date along the top, the codes at the bottom corners, DIST and ETE chips in the user's unit; two responsive layouts (the 2-cell one drops the airframe line), colours from `resolveColorScheme` through `glance-material3` so Cockpit and Chart and dynamic colour all carry over. It reaches the Hilt graph through the app's **first `@EntryPoint`** (`WidgetEntryPoint`) and never touches `AirportRepository` — codes come from the index, because reading names would run the 30 MB asset install inside a receiver on a phone that has never opened the app. Refresh is an inexact, non-waking `AlarmManager` `RTC` alarm at local midnight (`ChallengeRefresh`, re-armed on every render, cancelled in `onDisabled`) plus a manifest `TIMEZONE_CHANGED` filter; `updatePeriodMillis` cannot name a time and a WorkManager delay counts the wrong clock. The picker preview is Android 15's rendered kind, published once per `versionCode` from `MainActivity` after first composition (`PublishWidgetPreview`). Tap opens the route through the same Intent contract as H4. Tests: `DailyChallengeTest`, `DailyChallengeSourceTest`, `ChallengeRefreshTest` (a DST night is 23 h), `ChallengeContentTest` on Glance's own unit-test host. **See *What Phase H found* below for the WorkManager initializer this dragged in** |
 | **H4** ✅ | Shortcuts | Generate routes, Log a flight, Last route — `res/xml/shortcuts.xml`, three adaptive icons cut from the app's own glyphs. They and the widget share one Intent contract, `LaunchIntents` (`app/…/launch/`): four namespaced actions, primitive extras, `parse` never throws. `MainActivity` is `singleTask` now (a widget or shortcut `NEW_TASK` launch used to stack a second instance), reads the Intent only when `savedInstanceState == null`, and gains `onNewIntent`; the request waits in an activity-scoped `LaunchViewModel` until `FlightPlannerNavHost`'s `LaunchRequestConsumer` can act on it, gated on the PlanGraph entry existing. OpenRoute lands *over* Plan; GenerateRoutes calls `PlanViewModel.generate()`; LogFlight is consumed by `LogbookScreen` itself when the sheet opens (a nav argument would replay from a restored stack); **"Last route" is the route last opened** — recorded by both `RouteDetailViewModel` and `RouteDetailPaneViewModel` through a seam into a new `launch` DataStore — with the newest logbook flight as the fallback and Plan after that. `LaunchIntentsTest` parses the shortcut XML itself, so a typo there fails a unit test |
 | **H5** | Screenshot goldens | Roborazzi across light/dark, LTR/RTL, font scale 1.0/2.0, three window sizes. The globe is stubbed — it is covered by G1's math tests plus a device smoke check |
-| **H6** | ~~R8 rules and Play listing~~ R8 rules | **Play listing dropped by user decision, 2026-09-15.** The R8 rules remain |
+| **H6** ✅ | ~~R8 rules and Play listing~~ R8 rules | **Play listing dropped by user decision, 2026-09-15.** The rules shipped 2026-09-16: `app/proguard-rules.pro` is down to `-keepattributes SourceFile,LineNumberTable` and `-renamesourcefileattribute SourceFile`, everything else it carried having turned out to be a copy of a rule its library already ships (see *What H6 found*). `verify.yml` gained a second job that runs `:app:assembleRelease`, so R8 now runs on every PR. The minified build was walked on the emulator across every path the macrobenchmarks do not touch — nav `toRoute`, `LastRouteStore`, NOAA METAR, Room writes, DataStore, Glance widget render and tap, shortcuts, self-check, Filament on Vulkan — with no missing class, member or serializer. Still owed to the phone: the AVWX DTO path (needs the key that lives there) and one `StartupBenchmark` run |
 
 ### What Phase H found
 
@@ -2549,6 +2549,54 @@ widget's `PendingIntent` carries only `NEW_TASK`, and with `standard` the system
 brings the task forward *and stacks a second instance on it*, each with its own
 NavHost. `singleTask` was the whole fix, and it is what makes `onNewIntent` the
 second place an Intent is read.
+
+**The R8 rules file was three duplicates and one omission.** The audit did not
+start from the rules file; it started from what R8 actually ran.
+`app/build/outputs/mapping/release/configuration.txt` is the merged configuration,
+every rule annotated with the file it came from, and reading it against
+`proguard-rules.pro` showed:
+
+- kotlinx.serialization has bundled its own R8 rules since 1.6
+  (`kotlinx-serialization-common.pro`, `kotlinx-serialization-r8.pro`, both in the
+  merge). The serializer-on-companion block the app carried was the pre-1.6 README
+  snippet.
+- `filament-android` ships rules keyed on its `@UsedByNative` / `@UsedByReflection`
+  annotations plus the two `utils` classes reached by `env->FindClass`. The app's
+  blanket `-keep class com.google.android.filament.** { *; }` overrode them and pinned
+  **3,402** Filament seeds; with the bundled rules alone it is 181, and the release
+  APK is 262 KB smaller on the same tree (28,253,513 → 27,991,317 bytes; dex
+  4,932,644 → 4,663,236). The globe, the network globe, the immersive view and the
+  self-check's Filament probe all run on the 181.
+- AGP 9.4's `proguard-android-optimize.txt` keeps annotations, `Signature` and
+  `InnerClasses` and **not** `SourceFile`/`LineNumberTable`, so a release stack trace
+  had method names and no lines. Those two attributes are now the whole file.
+  Measured, keeping them did not grow the dex — R8's output with them was 62 KB
+  *smaller* than without, an optimisation-ordering quirk not worth chasing.
+- Nothing was missing: no `missing_rules.txt`, and Hilt, Room, OkHttp, DataStore,
+  Navigation, sqlite-bundled and coroutines all arrive with their own rules. Glance
+  and WorkManager ship none and need none.
+
+The enum-by-name settings lookups (`entries.firstOrNull { it.name == … }` in
+`SettingsRepository`) need no rule either — R8 never renames enum constants — and the
+rules file says so, so nobody adds one. The 27.3 MB figure that was on record for the
+release APK predates the widget commit and is not comparable to any of the numbers
+above; the before/after here was taken on one tree by swapping the rules file.
+
+**A release build that only compiles is not verified.** `./gradlew build` had run R8
+before and passed, and would have passed with the Filament keep removed even if a
+JNI callback had been stripped — R8 cannot see native code. So the minified build was
+installed (`installRelease`, debug-signed) and every path the macrobenchmarks do not
+drive was walked with logcat filtered on `ClassNotFound|NoClassDefFound|NoSuchMethod|
+SerializationException|UnsatisfiedLink|FATAL`: cold start, Plan, route detail through
+`toRoute<Destination.RouteDetail>`, the deep globe hero and the immersive globe on
+Vulkan, marking a route flown, Stats with the network globe, Airports → KDEN → NOAA
+METAR and the Sky Profile, Settings (Chart theme, metric, the AVWX key field),
+Licences, self-check, the add-flight sheet, the "Last route" and "Generate" shortcuts
+(`LastRouteStore`'s `Json.decodeFromString` round-trip), the widget rendered by a
+Glance session worker through `WidgetEntryPoint`, and the widget tap. Nothing. The
+emulator carries no AVWX key, so the `AvwxMetarDto` decode is the one serialization
+path still owed to the phone, along with a `StartupBenchmark` run to confirm the
+166 ms stands.
 
 **Cold start, measured after all of it.** `StartupBenchmark` on the SM-S942B,
 2026-09-16, `benchmarkRelease`, twelve iterations each:

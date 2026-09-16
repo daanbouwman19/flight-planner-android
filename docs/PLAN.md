@@ -808,9 +808,12 @@ has needed a per-algorithm number, so the algorithms are held by their unit test
 the macrobenchmarks. If one is ever wanted, JMH on `:core:routing` is the place, for the reason
 given — ART and HotSpot differ materially on float math, so a JVM figure is a guide, not a result.
 
-**CI** (GitHub Actions): per-PR `assemble + lint + jvmTest + verifyRoborazzi + verifyAirportAsset`;
-nightly `connectedCheck` on API 34 and 36 emulators; a **monthly scheduled dataset-refresh job**
-that reruns the ETL, updates row-count expectations and opens a PR.
+**CI** (GitHub Actions), as built: per-PR `verify.yml` runs `check` (every unit test, lint,
+`checkInvariants`, `verifyAirportAsset`) in one job and `:app:assembleRelease` (the R8 pass, added by H6) in a
+parallel one; `debug-apk.yml` uploads an installable debug APK. `verifyRoborazzi` joins
+`check` with H5. The nightly `connectedCheck` on emulators and the **monthly scheduled
+dataset-refresh job** (rerun the ETL, update row-count expectations, open a PR) this plan
+called for were never built; both remain open.
 
 ---
 

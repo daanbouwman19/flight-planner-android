@@ -1,7 +1,8 @@
 # Runs the full verification suite CLAUDE.md asks a human to run before calling a
 # change done: compile everything, run every unit test, run lint, and run
 # `checkInvariants` (wired into `check` by the convention plugins, so `build`
-# already covers it).
+# already covers it). A second job assembles the minified release, so R8 runs on
+# every PR too.
 #
 # `debug-apk.yml` in this directory proves the app *assembles*; it never runs a
 # test or a lint check, so a change could break `:core:routing:test` or trip
@@ -46,8 +47,8 @@ jobs:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       # `check`, not `build`: the same unit tests, lint and checkInvariants, without
-      # assembling the release and benchmark variants and their R8 passes. The
-      # Debug APK workflow already proves the app assembles.
+      # assembling the release and benchmark variants. The Debug APK workflow
+      # proves the app assembles; the `release` job below proves it minifies.
       - name: Check
         run: ./gradlew check --no-daemon
 
@@ -73,3 +74,30 @@ jobs:
             **/build/test-results/**/*.xml
           if-no-files-found: ignore
           retention-days: 14
+
+  # The minified release is the only variant R8 touches, and the only place a
+  # keep rule that is missing or a library rule that stopped shipping shows up —
+  # as a build error, so there is nothing to upload. It is a separate job rather
+  # than a task appended to `check` so the two run side by side and neither
+  # lengthens the other. `release` is debug-signed (see app/build.gradle.kts), and
+  # AGP writes `~/.android/debug.keystore` itself on a fresh runner, so no secret
+  # is involved. Runtime behaviour of the minified build is still a device pass,
+  # per UI-PLAN §10 H6; this job only proves it builds.
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: Assemble release
+        run: ./gradlew :app:assembleRelease --no-daemon
