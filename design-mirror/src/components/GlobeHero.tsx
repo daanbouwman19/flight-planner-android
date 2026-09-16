@@ -1,275 +1,282 @@
-import { useId, useMemo } from 'react'
-import { ValueChip } from './ValueChip'
+import { useMemo, type ReactNode } from 'react'
+import { GlobeView, GLOBE_VB_HEIGHT } from './GlobeView'
+import { GlobeCameraControls, GlobeAttribution } from './GlobeChrome'
+import type { FlightRules } from './FlightRulesBadge'
+import { sampleGeoArc } from '../geo/mapFrame'
+import { frameRoute, projectArc, projectPoint, type GlobeViewport } from '../geo/globeFrame'
 
-export interface GlobeCameraControlsProps {
-  /** The camera's heading, degrees. 0 is north (the reset control is hidden). */
-  bearingDegrees?: number
+export interface GlobeHeroEnd {
+  icao: string
+  /** Degrees north. */
+  lat: number
+  /** Degrees east. */
+  lon: number
+  rules?: FlightRules
+}
+
+const ARC_STROKE = 6
+const ARC_CASING = ARC_STROKE + 8
+const DOT_RADIUS = 9
+/** Below this screen separation the two plates would overlap, so they merge. `MergeDistancePx`. */
+const MERGE_FRACTION = 0.13
+/** Roughly 12° of the horizon value, over which a label fades toward the limb. `LabelFadeSpan`. */
+const LABEL_FADE_SPAN = 0.12
+
+const clamp01 = (x: number): number => Math.min(1, Math.max(0, x))
+
+export interface GlobeRouteSceneProps {
+  departure: GlobeHeroEnd
+  destination: GlobeHeroEnd
+  /** The box's width / height. The projection is solved for this. */
+  aspect: number
+  /**
+   * Fraction of the box the host's own chrome covers at the top. A label whose
+   * dot rises into it fades rather than moving off its airport — case 2 of
+   * `GlobeLabels`.
+   */
+  topChromeFraction?: number
+  /** Chrome placed over the glass by the caller — the camera stack, the credit, a plate. */
+  chrome?: ReactNode
   className?: string
 }
 
 /**
- * The camera instrument the real globe draws over live imagery — zoom in,
- * zoom out, refit, and, once the view has turned, a heading cell with a
- * needle and the bearing as a figure.
+ * The route on the sphere: the arc bending over the curve, the two endpoint
+ * dots, and the DEP/DEST plates anchored to their projected points.
  *
- * Ported from `GlobeCameraControls` in `:feature:globe`, at the values named
- * there: a 44 dp cell on a `surfaceContainer` plate at 82 % alpha, an
- * `extraSmall` corner, one hairline of `outlineVariant` between cells. The
- * zoom marks are drawn strokes rather than icons — a plus and a minus at the
- * app's own hairline weight — for the same reason the real component gives:
- * nothing in a borrowed icon says more than a cross does.
+ * Ported from `GlobeSurface` + `GlobeLabels`. Shared by {@link GlobeHero} and
+ * {@link ImmersiveGlobeScreen}, which differ only in where their chrome sits.
+ * The plates follow the one rule that governs all of `GlobeLabels`: **a label is
+ * a consequence of its point, so it never moves away from it — it drops detail
+ * instead.** Near the limb it fades; too close to its partner it merges into one
+ * plate holding both codes; under the chrome it fades.
  */
-export function GlobeCameraControls({ bearingDegrees = 0, className }: GlobeCameraControlsProps) {
-  const rotated = Math.abs(((bearingDegrees % 360) + 360) % 360) > 0.5
-  const heading = Math.round(((bearingDegrees % 360) + 360) % 360)
+export function GlobeRouteScene({
+  departure,
+  destination,
+  aspect,
+  topChromeFraction = 0,
+  chrome,
+  className,
+}: GlobeRouteSceneProps) {
+  const scene = useMemo(() => {
+    const vbHeight = GLOBE_VB_HEIGHT
+    const vbWidth = Math.round(vbHeight * aspect)
+    const viewport: GlobeViewport = { width: vbWidth, height: vbHeight }
+
+    const camera = frameRoute(departure.lat, departure.lon, destination.lat, destination.lon, viewport)
+    const arc = sampleGeoArc(departure.lat, departure.lon, destination.lat, destination.lon, 128)
+    const arcPath = projectArc(arc.lats, arc.lons, camera, viewport)
+
+    const dep = projectPoint(departure.lat, departure.lon, camera, viewport)
+    const dest = projectPoint(destination.lat, destination.lon, camera, viewport)
+
+    const chromePx = topChromeFraction * vbHeight
+    const fadePx = 0.09 * vbHeight
+    // A plate hangs below its dot, so a dot in the last plate-height of the box
+    // has nowhere to put one; the globe clips to its bounds, so it fades instead
+    // of being sliced. `PlateReserve` in GlobeLabels.
+    const plateReservePx = 0.09 * vbHeight
+    const horizon = camera.horizon
+
+    const alphaFor = (
+      p: { x: number; y: number; facing: number; visible: boolean } | null,
+    ): number => {
+      if (!p || !p.visible) return 0
+      const limbFade = clamp01((p.facing - horizon) / (Math.abs(horizon) * LABEL_FADE_SPAN + 1e-4))
+      const chromeFade = chromePx <= 0 ? 1 : clamp01((p.y - chromePx) / fadePx)
+      const bottomFade = clamp01((vbHeight - p.y) / plateReservePx)
+      return limbFade * chromeFade * bottomFade
+    }
+
+    const separation =
+      dep && dest ? Math.hypot(dest.x - dep.x, dest.y - dep.y) : Number.POSITIVE_INFINITY
+
+    return {
+      camera,
+      vbWidth,
+      vbHeight,
+      arcPath,
+      dep,
+      dest,
+      depAlpha: alphaFor(dep),
+      destAlpha: alphaFor(dest),
+      merged: separation < MERGE_FRACTION * vbHeight,
+      mid:
+        dep && dest ? { x: (dep.x + dest.x) / 2, y: (dep.y + dest.y) / 2 } : null,
+    }
+  }, [departure.lat, departure.lon, destination.lat, destination.lon, aspect, topChromeFraction])
+
+  const pct = (v: number, total: number) => `${((v / total) * 100).toFixed(2)}%`
+
   return (
-    <div className={['fp-globe-plate', 'fp-globe-plate--controls', className].filter(Boolean).join(' ')}>
-      <div className="fp-globe-cell" aria-hidden="true">
-        <svg viewBox="0 0 18 18" width={18} height={18}>
-          <path d="M9 3v12M3 9h12" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
-        </svg>
-      </div>
-      <div className="fp-globe-rule" />
-      <div className="fp-globe-cell" aria-hidden="true">
-        <svg viewBox="0 0 18 18" width={18} height={18}>
-          <path d="M3 9h12" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
-        </svg>
-      </div>
-      <div className="fp-globe-rule" />
-      <div className="fp-globe-cell" aria-hidden="true">
-        <svg viewBox="0 0 18 18" width={18} height={18}>
-          <path
-            d="M2 6V2h4M16 6V2h-4M2 12v4h4M16 12v4h-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </div>
-      {rotated && (
+    <GlobeView
+      camera={scene.camera}
+      aspect={aspect}
+      className={className}
+      scene={
         <>
-          <div className="fp-globe-rule" />
-          <div className="fp-globe-cell fp-globe-cell--heading">
-            <svg
-              viewBox="0 0 16 16"
-              width={16}
-              height={16}
-              style={{ transform: `rotate(${-bearingDegrees}deg)` }}
-            >
-              <path d="M8 1 L11 8 L8 15 L5 8 Z" fill="none" stroke="var(--fp-outline-variant)" strokeWidth={1.2} />
-              <path d="M8 1 L11 8 L8 8 Z" fill="var(--fp-on-surface)" />
-            </svg>
-            <span className="fp-type-label-small fp-globe-heading__figure">{heading}°</span>
-          </div>
+          {scene.arcPath !== '' && (
+            <>
+              <path
+                d={scene.arcPath}
+                fill="none"
+                stroke="var(--fp-surface-container)"
+                strokeWidth={ARC_CASING}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d={scene.arcPath}
+                fill="none"
+                stroke="var(--fp-primary)"
+                strokeWidth={ARC_STROKE}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </>
+          )}
+          {scene.dep?.visible && (
+            <circle cx={scene.dep.x} cy={scene.dep.y} r={DOT_RADIUS} fill="var(--fp-primary)" />
+          )}
+          {scene.dest?.visible && (
+            <circle cx={scene.dest.x} cy={scene.dest.y} r={DOT_RADIUS} fill="var(--fp-tertiary)" />
+          )}
         </>
-      )}
-    </div>
-  )
-}
-
-export interface GlobeAttributionProps {
-  /** Defaults to the keyless credit — NASA GIBS — the same one a clone with no
-   * ArcGIS key in `local.properties` shows, and the one goldens are pinned to. */
-  label?: string
-  credit?: string
-  className?: string
-}
-
-/** The imagery credit every layout over the globe draws. Ported from `GlobeAttribution`. */
-export function GlobeAttribution({ label = 'Imagery: NASA GIBS', credit, className }: GlobeAttributionProps) {
-  return (
-    <div className={['fp-globe-plate', 'fp-globe-plate--credit', className].filter(Boolean).join(' ')} aria-hidden="true">
-      <span className="fp-type-label-small">{label}</span>
-      {credit != null && <span className="fp-type-label-small fp-globe-credit__line">{credit}</span>}
-    </div>
-  )
-}
-
-export interface GlobeSphereProps {
-  /** Where the sun sits over the disc, 0 = centred (noon side toward the viewer), 1 = grazing the limb (dawn/dusk). */
-  terminator?: number
-  className?: string
-}
-
-/**
- * The planet itself — a deliberate stand-in, not a port.
- *
- * `:feature:globe` renders this as a Filament/Vulkan scene: a tessellated
- * mesh, quadtree-streamed satellite tiles, a hand-written camera and gesture
- * system, roughly ten thousand lines on the native side. Reproducing that
- * pipeline in WebGL for a design canvas is a project of its own and out of
- * scope for this mirror — see `.design-sync/NOTES.md`. What is reproduced
- * here is the *reading* of the hero: a lit sphere with a limb and a
- * terminator, themed through the same six roles `rememberGlobeInk` resolves
- * (`GlobeInkTheme.kt`) rather than a literal colour, so Chart gets a paper
- * planet and Cockpit a dim one the same way the real globe does.
- */
-export function GlobeSphere({ terminator = 0.35, className }: GlobeSphereProps) {
-  const gradId = useId()
-  const termId = useId()
-  return (
-    <svg
-      className={['fp-globe-sphere', className].filter(Boolean).join(' ')}
-      viewBox="0 0 200 200"
-      preserveAspectRatio="xMidYMid slice"
-      aria-hidden="true"
-    >
-      <defs>
-        <radialGradient id={gradId} cx="38%" cy="38%" r="75%">
-          <stop offset="0%" stopColor="var(--fp-primary)" stopOpacity={0.55} />
-          <stop offset="55%" stopColor="var(--fp-primary)" stopOpacity={0.3} />
-          <stop offset="88%" stopColor="var(--fp-outline)" stopOpacity={0.35} />
-          <stop offset="100%" stopColor="var(--fp-outline)" stopOpacity={0.7} />
-        </radialGradient>
-        <linearGradient id={termId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="var(--fp-surface)" stopOpacity={0} />
-          <stop offset={`${Math.round((1 - terminator) * 100)}%`} stopColor="var(--fp-surface)" stopOpacity={0} />
-          <stop offset="100%" stopColor="var(--fp-scrim)" stopOpacity={0.5} />
-        </linearGradient>
-      </defs>
-      <circle cx="100" cy="100" r="96" fill={`url(#${gradId})`} />
-      {/* A few translucent land masses — layer order and weight, not
-          geography, the same disclaimer RouteMap's own preview island carries. */}
-      <g fill="var(--fp-on-surface)" opacity={0.12}>
-        <ellipse cx="72" cy="82" rx="34" ry="22" />
-        <ellipse cx="128" cy="120" rx="26" ry="16" />
-        <ellipse cx="95" cy="145" rx="18" ry="10" />
-      </g>
-      <circle cx="100" cy="100" r="96" fill={`url(#${termId})`} />
-      {/* The limb: a hairline where the disc meets space. */}
-      <circle cx="100" cy="100" r="96" fill="none" stroke="var(--fp-outline)" strokeWidth={1} strokeOpacity={0.6} />
-    </svg>
-  )
-}
-
-export interface GlobeRouteArcProps {
-  className?: string
-}
-
-/**
- * The leg, bent over the sphere's curve rather than drawn straight across it —
- * the one piece of `RouteMap`'s ink this stand-in borrows outright: cased
- * primary line, hollow departure, filled destination.
- */
-export function GlobeRouteArc({ className }: GlobeRouteArcProps) {
-  const path = 'M 44,132 Q 100,60 156,96'
-  return (
-    <svg
-      className={['fp-globe-route', className].filter(Boolean).join(' ')}
-      viewBox="0 0 200 200"
-      preserveAspectRatio="xMidYMid slice"
-      aria-hidden="true"
-    >
-      <path d={path} fill="none" stroke="var(--fp-surface-container)" strokeWidth={5.5} strokeLinecap="round" />
-      <path d={path} fill="none" stroke="var(--fp-primary)" strokeWidth={2.5} strokeLinecap="round" />
-      <circle cx={44} cy={132} r={4} fill="none" stroke="var(--fp-primary)" strokeWidth={2} />
-      <circle cx={156} cy={96} r={4} fill="var(--fp-primary)" />
-    </svg>
+      }
+      overlay={
+        <>
+          {scene.merged && scene.mid ? (
+            <LabelPlate
+              left={pct(scene.mid.x, scene.vbWidth)}
+              top={pct(scene.mid.y, scene.vbHeight)}
+              alpha={Math.min(scene.depAlpha, scene.destAlpha)}
+            >
+              <span className="fp-globe-label__dots">
+                <span className="fp-globe-label__dot" style={{ background: 'var(--fp-primary)' }} />
+                <span className="fp-globe-label__dot" style={{ background: 'var(--fp-tertiary)' }} />
+              </span>
+              <span className="fp-globe-label__code">
+                {departure.icao} · {destination.icao}
+              </span>
+            </LabelPlate>
+          ) : (
+            <>
+              {scene.dep && (
+                <LabelPlate
+                  left={pct(scene.dep.x, scene.vbWidth)}
+                  top={pct(scene.dep.y, scene.vbHeight)}
+                  alpha={scene.depAlpha}
+                >
+                  <span className="fp-globe-label__dot" style={{ background: 'var(--fp-primary)' }} />
+                  <span className="fp-globe-label__code">{departure.icao}</span>
+                </LabelPlate>
+              )}
+              {scene.dest && (
+                <LabelPlate
+                  left={pct(scene.dest.x, scene.vbWidth)}
+                  top={pct(scene.dest.y, scene.vbHeight)}
+                  alpha={scene.destAlpha}
+                >
+                  <span
+                    className="fp-globe-label__dot"
+                    style={{ background: 'var(--fp-tertiary)' }}
+                  />
+                  <span className="fp-globe-label__code">{destination.icao}</span>
+                </LabelPlate>
+              )}
+            </>
+          )}
+          {chrome}
+        </>
+      }
+    />
   )
 }
 
 export interface GlobeHeroProps {
+  departure: GlobeHeroEnd
+  destination: GlobeHeroEnd
   /**
-   * The hero's height in px. The real screen sizes this to 44 % of the
-   * window (`heroHeight()` in `RouteGlobeHero.kt`) so the sphere has room to
-   * read as one; a static preview has no window to be a fraction of, so a
-   * caller passes the figure directly.
+   * The hero box's width / height. Default is the deep hero's own shape — 44 %
+   * of a 360 × 800 window, near square. `DeepGlobeHero.HeroFraction` in the app.
    */
-  height?: number
-  bearingDegrees?: number
+  aspect?: number
+  /** Fraction of the hero the app bar covers at the top; labels rising into it fade. */
+  topChromeFraction?: number
+  /** Draw the camera control stack. Default true — hidden where there is no renderer. */
+  controls?: boolean
   className?: string
 }
 
 /**
  * The deep hero: the globe claiming the top of the route detail screen.
  *
- * Stands in for `DeepGlobeHero` (`app/.../ui/detail/RouteGlobeHero.kt`). DIST
- * and BRG are deliberately **not** drawn as chips on the glass — the real
- * screen moved them onto its own figure spine and this hero carries none, a
- * divergence recorded in `RouteGlobeHero.kt`'s own KDoc and in NOTES.md here.
+ * Ported from `DeepGlobeHero`. It runs full bleed under the status bar — the
+ * app's empty-bars invariant applied to the one surface that is a photograph —
+ * and the chrome over it sits on the glass plates `GlobeCameraControls` draws.
+ *
+ * ### What is faithful and what is a stand-in
+ *
+ * The framing is the app's `GlobeFit`, aspect-aware; the arc bends over the
+ * curve; the DEP/DEST plates behave exactly as `GlobeLabels` describes. The
+ * sphere is an outline globe rather than NASA imagery — the runtime has no GPU —
+ * which is recorded in `geo/globeFrame.ts`.
+ *
+ * ### What is deliberately not on the glass
+ *
+ * The concept moved DIST and BRG onto the sphere as chips. `DeepGlobeHero`'s
+ * KDoc records why they are not: the real route detail's spine already states
+ * every figure where it is true. The immersive screen, which has no spine, *does*
+ * carry the plate of figures — see {@link ImmersiveGlobeScreen}.
  */
-export function GlobeHero({ height = 280, bearingDegrees = 0, className }: GlobeHeroProps) {
-  const scene = useMemo(() => ({ bearingDegrees }), [bearingDegrees])
+export function GlobeHero({
+  departure,
+  destination,
+  aspect = 360 / 352,
+  topChromeFraction = 0,
+  controls = true,
+  className,
+}: GlobeHeroProps) {
   return (
-    <div className={['fp-globe-hero', className].filter(Boolean).join(' ')} style={{ height }}>
-      <GlobeSphere />
-      <GlobeRouteArc />
-      <GlobeCameraControls bearingDegrees={scene.bearingDegrees} className="fp-globe-hero__controls" />
-      <GlobeAttribution className="fp-globe-hero__credit" />
-    </div>
+    <GlobeRouteScene
+      departure={departure}
+      destination={destination}
+      aspect={aspect}
+      topChromeFraction={topChromeFraction}
+      className={['fp-globe-hero', className].filter(Boolean).join(' ')}
+      chrome={
+        <>
+          {controls && (
+            <div className="fp-globe-hero__controls">
+              <GlobeCameraControls />
+            </div>
+          )}
+          <div className="fp-globe-hero__credit">
+            <GlobeAttribution />
+          </div>
+        </>
+      }
+    />
   )
 }
 
-export interface ImmersiveGlobeViewProps {
-  departureIcao: string
-  destinationIcao: string
-  aircraft: string
-  /** Already formatted — `3,153 NM`. */
-  distance: string
-  /** Already formatted — `271°`. */
-  bearing?: string
-  /** Already formatted — `7:04`. */
-  flightTime?: string
-  bearingDegrees?: number
-  height?: number
-  className?: string
-}
-
-/**
- * The globe with the window to itself — stands in for `ImmersiveGlobeScreen`.
- *
- * Unlike the deep hero, this carries the whole route as one plate of figures
- * over the sphere — the pair, the airframe, DIST/BRG/TIME — because here
- * there is no spine of figures elsewhere on the screen to state them. Same
- * rule as the hero, *"the figures the arc is about sit next to the arc"*,
- * reaching a different answer because the arc is the whole window.
- */
-export function ImmersiveGlobeView({
-  departureIcao,
-  destinationIcao,
-  aircraft,
-  distance,
-  bearing,
-  flightTime,
-  bearingDegrees = 0,
-  height = 480,
-  className,
-}: ImmersiveGlobeViewProps) {
+/** A dot and the code under it, anchored by the dot and hanging below it. `Plate` in GlobeLabels. */
+function LabelPlate({
+  left,
+  top,
+  alpha,
+  children,
+}: {
+  left: string
+  top: string
+  alpha: number
+  children: ReactNode
+}) {
+  if (alpha <= 0.01) return null
   return (
-    <div className={['fp-globe-immersive', className].filter(Boolean).join(' ')} style={{ height }}>
-      <GlobeSphere />
-      <GlobeRouteArc />
-      <div className="fp-globe-immersive__collapse" aria-hidden="true">
-        <svg viewBox="0 0 18 18" width={18} height={18}>
-          <path
-            d="M10 3v5h5M8 15v-5H3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </div>
-      <GlobeCameraControls bearingDegrees={bearingDegrees} className="fp-globe-immersive__controls" />
-      <div className="fp-globe-immersive__foot">
-        <GlobeAttribution className="fp-globe-immersive__credit" />
-        <div className="fp-globe-route-plate">
-          <div className="fp-globe-route-plate__row">
-            <span className="fp-globe-route-plate__pair fp-type-title-small">
-              {departureIcao} → {destinationIcao}
-            </span>
-            <span className="fp-globe-route-plate__aircraft fp-type-label-large">{aircraft}</span>
-          </div>
-          <div className="fp-globe-route-plate__chips">
-            <ValueChip label="DIST" value={distance} containerAlpha={0.5} />
-            {bearing != null && <ValueChip label="BRG" value={bearing} containerAlpha={0.5} />}
-            {flightTime != null && <ValueChip label="TIME" value={flightTime} containerAlpha={0.5} />}
-          </div>
-        </div>
-      </div>
+    <div className="fp-globe-label" style={{ left, top, opacity: alpha }}>
+      {children}
     </div>
   )
 }

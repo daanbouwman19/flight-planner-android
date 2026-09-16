@@ -7,6 +7,16 @@ purpose. This repo has no JavaScript design system of its own: the app is Kotlin
 and Jetpack Compose, and Claude Design's runtime executes React out of a JS bundle,
 so a Compose `@Composable` cannot be uploaded. The mirror is the bridge.
 
+**As of the 2026-09-06 re-sync it also carries Phase G — the 3D globe** (commit
+`1f2287d`), as an *outline globe*: the app draws NASA satellite imagery on a
+Filament sphere, the runtime here has no GPU, so the mirror projects the same
+`land.outline` the phone reads through the same camera and clips it to the limb.
+`GlobeHero`, `GlobeNetwork`, `ImmersiveGlobeScreen`, `GlobeRouteScene`,
+`GlobeView`, `GlobeCameraControls`, `GlobeAttribution` — plus `heroMode="globe"`
+on `RouteDetailScreen` and `globeAvailable` on `VisitedNetworkCard`. The camera
+and fit maths are `design-mirror/src/geo/globeFrame.ts`, ported field-for-field
+from `:feature:globe`'s `math/GlobeCamera.kt` and `math/GlobeFit.kt`.
+
 **The direction of truth is one-way and permanent.** Kotlin defines; the mirror
 follows. A concept designed in Claude Design comes back as *intent* — a hierarchy,
 a colour role, a spacing rhythm — never as pixel values transplanted into Compose.
@@ -64,7 +74,13 @@ cd design-mirror && npm run build
   were corrupted that way. Use a heredoc with a quoted delimiter, or write the file
   with an editor tool.
 - The converter classified `MapFrame` — a geometry class — as a component. Excluded
-  via `componentSrcMap.MapFrame: null`.
+  via `componentSrcMap.MapFrame: null`. Phase G added `GlobeCamera` to that list
+  for the same reason.
+- **A mirror component never `import`s its own `.css`.** `build.mjs` walks
+  `src/**/*.css` and concatenates every one into `dist/styles.css` independently;
+  `tsconfig` has no ambient `*.css` module declaration, so an `import './Foo.css'`
+  fails `tsc`. Name the file `Foo.css` next to `Foo.tsx` and it is picked up. (Cost
+  an iteration on the Phase G components.)
 
 - **A scrim inside a phone frame has no height of its own, and a sheet asking for
   90% of it gets 90% of *itself*.** `.fp-phone-frame__content` is a flex child with
@@ -91,6 +107,39 @@ cd design-mirror && npm run build
 ## Deliberate divergences from the Android original
 
 Recorded so a future sync does not read them as defects:
+
+- **The globe is an outline globe, not a photograph.** Claude Design's runtime has
+  no GPU and no imagery asset, so `GlobeView` draws `land.outline` through the
+  ported `GlobeCamera` and clips it to the limb, over `sky.day.high` as the
+  backdrop. The framing (`GlobeFit`, aspect-aware), the great-circle arc, the
+  projected DEP/DEST plates (merge-when-close, limb fade, chrome fade), the limb
+  rim and atmosphere ring, and the on-glass chrome are all faithful. The still
+  globe has **no gestures** — `bearing` and `tilt` are always zero — so the
+  compass cell in `GlobeCameraControls` only shows when a caller passes
+  `bearingDegrees`, and the buttons are drawn inert like `BottomSheet`'s handle.
+- **`GlobeFit`'s distance is clamped to `[2.2, 4.5]` in the mirror** (`MIN_FIT_DISTANCE`
+  / `MAX_FIT_DISTANCE` in `globeFrame.ts`), not the app's `[1.0001, 10]`. The
+  app's globe is interactive — a leg framed near the surface can be pinched out
+  of, a whole-planet logbook spun — so either extreme is fine there. A **still**
+  globe at `distance ≈ 1.03` is a near-flat close-up, and at `10` a marble in a
+  field of backdrop; the clamp keeps it reading as a sphere at both ends. The
+  floor also stands in for the app's `sharpestAltitude` (one screen pixel per
+  deepest texel), which the mirror has no tiles to compute.
+- **`EDGE_MARGIN` is `0.24`, not the app's `0.18`.** "About a plate" of clear
+  margin is a bigger fraction of a 360 dp mirror box than of a 411 dp phone
+  window. Same intent, scaled.
+- **The route detail's globe-mode app bar stays on glass for the length of the
+  hero.** The app returns it to `surface` once the page has scrolled up; the
+  mirror's concept surface is a still frame, so the bar just scrolls away with
+  the hero (absolute, not pinned).
+- **Phase G's `:core:designsystem` changes are noted, not reproduced.**
+  `sharedExit()` now runs on `effectsFast()` (an asymmetry the shared-element
+  transition uses — and the mirror already does not carry that transition);
+  `LocalThemeChoice` / `SystemBarsOverMedia` / `FlightMotion.flingDecay()` are
+  new but they drive window-inset glyph colour, a compositional theme read, and
+  fling momentum — none of which a static React mirror has a surface for. The
+  cockpit imagery-dim (`CockpitImageryDim = 0.66`) has no effect here because
+  there is no imagery to dim; the mirror's Cockpit globe is just the dark scheme.
 
 - **Motion is approximated as sampled CSS `linear()` easings.** `build.mjs`
   integrates each spring's real step response, so the overshoot of a spatial spring
@@ -166,6 +215,15 @@ the export, which reads the real `TextStyle` objects. Worth deciding deliberatel
 either the alpha has not wired emphasis up yet and the scale is correct in
 anticipation, or the slots need explicit weights.
 
+**A second finding, from the Phase G port:** `:feature:globe`'s `GlobeControls.kt`
+defines `PlateAlpha = 0.82` and its KDoc calls it the single value "shared by the
+camera stack, the airport labels and the credit". But `ImmersiveGlobeScreen.kt`
+declares its *own* `private const val PlateAlpha = 0.78f` for its `RoutePlate`
+and collapse button, and `RouteGlobeHero`/`RouteDetailScreen` import the 0.82 one.
+So the immersive screen's plates are 4% more transparent than the hero's for no
+stated reason. The mirror uses 0.82 everywhere (`GLOBE_PLATE_ALPHA`). Likely a
+stray literal in the app.
+
 ## Fixed after review
 
 Recorded because each was invisible in a green build, and the next port of a
@@ -215,40 +273,38 @@ Compose component can make the same one:
 Phase G (`feat: the 3D globe`) and several designsystem changes landed between
 the 2026-08-29 sync and this one. What each needed:
 
-- **`GlobeHero` / `ImmersiveGlobeView` — a new stand-in, not a port.** The real
-  `:feature:globe` is a Filament/Vulkan native rendering pipeline — a tessellated
-  mesh, quadtree-streamed satellite tiles, a hand-written camera and gesture
-  system, ~10,000 lines on the native side plus ~3,000 more in its Compose chrome
-  (`GlobeSurface.kt`, `GlobeControls.kt`, `GlobeLabels.kt`). Reproducing that in
-  WebGL for a static design canvas is a project of its own, decided out of scope
-  for this sync (asked and confirmed). What shipped instead: a themed, static
-  sphere (`GlobeSphere`) with a route arc drawn over its curve (`GlobeRouteArc`),
-  the real camera-control glass plate ported faithfully from `GlobeCameraControls.kt`
-  (44 dp cells, `surfaceContainer` @ 82%, the drawn zoom marks and heading needle)
-  and the imagery credit (`GlobeAttribution.kt`, pinned to the keyless NASA GIBS
-  label like the app's own golden). `GlobeHero` replaces the flat `RouteMap` in
-  `RouteDetailPane`'s hero slot, matching `DeepGlobeHero`'s real composition
-  (`RouteMap` crossfades under the sphere). **The route arc is decorative and does
-  not vary with the leg's actual distance or bearing** — a `ShortHop` and a
-  `TransAtlantic` preview render the same arc. Read distance/bearing from the
-  figures beside it, never from the sphere. See conventions.md's own note, which
-  the design agent reads.
-- **A prior session's globe work was found orphaned.** `.design-sync/config.json`'s
-  pinned project already had `GlobeAttribution`, `GlobeCameraControls`, `GlobeHero`,
-  `GlobeNetwork`, `GlobeRouteScene`, `GlobeView`, `ImmersiveGlobeScreen` uploaded
-  (per `_ds_sync.json`'s anchor, dated ~2026-09-06 per matching `.cache/review/*`
-  grade files), but **no matching TSX source was ever committed to this repo** —
-  only the compiled, minified bundle remained, which is not recoverable as source
-  (`get_file` on a component's `.jsx` returns a stub re-export from
-  `_ds_bundle.js`). That upload is retired by this sync — `GlobeNetwork`,
-  `GlobeRouteScene`, `GlobeView`, `ImmersiveGlobeScreen` are gone from the project,
-  replaced by `GlobeHero`/`GlobeCameraControls`/`GlobeAttribution` (rebuilt, same
-  names, **different, incompatible prop APIs** — `GlobeHero`'s old `.d.ts` took
-  `departure`/`destination`/`aspect`/`topChromeFraction`; the new one takes
-  `height`/`bearingDegrees`) plus `GlobeRouteArc`, `GlobeSphere` and
-  `ImmersiveGlobeView` (new). **Lesson for next time: commit `design-mirror/src`
-  changes in the same session as an upload that depends on them** — an upload is
-  not a save point for source that only exists on disk.
+- **The globe went through two attempts in one session; the second replaced the
+  first.** First pass: reproducing `:feature:globe` faithfully looked out of
+  scope (it is a Filament/Vulkan native pipeline — a tessellated mesh,
+  quadtree-streamed satellite tiles, a hand-written camera and gesture system,
+  ~10,000 lines native plus ~3,000 more in its Compose chrome —
+  `GlobeSurface.kt`, `GlobeControls.kt`, `GlobeLabels.kt`), so a themed CSS
+  stand-in shipped instead (a radial-gradient sphere, a decorative route arc that
+  did not vary with distance or bearing). While closing that work out, a git
+  branch was found — `phase-g-globe`, committed **2026-09-06**, never merged, its
+  remote deleted — carrying a real field-for-field port: camera and opening-fit
+  maths from `GlobeCamera.kt`/`GlobeFit.kt`, the actual `land.outline` projected
+  through it as an outline globe with a limb silhouette and back-face cull, a
+  great-circle arc that actually bends over the curve. This is what the orphaned
+  upload in the project's `_ds_sync.json` anchor (dated ~2026-09-06, matching
+  `.cache/review/*` grade files from that date) had actually come from — the
+  source was never lost, only unmerged. **Integrated by rebasing/merging
+  `phase-g-globe` onto this sync's other changes** (it predated the RouteMap
+  `topInset`/short-hop port and the `VisitedNetworkCard` rewrite, both reconciled
+  cleanly since they touch disjoint parts of `StatsCards.tsx`/`RouteMap.tsx`).
+  The CSS stand-in (`GlobeSphere`, `GlobeRouteArc`, the old flat-API `GlobeHero`)
+  is gone, replaced by the real port: `GlobeView`/`GlobeHero`/`GlobeRouteScene`
+  (`components/GlobeHero.tsx`), `GlobeNetwork`, `GlobeChrome.tsx`'s
+  `GlobeCameraControls`/`GlobeAttribution`, `screens/ImmersiveGlobeScreen.tsx`,
+  and the geometry in `geo/globeFrame.ts`. `RouteDetailScreen` gained a real
+  Flat/Globe toggle in the app bar (`heroMode`, `globeAvailable`,
+  `onOpenImmersiveGlobe`) and `VisitedNetworkCard` gained the matching
+  `globeAvailable`/`initialView` toggle, both defaulting to the flat view so
+  existing concepts are unaffected. **Lesson for next time: an unmerged branch
+  is not a save point either — a design-mirror change is only safe once it is
+  on a branch that gets merged**, and `git branch -a`/checking for
+  stray local branches belongs in the "explore the repo" step of a future
+  re-sync, not just `git log` on the current branch.
 - **`RouteMap.kt` gained `topInset` and a short-hop ring, ported.** The route card's
   title now keeps a band clear at the top of the map (`MapFrame.forRoute`'s new
   `topInsetFraction`, ported field-for-field into `mapFrame.ts`), and a leg whose
@@ -281,6 +337,40 @@ the 2026-08-29 sync and this one. What each needed:
   navigation, see "shared-element transition is not reproduced" above); the
   `sharedExit` retune affects only the unreproduced transition itself.
 
+## `ChallengeWidgetCard` — the home-screen widget, added same day on request
+
+Ported from `ChallengeWidget.kt`/`ChallengeWidgetTheme.kt`/`DailyChallengeSource.kt`
+(the Phase H3 daily-challenge widget), not scoped into the original run because
+nobody had asked yet. It reuses `RouteMap` directly for its background — the
+real widget can't (Glance only shows bitmaps, so it renders three tinted alpha
+masks via `renderRouteMapLayers`), but this mirror has no such constraint, so
+`<RouteMap topInset={36} .../>` draws the identical geometry live. `topInset`
+is `PADDING (16dp) + TITLE_LINE (20dp)`, the same figure `renderChallengeMap`
+computes. Card tones (`surfaceContainer`/`surfaceContainerHigh`) match
+`widgetPalette`'s non-dynamic-colour branch — dynamic colour itself (the
+`system_accent2_*` resources Android 14 publishes) has no web equivalent and
+isn't attempted.
+
+- **A `box-sizing: content-box` default nearly shipped a clipped widget.**
+  `.fp-widget-card__content` had `height: 100%` and its own `padding: 16px`;
+  without `box-sizing: border-box` the padding adds on top of the 100%,
+  overflowing the outer card's fixed-`height` box and clipping the bottom row
+  under `overflow: hidden` — invisible until the actual screenshot was looked
+  at (the div measured "correct" by every static check). **Any fixed-height
+  card with its own padding needs `box-sizing: border-box` stated explicitly**;
+  the rest of this mirror gets away without it because most cards size to
+  their content rather than to a hard pixel height.
+- **The `Compact` cell is 180 px wide, not the real `COMPACT` constant's literal
+  140 dp.** `ChallengeWidget.COMPACT = DpSize(140.dp, 100.dp)` is the
+  `SizeMode.Responsive` bucket's breakpoint name, not a guarantee of the actual
+  rendered width — Glance composes at whatever width the launcher's grid cell
+  actually grants, and that bucket covers everything from there up to
+  `WIDE_THRESHOLD` (220 dp). At a literal 140 px, two 26 px bold ICAO codes and
+  two figure pills do not fit in the 108 px of content width left after
+  padding — previewing it at exactly 140 px would show a card that reads as
+  broken for what is, in practice, the common case. 180 px is inside the real
+  range and renders cleanly.
+
 ## Re-sync risks
 
 - **The airport database and the world outline are read at build time.** If
@@ -298,6 +388,20 @@ the 2026-08-29 sync and this one. What each needed:
   changes, this is the one component to follow.
 - **`StatsScreen` is a composition of the statistics cards**, not markup of its own.
   A card retuned in a concept lands in every arrangement of those figures at once.
+- **The globe intent was first mirrored on 2026-09-06** (`phase-g-globe`, never
+  merged at the time — see the 2026-09-16 entry above for why it took until then
+  to land) and carries `feature/globe`'s open findings from that date:
+  `feature/globe` is still ⚠️ in `docs/UI-PLAN.md`, so the *intent* of the globe
+  is mirrored but the app end was not fully settled as of that port. If a later
+  finding changes how the hero switch, the fit or the glass chrome behaves, the
+  mirror should follow.
+- **`globeFrame.ts` is a hand-port, not a generated file.** Unlike `tokens.json` /
+  `worldOutline.gen.ts` there is no drift guard on it. If `:feature:globe`'s
+  `GlobeCamera` / `GlobeFit` maths changes, re-port by hand and re-check the
+  `GlobeHero` / `GlobeNetwork` / `GlobeView` previews.
+- **`GlobeCamera` is excluded from the card set** (`componentSrcMap.GlobeCamera:
+  null`) — it is a maths class, not a component, and the converter classified it
+  as one (same as `MapFrame`). It is still exported from the bundle.
 - `material3` is pinned to an alpha. A bump can change the type scale, the shape
   scale or the motion scheme; `DesignTokenExportTest` will catch it, and the mirror
   then needs a rebuild.
@@ -318,10 +422,15 @@ the 2026-08-29 sync and this one. What each needed:
 - `SwipeActionBackground / AtRest` renders as an empty cell. That is correct: the
   component is fully transparent at rest, which is the property that keeps a
   resting list free of coloured bands under its rows.
-- Nothing else. The 2026-08-29 re-sync ran the full render check over all 53
-  previews and reported no `bad`, no `thin` and no `variantsIdentical` — so any
-  warn line a future run prints is new and should be looked at rather than assumed
-  known.
+- Nothing else. The 2026-09-06 re-sync ran the full render check over all 60
+  previews (53 + the 7 new globe components) and reported no `bad`, no `thin` and
+  no `variantsIdentical` — so any warn line a future run prints is new and should
+  be looked at rather than assumed known.
+- **The globe's DEP/DEST plate can sit close to the camera-control stack** on an
+  E-W leg whose right endpoint lands in the bottom-right quadrant (`GlobeHero`
+  `LongHaul`). It stays readable; the app has the same corner and accepts it. Not
+  a warn line, but do not "fix" it by moving the stack — the app's own KDoc places
+  it there deliberately.
 - `FleetDetailPane` and `FlightDetailPane` ship the **floor card** by choice: they
   are the tablet halves of screens that have their own authored previews, and the
   user scoped this run to what was already authored. Authoring

@@ -1,0 +1,30 @@
+/*
+ * The outline globe. The sphere fills whatever box its parent gives it; the
+ * overlay is a positioned layer over the same box for the label plates, the
+ * camera stack and the credit.
+ */
+.fp-globe-view {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* Land and coast are drawn in `currentColor` at low opacity, the same idiom
+     the flat RouteMap uses. */
+  color: var(--fp-on-surface);
+}
+
+.fp-globe-view__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.fp-globe-view__overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.fp-globe-view__overlay > * {
+  pointer-events: auto;
+}

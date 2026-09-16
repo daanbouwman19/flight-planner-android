@@ -56,6 +56,58 @@ export const TransAtlantic = () => (
   />
 )
 
+/**
+ * The same leg with the globe hero. The Flat/Globe switch lives in the app bar
+ * and holds its own state; here it opens in globe mode. The bar goes to glass,
+ * the sphere runs full bleed under it and the clock, and a fullscreen action
+ * appears beside the switch — it is about the globe, so it appears with it.
+ *
+ * Outline is the default everywhere: the sphere costs a renderer and a network
+ * and puts a photograph under the clock, and none of that should be the price of
+ * opening a route.
+ */
+export const Globe = () => (
+  <RouteDetailScreen
+    aircraft="B777-300ER"
+    distance="3,153 NM"
+    flightTime="7:04"
+    bearing="291°"
+    heroMode="globe"
+    onOpenImmersiveGlobe={() => {}}
+    departure={{
+      icao: 'EHAM',
+      name: 'Amsterdam Airport Schiphol',
+      lat: 52.3086,
+      lon: 4.76389,
+      runway: '12,467 ft',
+      rules: 'VFR',
+      skyCover: { kind: 'layers', layers: [{ cover: 'SCATTERED', baseFt: 2800 }] },
+      figures: [
+        { label: 'WIND', value: '250° 14 kt' },
+        { label: 'CEIL', value: 'Unlimited' },
+      ],
+      skyLine: 'Scattered at 2,800 ft',
+      observed: '1355Z · 7 min ago',
+    }}
+    destination={{
+      icao: 'KJFK',
+      name: 'John F. Kennedy International Airport',
+      lat: 40.6394,
+      lon: -73.7793,
+      runway: '14,511 ft',
+      rules: 'IFR',
+      skyCover: { kind: 'layers', layers: [{ cover: 'OVERCAST', baseFt: 800 }] },
+      ceilingFt: 800,
+      figures: [
+        { label: 'WIND', value: '090° 22G31 kt' },
+        { label: 'CEIL', value: '800 ft' },
+      ],
+      skyLine: 'Overcast at 800 ft',
+      observed: '1351Z · 11 min ago',
+    }}
+  />
+)
+
 /** A short European hop where both ends are fine. */
 export const ShortHop = () => (
   <RouteDetailScreen

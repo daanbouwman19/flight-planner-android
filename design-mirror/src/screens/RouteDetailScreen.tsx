@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { PhoneFrame, TopAppBar } from '../components/AppChrome'
 import { FlightRulesBadge, type FlightRules } from '../components/FlightRulesBadge'
+import { RouteMap } from '../components/RouteMap'
 import { GlobeHero } from '../components/GlobeHero'
 import { SkyProfileHeight, type CelestialState } from '../components/SkyProfile'
 import { MetarPanel, type MetarFigure } from '../components/MetarPanel'
@@ -40,6 +42,13 @@ export interface RouteDetailPaneProps {
   flightTime: string
   /** Already formatted — `271°`. */
   bearing?: string
+  /**
+   * `outline` draws the flat `RouteMap` hero this screen has always shown;
+   * `none` draws nothing, for when the host draws its own hero above the content
+   * (the globe mode of {@link RouteDetailScreen}). Matches `hero = EmptyHero` in
+   * the app's `RouteDetailContent`.
+   */
+  hero?: 'outline' | 'none'
   className?: string
 }
 
@@ -61,20 +70,23 @@ export function RouteDetailPane({
   distance,
   flightTime,
   bearing,
+  hero = 'outline',
   className,
 }: RouteDetailPaneProps) {
   return (
     <div className={['fp-screen', 'fp-content-cap', 'fp-content-cap--wide', className].filter(Boolean).join(' ')}>
       <div className="fp-screen__list">
-        {/*
-            Phase G gave the real screen a 3D globe hero (`DeepGlobeHero` in
-            `RouteGlobeHero.kt`) in place of the flat map that used to sit
-            here. `GlobeHero` is a deliberate stand-in, not a port — see its
-            own doc comment and NOTES.md's "Globe stand-in" entry.
-          */}
-        <div className="fp-detail-hero">
-          <GlobeHero />
-        </div>
+        {hero === 'outline' && (
+          <div className="fp-detail-hero">
+            <RouteMap
+              depLat={departure.lat}
+              depLon={departure.lon}
+              destLat={destination.lat}
+              destLon={destination.lon}
+              aspect={360 / 200}
+            />
+          </div>
+        )}
 
         <div className="fp-detail-codes">
           <div className="fp-detail-code">
@@ -113,19 +125,104 @@ export function RouteDetailPane({
   )
 }
 
-export interface RouteDetailScreenProps extends RouteDetailPaneProps {}
+export interface RouteDetailScreenProps extends RouteDetailPaneProps {
+  /**
+   * Which drawing of the leg the hero shows. `outline` is the flat map this
+   * screen has always opened with; `globe` takes the **deep hero** — 44 % of the
+   * window, full bleed under the status bar. Outline first, because the sphere
+   * costs a renderer and a network and puts a photograph under the clock, and
+   * none of that should be the price of opening a route. `HeroMode` in the app.
+   */
+  heroMode?: 'outline' | 'globe'
+  /**
+   * Whether the device can draw a globe at all. When false the Flat/Globe switch
+   * and the fullscreen action are **absent, not disabled** — a control that
+   * opens nothing is worse than no control (3B). Default true.
+   */
+  globeAvailable?: boolean
+  /** Opens the immersive globe. Absent where there is no renderer. */
+  onOpenImmersiveGlobe?: () => void
+}
 
 /**
  * One route in full, as its own screen.
  *
  * This is the phone form: a detail screen is not a section, so it takes the whole
  * window and the navigation is suppressed while it is up. On a tablet the same
- * content appears as {@link RouteDetailPane} beside Plan's list instead.
+ * content appears as {@link RouteDetailPane} beside Plan's list instead — the
+ * globe hero is phone-screen only, matching the app.
+ *
+ * The Flat/Globe switch lives in the app bar and holds its own state. In globe
+ * mode the bar goes to glass, the hero runs full bleed under it and the clock,
+ * and a fullscreen action appears beside the switch — it is about the globe, so
+ * it appears with it.
  */
-export function RouteDetailScreen({ className, ...pane }: RouteDetailScreenProps) {
+export function RouteDetailScreen({
+  className,
+  heroMode = 'outline',
+  globeAvailable = true,
+  onOpenImmersiveGlobe,
+  ...pane
+}: RouteDetailScreenProps) {
+  const [mode, setMode] = useState<'outline' | 'globe'>(heroMode)
+  const showGlobe = mode === 'globe' && globeAvailable
+
+  const heroSwitch = globeAvailable && (
+    <button
+      type="button"
+      className="fp-app-bar__action"
+      onClick={() => setMode(showGlobe ? 'outline' : 'globe')}
+      aria-label={showGlobe ? 'Show the outline hero' : 'Show the globe'}
+    >
+      {showGlobe ? <OutlineHeroIcon /> : <GlobeHeroIcon />}
+    </button>
+  )
+  const fullscreen = showGlobe && (
+    <button
+      type="button"
+      className="fp-app-bar__action"
+      onClick={onOpenImmersiveGlobe}
+      aria-label="Open the globe fullscreen"
+    >
+      <FullscreenIcon />
+    </button>
+  )
+
+  const bar = (
+    <TopAppBar
+      title={`${pane.departure.icao} → ${pane.destination.icao}`}
+      onBack={() => {}}
+      onGlass={showGlobe}
+      actions={
+        <>
+          {heroSwitch}
+          {fullscreen}
+        </>
+      }
+    />
+  )
+
+  if (showGlobe) {
+    return (
+      <PhoneFrame className={className}>
+        <div className="fp-route-detail-globe">
+          <div className="fp-route-detail-globe__hero">
+            <GlobeHero
+              departure={pane.departure}
+              destination={pane.destination}
+              topChromeFraction={0.17}
+            />
+          </div>
+          <div className="fp-route-detail-globe__bar">{bar}</div>
+          <RouteDetailPane {...pane} hero="none" />
+        </div>
+      </PhoneFrame>
+    )
+  }
+
   return (
     <PhoneFrame className={className}>
-      <TopAppBar title={`${pane.departure.icao} → ${pane.destination.icao}`} onBack={() => {}} />
+      {bar}
       <RouteDetailPane {...pane} />
     </PhoneFrame>
   )
@@ -152,4 +249,33 @@ function endWeather(end: RouteDetailEnd) {
     stale: end.stale,
     raw: end.raw,
   }
+}
+
+/** A flat map in a frame — the outline hero, drawn as an app-bar glyph. */
+function OutlineHeroIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="2" />
+      <path d="M6 15 L11 9 L15 13 L18 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** A meridianed circle — the globe hero. */
+function GlobeHeroIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <ellipse cx="12" cy="12" rx="4" ry="9" stroke="currentColor" strokeWidth="2" />
+      <path d="M3 12 H21" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  )
+}
+
+function FullscreenIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+    </svg>
+  )
 }

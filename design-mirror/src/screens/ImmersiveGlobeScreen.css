@@ -1,0 +1,80 @@
+/*
+ * The immersive globe: the sphere edge to edge, chrome on plates in the corners,
+ * one plate of figures at the bottom. `ImmersiveGlobeScreen` in the app.
+ */
+.fp-immersive-globe {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.fp-immersive-globe__sphere {
+  position: absolute;
+  inset: 0;
+}
+
+/* Each control takes the safe-drawing inset itself rather than a container
+   taking it once — a container that outlives its children and carries an inset
+   padding paints a bar-height strip of its own background, which over a globe is
+   the opaque status bar Phase B+ removed. */
+.fp-immersive-globe__collapse {
+  position: absolute;
+  top: 40px;
+  left: 12px;
+}
+
+.fp-immersive-globe__controls {
+  position: absolute;
+  top: 40px;
+  right: 12px;
+}
+
+.fp-immersive-globe__foot {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  /* Clear of the gesture handle, so the plate is not where a back swipe starts. */
+  bottom: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* The whole route as one line of figures, on a plate over the sphere.
+   `RoutePlate` — surfaceContainer at PlateAlpha, largeIncreased corner. */
+.fp-immersive-globe__plate {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border-radius: var(--fp-shape-large-increased);
+  background: color-mix(in srgb, var(--fp-surface-container) 82%, transparent);
+  color: var(--fp-on-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fp-immersive-globe__plate-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fp-immersive-globe__route {
+  color: var(--fp-on-surface);
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.fp-immersive-globe__acft {
+  color: var(--fp-on-surface-variant);
+  text-align: end;
+}
+
+.fp-immersive-globe__chips {
+  display: flex;
+  gap: 8px;
+}
