@@ -1,6 +1,6 @@
 import { PhoneFrame, TopAppBar } from '../components/AppChrome'
 import { FlightRulesBadge, type FlightRules } from '../components/FlightRulesBadge'
-import { RouteMap } from '../components/RouteMap'
+import { GlobeHero } from '../components/GlobeHero'
 import { SkyProfileHeight, type CelestialState } from '../components/SkyProfile'
 import { MetarPanel, type MetarFigure } from '../components/MetarPanel'
 import { ValueChip } from '../components/ValueChip'
@@ -66,14 +66,14 @@ export function RouteDetailPane({
   return (
     <div className={['fp-screen', 'fp-content-cap', 'fp-content-cap--wide', className].filter(Boolean).join(' ')}>
       <div className="fp-screen__list">
+        {/*
+            Phase G gave the real screen a 3D globe hero (`DeepGlobeHero` in
+            `RouteGlobeHero.kt`) in place of the flat map that used to sit
+            here. `GlobeHero` is a deliberate stand-in, not a port — see its
+            own doc comment and NOTES.md's "Globe stand-in" entry.
+          */}
         <div className="fp-detail-hero">
-          <RouteMap
-            depLat={departure.lat}
-            depLon={departure.lon}
-            destLat={destination.lat}
-            destLon={destination.lon}
-            aspect={360 / 200}
-          />
+          <GlobeHero />
         </div>
 
         <div className="fp-detail-codes">

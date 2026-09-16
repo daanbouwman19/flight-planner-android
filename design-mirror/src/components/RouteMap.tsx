@@ -7,19 +7,33 @@ export const WORLD_MAP_LAND_ALPHA = 0.08
 /** Its coast, at 16 %. */
 export const WORLD_MAP_COAST_ALPHA = 0.16
 
-const COAST_STROKE = 1
-const ROUTE_STROKE = 2.5
-const CASING = 1.5
-const ARROW_LENGTH = 5
-const ARROW_HALF_WIDTH = 0.62
-const ENDPOINT_RADIUS = 4
-const ENDPOINT_STROKE = 2
+// The ink every map in this module draws with. Exported because
+// VisitedNetworkCard is the same map with more legs on it and must draw from
+// the same figures — one set of numbers, one place to retune them.
+export const COAST_STROKE = 1
+export const ROUTE_STROKE = 2.5
+export const CASING = 1.5
+export const ARROW_LENGTH = 5
+export const ARROW_HALF_WIDTH = 0.62
+export const ENDPOINT_RADIUS = 4
+export const ENDPOINT_STROKE = 2
+
+/**
+ * Below this projected chord between a leg's two ends, in dp-equivalent units
+ * (see {@link scaleFor}), the ends are one place: the arrowhead, its casing
+ * and the two endpoint markers would overlap into a mark that cannot be read.
+ * `RouteMap` draws such a hop as a single ring; `VisitedNetworkCard` keeps its
+ * per-node dots and drops the head. One threshold, so the two maps agree.
+ */
+export const MIN_ARROW_CHORD = 24
 
 /**
  * A margin, so a coast just off the card still contributes the segment that
  * enters it, and a stroke's trimmed end falls outside the visible area.
+ * Exported for the same reason as the ink above: `VisitedNetworkCard` frames
+ * with the same margin.
  */
-const OUTLINE_MARGIN = 0.05
+export const OUTLINE_MARGIN = 0.05
 
 export interface RouteMapProps {
   /** Departure latitude, degrees north. */
@@ -39,6 +53,14 @@ export interface RouteMapProps {
    * the frame takes an aspect ratio in the first place.
    */
   aspect?: number
+  /**
+   * How much of the top of the map belongs to something printed over it — the
+   * route card's title line — in the same dp-equivalent units as the stroke
+   * widths (see {@link scaleFor}). The route is framed below it; land still
+   * runs through the band. Zero by default: the detail hero and the network
+   * map print nothing over their maps.
+   */
+  topInset?: number
   className?: string
 }
 
@@ -75,6 +97,7 @@ export function RouteMap({
   destLon,
   width = '100%',
   aspect = 16 / 10,
+  topInset = 0,
   className,
 }: RouteMapProps) {
   // A fixed viewBox rather than a measured pixel size: SVG scales it, and the
@@ -83,12 +106,18 @@ export function RouteMap({
   const vbHeight = 1000
   const vbWidth = Math.round(vbHeight * aspect)
   const clipId = useId()
+  const s = scaleFor(vbHeight)
 
   const scene = useMemo(() => {
     const arc = sampleGeoArc(depLat, depLon, destLat, destLon)
-    const frame = MapFrame.forRoute(arc.lats, arc.lons, aspect)
+    const topInsetFraction = Math.min((topInset * s) / vbHeight, 0.5)
+    const frame = MapFrame.forRoute(arc.lats, arc.lons, aspect, undefined, undefined, topInsetFraction)
     const land = frame.projectOutline(worldOutline(), OUTLINE_MARGIN)
     const projected = frame.project(arc.lats, arc.lons)
+    const midpoint = Math.floor(projected.length / 4)
+
+    const chord = projectedChord(projected, vbWidth, vbHeight)
+    const shortHop = chord < MIN_ARROW_CHORD * s
 
     const isEmpty = (r: ProjectedRings) => r.ringStart.length <= 1
     return {
@@ -98,16 +127,17 @@ export function RouteMap({
         ? ringsToPath(frame.graticule(), vbWidth, vbHeight, false)
         : '',
       routePath: polylineToPath(projected, vbWidth, vbHeight),
-      arrow: arrowPath(projected, Math.floor(projected.length / 4), vbWidth, vbHeight, ARROW_LENGTH * scaleFor(vbHeight)),
+      arrow: shortHop ? '' : arrowPath(projected, midpoint, vbWidth, vbHeight, ARROW_LENGTH * s),
+      shortHop,
+      hop: [projected[midpoint * 2] * vbWidth, projected[midpoint * 2 + 1] * vbHeight] as const,
       departure: [projected[0] * vbWidth, projected[1] * vbHeight] as const,
       destination: [
         projected[projected.length - 2] * vbWidth,
         projected[projected.length - 1] * vbHeight,
       ] as const,
     }
-  }, [depLat, depLon, destLat, destLon, aspect, vbWidth])
+  }, [depLat, depLon, destLat, destLon, aspect, topInset, vbWidth, vbHeight, s])
 
-  const s = scaleFor(vbHeight)
   const routeWidth = ROUTE_STROKE * s
   const casingWidth = routeWidth + 2 * CASING * s
   const endpointRadius = ENDPOINT_RADIUS * s
@@ -197,35 +227,61 @@ export function RouteMap({
           </>
         )}
 
-        {/* Departure hollow, destination filled. */}
-        <circle
-          cx={scene.departure[0]}
-          cy={scene.departure[1]}
-          r={endpointRadius + CASING * s}
-          fill="none"
-          stroke="var(--fp-surface-container)"
-          strokeWidth={endpointStroke + 2 * CASING * s}
-        />
-        <circle
-          cx={scene.departure[0]}
-          cy={scene.departure[1]}
-          r={endpointRadius}
-          fill="none"
-          stroke="var(--fp-primary)"
-          strokeWidth={endpointStroke}
-        />
-        <circle
-          cx={scene.destination[0]}
-          cy={scene.destination[1]}
-          r={endpointRadius + CASING * s}
-          fill="var(--fp-surface-container)"
-        />
-        <circle
-          cx={scene.destination[0]}
-          cy={scene.destination[1]}
-          r={endpointRadius}
-          fill="var(--fp-primary)"
-        />
+        {scene.shortHop ? (
+          // One ring for both ends: the cased line under it is the hop, and
+          // the ring says "here" for a leg too short for "from here to
+          // there" to have room.
+          <>
+            <circle
+              cx={scene.hop[0]}
+              cy={scene.hop[1]}
+              r={endpointRadius + CASING * s}
+              fill="none"
+              stroke="var(--fp-surface-container)"
+              strokeWidth={endpointStroke + 2 * CASING * s}
+            />
+            <circle
+              cx={scene.hop[0]}
+              cy={scene.hop[1]}
+              r={endpointRadius}
+              fill="none"
+              stroke="var(--fp-primary)"
+              strokeWidth={endpointStroke}
+            />
+          </>
+        ) : (
+          // Departure hollow, destination filled.
+          <>
+            <circle
+              cx={scene.departure[0]}
+              cy={scene.departure[1]}
+              r={endpointRadius + CASING * s}
+              fill="none"
+              stroke="var(--fp-surface-container)"
+              strokeWidth={endpointStroke + 2 * CASING * s}
+            />
+            <circle
+              cx={scene.departure[0]}
+              cy={scene.departure[1]}
+              r={endpointRadius}
+              fill="none"
+              stroke="var(--fp-primary)"
+              strokeWidth={endpointStroke}
+            />
+            <circle
+              cx={scene.destination[0]}
+              cy={scene.destination[1]}
+              r={endpointRadius + CASING * s}
+              fill="var(--fp-surface-container)"
+            />
+            <circle
+              cx={scene.destination[0]}
+              cy={scene.destination[1]}
+              r={endpointRadius}
+              fill="var(--fp-primary)"
+            />
+          </>
+        )}
       </g>
     </svg>
   )
@@ -237,8 +293,20 @@ export function RouteMap({
  * The Android component works in dp against a 220 dp card; the viewBox is 1000
  * tall, so a dp is this many units. Without it every stroke would be hairline.
  */
-function scaleFor(vbHeight: number): number {
+export function scaleFor(vbHeight: number): number {
   return vbHeight / 220
+}
+
+/**
+ * The straight-line distance in viewBox units between a projected leg's two
+ * ends — the chord, not the arc's length. Compared against `MIN_ARROW_CHORD`
+ * by both `RouteMap` and `VisitedNetworkCard`.
+ */
+export function projectedChord(projected: number[], width: number, height: number): number {
+  if (projected.length < 4) return 0
+  const dx = (projected[projected.length - 2] - projected[0]) * width
+  const dy = (projected[projected.length - 1] - projected[1]) * height
+  return Math.sqrt(dx * dx + dy * dy)
 }
 
 function ringsToPath(
@@ -280,7 +348,7 @@ function polylineToPath(projected: number[], width: number, height: number): str
  * either side of the midpoint, so it follows the curve rather than the straight
  * line between the ends.
  */
-function arrowPath(
+export function arrowPath(
   projected: number[],
   index: number,
   width: number,

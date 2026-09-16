@@ -210,6 +210,77 @@ Compose component can make the same one:
   premise is that no design value is hand-written. Read from `tokens.constants`.
 - `StartupCheckScreen` summarised a list containing warnings as "All checks passed".
 
+## 2026-09-16 re-sync: the globe, and three weeks of Kotlin drift
+
+Phase G (`feat: the 3D globe`) and several designsystem changes landed between
+the 2026-08-29 sync and this one. What each needed:
+
+- **`GlobeHero` / `ImmersiveGlobeView` — a new stand-in, not a port.** The real
+  `:feature:globe` is a Filament/Vulkan native rendering pipeline — a tessellated
+  mesh, quadtree-streamed satellite tiles, a hand-written camera and gesture
+  system, ~10,000 lines on the native side plus ~3,000 more in its Compose chrome
+  (`GlobeSurface.kt`, `GlobeControls.kt`, `GlobeLabels.kt`). Reproducing that in
+  WebGL for a static design canvas is a project of its own, decided out of scope
+  for this sync (asked and confirmed). What shipped instead: a themed, static
+  sphere (`GlobeSphere`) with a route arc drawn over its curve (`GlobeRouteArc`),
+  the real camera-control glass plate ported faithfully from `GlobeCameraControls.kt`
+  (44 dp cells, `surfaceContainer` @ 82%, the drawn zoom marks and heading needle)
+  and the imagery credit (`GlobeAttribution.kt`, pinned to the keyless NASA GIBS
+  label like the app's own golden). `GlobeHero` replaces the flat `RouteMap` in
+  `RouteDetailPane`'s hero slot, matching `DeepGlobeHero`'s real composition
+  (`RouteMap` crossfades under the sphere). **The route arc is decorative and does
+  not vary with the leg's actual distance or bearing** — a `ShortHop` and a
+  `TransAtlantic` preview render the same arc. Read distance/bearing from the
+  figures beside it, never from the sphere. See conventions.md's own note, which
+  the design agent reads.
+- **A prior session's globe work was found orphaned.** `.design-sync/config.json`'s
+  pinned project already had `GlobeAttribution`, `GlobeCameraControls`, `GlobeHero`,
+  `GlobeNetwork`, `GlobeRouteScene`, `GlobeView`, `ImmersiveGlobeScreen` uploaded
+  (per `_ds_sync.json`'s anchor, dated ~2026-09-06 per matching `.cache/review/*`
+  grade files), but **no matching TSX source was ever committed to this repo** —
+  only the compiled, minified bundle remained, which is not recoverable as source
+  (`get_file` on a component's `.jsx` returns a stub re-export from
+  `_ds_bundle.js`). That upload is retired by this sync — `GlobeNetwork`,
+  `GlobeRouteScene`, `GlobeView`, `ImmersiveGlobeScreen` are gone from the project,
+  replaced by `GlobeHero`/`GlobeCameraControls`/`GlobeAttribution` (rebuilt, same
+  names, **different, incompatible prop APIs** — `GlobeHero`'s old `.d.ts` took
+  `departure`/`destination`/`aspect`/`topChromeFraction`; the new one takes
+  `height`/`bearingDegrees`) plus `GlobeRouteArc`, `GlobeSphere` and
+  `ImmersiveGlobeView` (new). **Lesson for next time: commit `design-mirror/src`
+  changes in the same session as an upload that depends on them** — an upload is
+  not a save point for source that only exists on disk.
+- **`RouteMap.kt` gained `topInset` and a short-hop ring, ported.** The route card's
+  title now keeps a band clear at the top of the map (`MapFrame.forRoute`'s new
+  `topInsetFraction`, ported field-for-field into `mapFrame.ts`), and a leg whose
+  projected chord is under 24 dp draws as a single ring instead of an
+  overlapping arrowhead + two endpoint markers (`MIN_ARROW_CHORD`,
+  `projectedChord`, both now exported from `RouteMap.tsx`). `RouteCard.tsx` passes
+  `topInset={36}` (16 dp padding + titleSmall's 20 dp line height, matching
+  `RouteCard.kt`'s own computation).
+- **`VisitedNetworkCard` was rewritten to match `NetworkMap.kt` — it was the
+  "first, wrong version" the Kotlin's own KDoc describes.** It now draws from
+  `RouteMap`'s exported ink (`ROUTE_STROKE`, `CASING`, `COAST_STROKE`,
+  `ENDPOINT_RADIUS`, `OUTLINE_MARGIN`, `arrowPath`, `projectedChord`) instead of
+  ad hoc strokes; casing goes under every leg before any leg is drawn, dots size by
+  `nodeSizeFraction` (ported to `mapFrame.ts`) from `NODE_MIN_RADIUS` (=
+  `ENDPOINT_RADIUS`) to `NODE_MAX_RADIUS` (9), largest-first; the longitude unwrap
+  changed from a chain walk to the widest-gap-seam algorithm
+  (`unwrapLongitudeSet`, matching `NetworkFraming.kt` exactly) with `arcShifts`
+  handling a leg whose ends fall in different unwrap turns. Node fill is
+  `var(--fp-primary)`, not the old `tertiary`.
+- **`RunwayDiagram.kt` and `SkyProfile.kt` changes needed no mirror action.**
+  Both gained a required `contentDescription` param — pure accessibility, no pixel
+  changed. `SkyProfile.kt` also moved a state read from build phase to draw phase
+  for performance — same output, faster recomposition. Verified by diff, not
+  assumed.
+- **`FlightMotion.kt`'s additions (`flingDecay`, `lateralEnter`/`lateralExit`,
+  `sharedExit` now using `effectsFast`) needed no mirror action.** The fling is
+  globe camera inertia (interaction-only, already out of scope per NOTES' own
+  "Interaction-only states are not previewed"); the lateral transition is
+  Settings' screen-to-screen navigation (not modeled — this mirror has no
+  navigation, see "shared-element transition is not reproduced" above); the
+  `sharedExit` retune affects only the unreproduced transition itself.
+
 ## Re-sync risks
 
 - **The airport database and the world outline are read at build time.** If
@@ -227,12 +298,20 @@ Compose component can make the same one:
   changes, this is the one component to follow.
 - **`StatsScreen` is a composition of the statistics cards**, not markup of its own.
   A card retuned in a concept lands in every arrangement of those figures at once.
-- **The screens mirror the app as of Phase F′.** Phase G adds a 3D globe to the
-  route detail hero, which this mirror has no equivalent for. When it lands, the
-  screens here go stale unless updated.
 - `material3` is pinned to an alpha. A bump can change the type scale, the shape
   scale or the motion scheme; `DesignTokenExportTest` will catch it, and the mirror
   then needs a rebuild.
+- **The real `RouteDetailScreen`/`RouteDetailContent.kt` grew a "spine" layout in
+  the same commit as the globe (`1f2287d`), and the mirror was NOT updated for it.**
+  Per `RouteGlobeHero.kt`'s own KDoc, the real screen no longer carries a row of
+  four `ValueChip`s under the hero — every figure now sits at the point on the leg
+  where it is true, along a 1,386-line `RouteDetailContent.kt`. `RouteDetailPane`
+  here still renders the old `fp-detail-facts` chip row. This is a real, separately
+  scoped port (verified in-session to be large, not merely deferred out of
+  caution) — read `RouteDetailContent.kt` before touching `RouteDetailPane.tsx`
+  next.
+- **`GlobeHero`/`ImmersiveGlobeView` are a deliberate stand-in, not a port** — see
+  the "Globe stand-in" entry below before assuming more fidelity than is there.
 
 ## Known render warns
 

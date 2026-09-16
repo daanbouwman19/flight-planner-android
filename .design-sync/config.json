@@ -43,6 +43,19 @@
       "cardMode": "column",
       "viewport": "420x900"
     },
+    "GlobeHero": {
+      "cardMode": "column"
+    },
+    "ImmersiveGlobeView": {
+      "cardMode": "column",
+      "viewport": "420x900"
+    },
+    "GlobeCameraControls": {
+      "cardMode": "column"
+    },
+    "GlobeAttribution": {
+      "cardMode": "column"
+    },
     "SettingsScreen": {
       "cardMode": "column",
       "viewport": "420x900"

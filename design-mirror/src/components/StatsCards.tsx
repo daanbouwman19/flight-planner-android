@@ -1,7 +1,20 @@
 import { useMemo } from 'react'
-import { MapFrame, sampleGeoArc, type ProjectedRings } from '../geo/mapFrame'
+import { MapFrame, arcShifts, nodeSizeFraction, sampleGeoArc, unwrapLongitudeSet, type ProjectedRings } from '../geo/mapFrame'
 import { worldOutline } from '../geo/worldOutline.gen'
-import { WORLD_MAP_COAST_ALPHA, WORLD_MAP_LAND_ALPHA } from './RouteMap'
+import {
+  ARROW_LENGTH,
+  CASING,
+  COAST_STROKE,
+  ENDPOINT_RADIUS,
+  MIN_ARROW_CHORD,
+  OUTLINE_MARGIN,
+  ROUTE_STROKE,
+  WORLD_MAP_COAST_ALPHA,
+  WORLD_MAP_LAND_ALPHA,
+  arrowPath,
+  projectedChord,
+  scaleFor,
+} from './RouteMap'
 
 export interface HeroDistanceCardProps {
   /** Already formatted — `48,213 NM`. */
@@ -150,13 +163,20 @@ export interface VisitedNetworkCardProps {
 
 const VB_HEIGHT = 500
 
+/** A field visited once: the route card's own endpoint, so the two maps agree. */
+const NODE_MIN_RADIUS = ENDPOINT_RADIUS
+/** The most-visited field in the set. */
+const NODE_MAX_RADIUS = 9
+
 /**
  * Every airport visited, and the legs between them, on one world map.
  *
- * The same projection and the same coastline the route card uses — `MapFrame` over
- * the app's own `land.outline` — so a network drawn here and a route drawn on a
- * card are the same world at different zooms rather than two maps that happen to
- * look alike.
+ * Ported field-for-field from `NetworkMap` in `:core:designsystem` — **it is
+ * `RouteMap`'s ink, not a second map.** A first version of this card wrote its
+ * own numbers (a thinner leg, no casing, no arrowheads, a `tertiary`-coloured
+ * dot sized from zero) and, beside a real route card, read as a sketch of one.
+ * Every stroke here is drawn from the constants `RouteMap` exports, so the two
+ * are one map at two scales.
  *
  * The window is fitted to the **visited set** rather than to the whole globe — but
  * only down to `MIN_SPAN_DEGREES`, the same 25° floor `MapFrame` applies to a route.
@@ -166,6 +186,12 @@ const VB_HEIGHT = 500
  * featureless rectangle with dots on it. Do not lower the floor for this card alone —
  * the constant belongs to the Kotlin, and a network drawn at a different zoom from a
  * route would stop being the same world.
+ *
+ * A dot's radius runs from `NODE_MIN_RADIUS` to `NODE_MAX_RADIUS` by
+ * `nodeSizeFraction`: the least-visited field is the small dot, the
+ * most-visited the large one, scaled from the set's own minimum rather than
+ * from zero, so a logbook where every field has one visit — every new logbook —
+ * draws every dot small instead of every dot at the maximum.
  */
 export function VisitedNetworkCard({
   airports,
@@ -175,52 +201,70 @@ export function VisitedNetworkCard({
 }: VisitedNetworkCardProps) {
   const aspect = 16 / 10
   const vbWidth = Math.round(VB_HEIGHT * aspect)
+  const s = scaleFor(VB_HEIGHT)
 
   const scene = useMemo(() => {
     if (airports.length === 0) return null
 
-    // The frame is fitted to every visited point at once, which is what makes the
-    // card about this logbook rather than about the planet.
+    // The frame is fitted to every visited point at once, which is what makes
+    // the card about this logbook rather than about the planet.
     //
-    // **Unwrapped first.** `MapFrame.forRoute` documents its input as unwrapped
-    // longitudes, and raw ones break the antimeridian: RJTT at 139.8°E and KLAX at
-    // 118.4°W fit a window centred near 10°E spanning 258°, which covers Eurasia
-    // and the Atlantic — while `sampleGeoArc` correctly unwraps that leg to
-    // 139.8 → 241.6 and drew it entirely outside the viewBox. The markers landed;
-    // the leg between them silently vanished.
+    // **Unwrapped as a set first**, by the widest-gap seam — `MapFrame.forRoute`
+    // documents its input as unwrapped longitudes, and raw ones break the
+    // antimeridian: RJTT at 139.8°E and KLAX at 118.4°W fit a window centred
+    // near 10°E spanning 258°, which covers Eurasia and the Atlantic.
     const lats = airports.map((a) => a.lat)
-    const lons = unwrapLongitudes(airports.map((a) => a.lon))
+    const lons = unwrapLongitudeSet(airports.map((a) => a.lon))
     const frame = MapFrame.forRoute(lats, lons, aspect)
-    const land = frame.projectOutline(worldOutline(), 0.05)
+    const land = frame.projectOutline(worldOutline(), OUTLINE_MARGIN)
+    const isEmpty = (r: ProjectedRings) => r.ringStart.length <= 1
+    const graticulePath = isEmpty(land.coast)
+      ? ringsToPath(frame.graticule(), vbWidth, VB_HEIGHT, false)
+      : ''
 
-    const arcs = legs.map((leg) => {
+    const arrowLength = ARROW_LENGTH * s
+    const minArrowChord = MIN_ARROW_CHORD * s
+    const legPaths: string[] = []
+    const arrowPaths: string[] = []
+    for (const leg of legs) {
+      // Sampled in the direction it was first flown, then unwrapped along
+      // its own great circle by `sampleGeoArc` — a walk relative to its own
+      // departure, which may sit a turn away from where the frame put that
+      // airport. `arcShifts` brings each end into the frame's own turn; a leg
+      // whose ends fall in different turns is drawn at both.
       const arc = sampleGeoArc(leg.from[0], leg.from[1], leg.to[0], leg.to[1], 64)
-      const projected = frame.project(arc.lats, arc.lons)
-      const parts: string[] = []
-      for (let i = 0; i < projected.length / 2; i++) {
-        const x = (projected[i * 2] * vbWidth).toFixed(2)
-        const y = (projected[i * 2 + 1] * VB_HEIGHT).toFixed(2)
-        parts.push(`${i === 0 ? 'M' : 'L'}${x},${y}`)
+      for (const shift of arcShifts(arc.lons[0], arc.lons[arc.lons.length - 1], frame.centreLon)) {
+        const legLons = shift === 0 ? arc.lons : arc.lons.map((l) => l + shift)
+        const projected = frame.project(arc.lats, legLons)
+        legPaths.push(polylineToPath(projected, vbWidth, VB_HEIGHT))
+        if (projectedChord(projected, vbWidth, VB_HEIGHT) >= minArrowChord) {
+          const head = arrowPath(projected, Math.floor(projected.length / 4), vbWidth, VB_HEIGHT, arrowLength)
+          if (head !== '') arrowPaths.push(head)
+        }
       }
-      return parts.join('')
-    })
+    }
 
+    const visits = airports.map((a) => a.visits ?? 1)
+    const minVisits = Math.min(...visits)
+    const maxVisits = Math.max(...visits)
     const markers = airports.map((a, i) => ({
       icao: a.icao,
       x: frame.x(lons[i]) * vbWidth,
       y: frame.y(a.lat) * VB_HEIGHT,
-      // Visits scale the radius sub-linearly: a field flown twenty times should
-      // read as busier than one flown twice without swamping the map.
-      r: 3 + Math.sqrt(Math.max(a.visits ?? 1, 1)) * 1.6,
+      r: (NODE_MIN_RADIUS + (NODE_MAX_RADIUS - NODE_MIN_RADIUS) * nodeSizeFraction(visits[i], minVisits, maxVisits)) * s,
     }))
+    // Largest first, so a hub's casing never erases the small field beside it.
+    const order = [...markers].sort((a, b) => b.r - a.r)
 
     return {
-      landPath: ringsToPath(land.fill, vbWidth, true),
-      coastPath: ringsToPath(land.coast, vbWidth, false),
-      arcs,
-      markers,
+      landPath: ringsToPath(land.fill, vbWidth, VB_HEIGHT, true),
+      coastPath: ringsToPath(land.coast, vbWidth, VB_HEIGHT, false),
+      graticulePath,
+      legPaths,
+      arrowPaths,
+      markers: order,
     }
-  }, [airports, legs, aspect, vbWidth])
+  }, [airports, legs, aspect, vbWidth, s])
 
   return (
     <div className={['fp-screen__card', className].filter(Boolean).join(' ')}>
@@ -242,27 +286,70 @@ export function VisitedNetworkCard({
             fillOpacity={WORLD_MAP_LAND_ALPHA}
             fillRule="evenodd"
           />
+          {scene.graticulePath !== '' && (
+            <path
+              d={scene.graticulePath}
+              fill="none"
+              stroke="currentColor"
+              strokeOpacity={WORLD_MAP_LAND_ALPHA}
+              strokeWidth={COAST_STROKE * s}
+              strokeLinecap="round"
+            />
+          )}
           <path
             d={scene.coastPath}
             fill="none"
             stroke="currentColor"
             strokeOpacity={WORLD_MAP_COAST_ALPHA}
-            strokeWidth={2}
+            strokeWidth={COAST_STROKE * s}
             strokeLinejoin="bevel"
+            strokeLinecap="butt"
           />
-          {scene.arcs.map((d, i) => (
+
+          {/* Every leg's casing before any leg's line, so where two legs cross
+              the network reads as one drawing rather than a stack. */}
+          {scene.legPaths.map((d, i) => (
             <path
-              key={i}
+              key={`casing-${i}`}
               d={d}
               fill="none"
-              stroke="var(--fp-primary)"
-              strokeOpacity={0.45}
-              strokeWidth={2}
+              stroke="var(--fp-surface-container)"
+              strokeWidth={ROUTE_STROKE * s + 2 * CASING * s}
+              strokeLinejoin="round"
               strokeLinecap="round"
             />
           ))}
+          {scene.legPaths.map((d, i) => (
+            <path
+              key={`route-${i}`}
+              d={d}
+              fill="none"
+              stroke="var(--fp-primary)"
+              strokeWidth={ROUTE_STROKE * s}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          ))}
+          {scene.arrowPaths.map((d, i) => (
+            <g key={`arrow-${i}`}>
+              <path
+                d={d}
+                fill="none"
+                stroke="var(--fp-surface-container)"
+                strokeWidth={2 * CASING * s}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+              <path d={d} fill="var(--fp-primary)" />
+            </g>
+          ))}
+
+          {/* Cased dots, largest first. */}
           {scene.markers.map((m) => (
-            <circle key={m.icao} cx={m.x} cy={m.y} r={m.r} fill="var(--fp-tertiary)" />
+            <circle key={`node-casing-${m.icao}`} cx={m.x} cy={m.y} r={m.r + CASING * s} fill="var(--fp-surface-container)" />
+          ))}
+          {scene.markers.map((m) => (
+            <circle key={m.icao} cx={m.x} cy={m.y} r={m.r} fill="var(--fp-primary)" />
           ))}
         </svg>
       )}
@@ -270,33 +357,17 @@ export function VisitedNetworkCard({
   )
 }
 
-/**
- * One set of longitudes made continuous, so a frame fitted to them is the short
- * way round.
- *
- * Each point is carried to within 180° of the one before it, which is the same
- * rule `sampleGeoArc` applies along a great circle. Sorting first means the walk
- * follows the spread of the set rather than the order the logbook happens to be
- * in — two fields either side of the antimeridian unwrap the same way whichever
- * was flown first.
- */
-function unwrapLongitudes(lons: number[]): number[] {
-  if (lons.length === 0) return lons
-  const order = lons.map((_, i) => i).sort((a, b) => lons[a] - lons[b])
-  const out = new Array<number>(lons.length)
-  let previous = lons[order[0]]
-  out[order[0]] = previous
-  for (const i of order.slice(1)) {
-    let lon = lons[i]
-    while (lon - previous > 180) lon -= 360
-    while (lon - previous < -180) lon += 360
-    out[i] = lon
-    previous = lon
+function polylineToPath(projected: number[], width: number, height: number): string {
+  const parts: string[] = []
+  for (let i = 0; i < projected.length / 2; i++) {
+    const x = (projected[i * 2] * width).toFixed(2)
+    const y = (projected[i * 2 + 1] * height).toFixed(2)
+    parts.push(`${i === 0 ? 'M' : 'L'}${x},${y}`)
   }
-  return out
+  return parts.join('')
 }
 
-function ringsToPath(rings: ProjectedRings, width: number, close: boolean): string {
+function ringsToPath(rings: ProjectedRings, width: number, height: number, close: boolean): string {
   const parts: string[] = []
   for (let ring = 0; ring < rings.ringStart.length - 1; ring++) {
     const from = rings.ringStart[ring]
@@ -304,7 +375,7 @@ function ringsToPath(rings: ProjectedRings, width: number, close: boolean): stri
     if (to - from < 2) continue
     for (let i = from; i < to; i++) {
       const x = (rings.points[i * 2] * width).toFixed(2)
-      const y = (rings.points[i * 2 + 1] * VB_HEIGHT).toFixed(2)
+      const y = (rings.points[i * 2 + 1] * height).toFixed(2)
       parts.push(`${i === from ? 'M' : 'L'}${x},${y}`)
     }
     if (close) parts.push('Z')
