@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    "Today's challenge". Four cells by two by default, resizable down to two
+    wide, where the layout drops the aircraft line (see ChallengeWidget.COMPACT).
+    Height is fixed at one row of content: taller would only be padding.
+
+    updatePeriodMillis is 0 because the widget is refreshed by a wall-clock
+    alarm at local midnight (ChallengeRefresh), not by polling. There is no
+    previewImage: Android 15 takes a rendered preview from the widget itself
+    (PublishWidgetPreview), so a hand-drawn one would only go stale. Until the
+    app has run once the picker shows the launcher icon.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="140dp"
+    android:minHeight="100dp"
+    android:minResizeWidth="140dp"
+    android:minResizeHeight="100dp"
+    android:maxResizeWidth="360dp"
+    android:maxResizeHeight="100dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="0"
+    android:description="@string/widget_challenge_description"
+    android:initialLayout="@layout/glance_default_loading_layout" />

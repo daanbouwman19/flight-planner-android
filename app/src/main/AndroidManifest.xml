@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- METAR lookups and satellite tiles for the globe. Everything else works offline. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -30,16 +31,73 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.FlightPlanner.Starting">
 
+        <!--
+            `singleTask`, because the app is now reachable from outside itself.
+            A widget tap and a launcher shortcut both start this activity with
+            NEW_TASK; with the default `standard` mode the system brings the
+            existing task forward and stacks a *second* MainActivity on top of
+            the first, each with its own NavHost. `singleTask` routes the intent
+            to the running instance through `onNewIntent` instead, which is
+            where `LaunchIntents.parse` reads it. There is one activity, so this
+            changes nothing about ordinary launches.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.FlightPlanner.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- The static shortcut list. See res/xml/shortcuts.xml. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
+
+        <!--
+            The "Today's challenge" widget. Glance's receiver, plus one system
+            broadcast of our own choosing: TIMEZONE_CHANGED is on the platform's
+            exemption list for manifest receivers and moves local midnight, so
+            the widget re-renders on it. The date itself changes on an alarm
+            (ChallengeRefresh), because DATE_CHANGED is not deliverable this way.
+            Exported, as every widget provider must be for the launcher to reach it.
+        -->
+        <receiver
+            android:name=".widget.ChallengeWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_challenge_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_challenge_info" />
+        </receiver>
+
+        <!--
+            WorkManager arrives transitively with Glance, and its manifest merges
+            a start-up initializer into this provider. Left in place it would
+            construct WorkManager before `Application.onCreate` on every launch,
+            for a feature only the widget uses. Only that one entry is removed;
+            the profile installer, EmojiCompat and process-lifecycle initializers
+            that share the provider are untouched. `FlightPlannerApplication`
+            implements `Configuration.Provider`, so WorkManager builds itself the
+            first time Glance asks for it. Verify by grepping the merged manifest
+            for `WorkManagerInitializer` — it must be absent.
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>

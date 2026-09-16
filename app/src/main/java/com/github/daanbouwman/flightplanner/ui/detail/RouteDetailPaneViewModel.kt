@@ -2,6 +2,7 @@ package com.github.daanbouwman.flightplanner.ui.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.daanbouwman.flightplanner.launch.LastRouteStore
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -45,9 +46,21 @@ data class RouteDetailPaneState(
  * anything to show.
  */
 @HiltViewModel
-class RouteDetailPaneViewModel @Inject constructor(
+class RouteDetailPaneViewModel internal constructor(
     private val loader: RouteDetailLoader,
+    /**
+     * Records a selection as the route most recently opened, for the "Last
+     * route" shortcut — the pane is where a wide window shows a route, so it
+     * counts as much as the full screen does. A seam defaulting to nothing.
+     */
+    private val rememberLastRoute: (Destination.RouteDetail) -> Unit = {},
 ) : ViewModel() {
+
+    @Inject
+    constructor(
+        loader: RouteDetailLoader,
+        lastRouteStore: LastRouteStore,
+    ) : this(loader = loader, rememberLastRoute = lastRouteStore::remember)
 
     private val _state = MutableStateFlow<RouteDetailPaneState?>(null)
     val state: StateFlow<RouteDetailPaneState?> = _state.asStateFlow()
@@ -63,6 +76,7 @@ class RouteDetailPaneViewModel @Inject constructor(
 
     fun select(route: Destination.RouteDetail) {
         loading?.cancel()
+        rememberLastRoute(route)
         // The distance came with the selection, so the pane can state it while
         // the airports are still being read — exactly as the full screen does.
         _state.value = RouteDetailPaneState(route, RouteDetailUiState(distanceNm = route.distanceNm))

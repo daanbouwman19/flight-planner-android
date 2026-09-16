@@ -591,4 +591,18 @@
     -->
     <string name="airport_runway_favoured_caption">Favoured for current wind: %1$s</string>
 
+    <!-- Launcher shortcuts (res/xml/shortcuts.xml). Short labels must fit under an icon: ten characters or so. -->
+    <string name="shortcut_generate_short">Generate</string>
+    <string name="shortcut_generate_long">Generate routes</string>
+    <string name="shortcut_log_flight_short">Log flight</string>
+    <string name="shortcut_log_flight_long">Log a flight</string>
+    <string name="shortcut_last_route_short">Last route</string>
+    <string name="shortcut_last_route_long">Open the last route</string>
+
+    <!-- The "Today's challenge" home-screen widget. -->
+    <string name="widget_challenge_label">Today\'s challenge</string>
+    <string name="widget_challenge_description">One route a day, drawn from your fleet. Tap to open it.</string>
+    <string name="widget_challenge_fleet_empty">Add an aircraft to your fleet and a challenge appears here.</string>
+    <string name="widget_challenge_unavailable">Open the app to load today\'s challenge.</string>
+
 </resources>

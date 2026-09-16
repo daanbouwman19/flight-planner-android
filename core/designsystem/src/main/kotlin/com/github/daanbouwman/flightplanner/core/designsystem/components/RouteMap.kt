@@ -9,13 +9,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathFillType
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
@@ -24,7 +19,6 @@ import kotlin.math.hypot
 import kotlin.math.sqrt
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.routing.GeoArc
-import com.github.daanbouwman.flightplanner.routing.MapFrame
 import com.github.daanbouwman.flightplanner.routing.ProjectedRings
 import com.github.daanbouwman.flightplanner.routing.RouteArc
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
@@ -66,7 +60,7 @@ import com.github.daanbouwman.flightplanner.routing.WorldOutline
  *
  * [topInset] is how much of the top of the map belongs to something printed
  * over it — the route card's title line. The route is framed below it (see
- * [MapFrame.forRoute]); land still runs through it, since the band is part of
+ * [com.github.daanbouwman.flightplanner.routing.MapFrame.forRoute]); land still runs through it, since the band is part of
  * the map, but an endpoint no longer sits on the title's baseline and an arc
  * no longer runs under the letters. Zero where nothing is printed over the map.
  *
@@ -97,82 +91,28 @@ fun RouteMap(
         modifier = modifier
             .clearAndSetSemantics { }
             .drawWithCache {
-                if (arc.size < 2 || size.minDimension <= 0f) return@drawWithCache onDrawBehind { }
-
-                val frame = MapFrame.forRoute(
-                    lats = arc.lats,
-                    lons = arc.lons,
-                    aspect = (size.width / size.height).toDouble(),
-                    // Clamped so a map shorter than its inset — a card squeezed
-                    // by a huge font scale — degrades to a symmetric frame
-                    // rather than to no frame at all.
-                    topInsetFraction = (topInset.toPx() / size.height).toDouble().coerceIn(0.0, MaxTopInsetFraction),
-                )
-
-                // A margin, so a coast just off the card still contributes the
-                // segment that enters it, and a stroke's trimmed end falls
-                // outside the visible area rather than inside it.
-                val land = frame.projectOutline(outline, margin = OutlineMargin)
-
-                // Two paths from the same clip, because they are drawn
-                // differently: the fill is a polygon whose boundary runs along
-                // the window's edge, and stroking that would draw a hairline box
-                // around the card. The coast is the real coastline, trimmed and
-                // left open.
-                val landPath = land.fill.toPath(size.width, size.height, close = true).apply {
-                    // Even-odd, so a ring enclosed by another — the Caspian, the
-                    // Great Lakes — is a hole rather than more land.
-                    fillType = PathFillType.EvenOdd
-                }
-                val coastPath = land.coast.toPath(size.width, size.height, close = false)
-
-                // Nothing but ocean, or the middle of a continent: with no coast in
-                // the window the card is a flat wash, which reads as a failed load
-                // rather than as a place. A graticule says "this is the world, and
-                // you are looking at a part of it with no coastline in it" for the
-                // price of a few lines at a third of the coast's contrast.
-                val graticule = if (land.coast.isEmpty) frame.graticule() else null
-
-                val projected = frame.project(arc.lats, arc.lons)
-                val routePath = Path().apply {
-                    moveTo(projected[0] * size.width, projected[1] * size.height)
-                    for (i in 1 until projected.size / 2) {
-                        lineTo(projected[i * 2] * size.width, projected[i * 2 + 1] * size.height)
-                    }
-                }
-                val graticulePath = graticule?.toPath(size.width, size.height, close = false)
-
-                // The arrowhead sits at the middle sample and points along the two
-                // samples either side of it, so it follows the curve rather than the
-                // straight line between the ends.
-                val midpoint = projected.size / 4
-                val shortHop = projectedChord(projected, size.width, size.height) < MinArrowChordDp.dp.toPx()
-                val arrow = if (shortHop) {
-                    null
-                } else {
-                    arrowPath(projected, midpoint, size.width, size.height, ArrowLengthDp.dp.toPx())
-                }
-                val departure = Offset(projected[0] * size.width, projected[1] * size.height)
-                val destination = Offset(
-                    projected[projected.size - 2] * size.width,
-                    projected[projected.size - 1] * size.height,
-                )
-                val hop = Offset(projected[midpoint * 2] * size.width, projected[midpoint * 2 + 1] * size.height)
-
-                val coastWidth = CoastStrokeDp.dp.toPx()
-                val routeWidth = RouteStrokeDp.dp.toPx()
-                val casingWidth = routeWidth + 2f * CasingDp.dp.toPx()
-                val endpointRadius = EndpointRadiusDp.dp.toPx()
-                val endpointStroke = EndpointStrokeDp.dp.toPx()
+                // The geometry — frame, paths, markers, widths — is one object,
+                // built here and drawn below; `routeMapScene` and `drawRouteMap`
+                // are what the home-screen widget shares with this card, so the
+                // two cannot drift. See RouteMapScene.kt.
+                val scene = routeMapScene(
+                    arc = arc,
+                    outline = outline,
+                    width = size.width,
+                    height = size.height,
+                    density = this,
+                    topInsetPx = topInset.toPx(),
+                ) ?: return@drawWithCache onDrawBehind { }
 
                 onDrawBehind {
-                    // **The map crops itself.** Everything below is projected with
-                    // a margin — see `OutlineMargin` above — so a coast just off
-                    // the window still contributes the segment that enters it, and
-                    // a trimmed stroke ends outside the visible area rather than
-                    // inside it. That means this component routinely paints beyond
-                    // its own bounds and, until now, relied on whatever card or
-                    // surface contained it to crop the overspill.
+                    // **The map crops itself.** Everything in the scene is
+                    // projected with a margin — see `OutlineMargin` — so a coast
+                    // just off the window still contributes the segment that
+                    // enters it, and a trimmed stroke ends outside the visible
+                    // area rather than inside it. That means this component
+                    // routinely paints beyond its own bounds and, until now,
+                    // relied on whatever card or surface contained it to crop
+                    // the overspill.
                     //
                     // That assumption held everywhere except the one place it
                     // mattered: a shared-element transition renders the map in an
@@ -187,98 +127,13 @@ fun RouteMap(
                     // smooth. This is a clip on the canvas that is already being
                     // drawn into, and it costs nothing.
                     clipRect {
-                        drawPath(landPath, landColor)
-                        graticulePath?.let {
-                            drawPath(
-                                path = it,
-                                color = landColor,
-                                style = Stroke(width = coastWidth, cap = StrokeCap.Round),
-                            )
-                        }
-                        // Bevel joins and butt caps, where the route below keeps round
-                        // ones. The coast is a few thousand segments per card redrawn
-                        // every frame, and a round join is an arc constructed at every
-                        // vertex; at 1 dp wide and 16 % opacity that arc is sub-pixel
-                        // and invisible, so it is pure cost. The route is a few dozen
-                        // segments and is the thing being looked at, so it keeps them.
-                        drawPath(
-                            path = coastPath,
-                            color = coastColor,
-                            style = Stroke(width = coastWidth, join = StrokeJoin.Bevel, cap = StrokeCap.Butt),
+                        drawRouteMap(
+                            scene = scene,
+                            landColor = landColor,
+                            coastColor = coastColor,
+                            routeColor = routeColor,
+                            casingColor = casingColor,
                         )
-
-                        // Casing first, then the line: round joins and caps are what
-                        // make the pair read as one ribbon instead of as a stack of
-                        // segments with mitred corners showing through.
-                        drawPath(
-                            path = routePath,
-                            color = casingColor,
-                            style = Stroke(width = casingWidth, join = StrokeJoin.Round, cap = StrokeCap.Round),
-                        )
-                        drawPath(
-                            path = routePath,
-                            color = routeColor,
-                            style = Stroke(width = routeWidth, join = StrokeJoin.Round, cap = StrokeCap.Round),
-                        )
-
-                        // The arrowhead, cased like everything else. It is what makes
-                        // direction readable at a glance: the codes are pinned to the
-                        // card's edges, so on a westbound leg the departure code sits
-                        // on the left while its marker sits on the right, and a 4 dp
-                        // ring against a 4 dp dot is too fine a distinction to carry
-                        // that alone.
-                        arrow?.let {
-                            drawPath(
-                                path = it,
-                                color = casingColor,
-                                style = Stroke(
-                                    width = 2f * CasingDp.dp.toPx(),
-                                    join = StrokeJoin.Round,
-                                    cap = StrokeCap.Round,
-                                ),
-                            )
-                            drawPath(path = it, color = routeColor)
-                        }
-
-                        if (shortHop) {
-                            // One ring for both ends. The cased line under it is
-                            // the hop; the ring says "here" for a leg too short
-                            // for "from here to there" to have room on the card.
-                            drawCircle(
-                                color = casingColor,
-                                radius = endpointRadius + CasingDp.dp.toPx(),
-                                center = hop,
-                                style = Stroke(width = endpointStroke + 2f * CasingDp.dp.toPx()),
-                            )
-                            drawCircle(
-                                color = routeColor,
-                                radius = endpointRadius,
-                                center = hop,
-                                style = Stroke(width = endpointStroke),
-                            )
-                        } else {
-                            // Departure hollow, destination filled: the chart
-                            // convention for "from here to there", which the
-                            // arrowhead now states outright rather than implying.
-                            drawCircle(
-                                color = casingColor,
-                                radius = endpointRadius + CasingDp.dp.toPx(),
-                                center = departure,
-                                style = Stroke(width = endpointStroke + 2f * CasingDp.dp.toPx()),
-                            )
-                            drawCircle(
-                                color = routeColor,
-                                radius = endpointRadius,
-                                center = departure,
-                                style = Stroke(width = endpointStroke),
-                            )
-                            drawCircle(
-                                color = casingColor,
-                                radius = endpointRadius + CasingDp.dp.toPx(),
-                                center = destination,
-                            )
-                            drawCircle(color = routeColor, radius = endpointRadius, center = destination)
-                        }
                     }
                 }
             },
@@ -332,15 +187,6 @@ internal const val OutlineMargin = 0.05
  * the plan card and the network card agree on what "short" is.
  */
 internal const val MinArrowChordDp = 24f
-
-/**
- * The most of a map's height the route will give up to text over it.
- *
- * A route card at font scale 2.0 is a tall card, not a small map, so this is
- * rarely reached — it exists so a degenerate size degrades to a symmetric
- * frame rather than to a frame with no room left for the route.
- */
-private const val MaxTopInsetFraction = 0.5
 
 @LightDarkPreview
 @Composable

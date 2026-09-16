@@ -57,6 +57,46 @@ val LocalThemeChoice: ProvidableCompositionLocal<ThemeChoice> =
     staticCompositionLocalOf { ThemeChoice.SYSTEM }
 
 /**
+ * Whether this choice is a dark look, given what the system is set to.
+ *
+ * Only [ThemeChoice.SYSTEM] consults [systemDark]; the other four are a fixed
+ * answer. Cockpit is dark and Chart is light by construction — they are a
+ * night panel and a paper chart, not a preference.
+ */
+fun ThemeChoice.isDark(systemDark: Boolean): Boolean = when (this) {
+    ThemeChoice.SYSTEM -> systemDark
+    ThemeChoice.LIGHT -> false
+    ThemeChoice.DARK -> true
+    ThemeChoice.COCKPIT -> true
+    ThemeChoice.CHART -> false
+}
+
+/**
+ * The scheme a theme choice resolves to, as a plain function of its inputs.
+ *
+ * This is [FlightPlannerTheme]'s own rule, lifted out so that a surface with no
+ * composition of ours — the home-screen widget, drawn by Glance in the
+ * launcher's process — can arrive at the same colours as the app. Cockpit and
+ * Chart ignore [dynamicColor] and [dark] alike: they are a look, not a tone
+ * mapping. Everything else is the wallpaper scheme when dynamic colour is on
+ * and the brand scheme when it is off. `dynamic*ColorScheme` reads the
+ * system palette through [context], so this is not pure, but it is not a
+ * composable either.
+ */
+fun resolveColorScheme(
+    themeChoice: ThemeChoice,
+    dynamicColor: Boolean,
+    dark: Boolean,
+    context: Context,
+): ColorScheme = when {
+    themeChoice == ThemeChoice.COCKPIT -> CockpitColorScheme
+    themeChoice == ThemeChoice.CHART -> ChartColorScheme
+    dynamicColor -> if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    dark -> BrandDarkColorScheme
+    else -> BrandLightColorScheme
+}
+
+/**
  * The app's theme. Everything Material 3 Expressive enters the app through here.
  *
  * Wraps [MaterialExpressiveTheme] rather than `MaterialTheme` for one concrete
@@ -101,12 +141,15 @@ fun FlightPlannerTheme(
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val dark = when (themeChoice) {
-        ThemeChoice.SYSTEM -> isSystemInDarkTheme()
-        ThemeChoice.LIGHT -> false
-        ThemeChoice.DARK -> true
-        ThemeChoice.COCKPIT -> true
-        ThemeChoice.CHART -> false
+    // `isSystemInDarkTheme()` subscribes this composable to the system's
+    // day/night setting, so it is called only inside the branch that actually
+    // needs it — a user pinned to LIGHT/DARK/COCKPIT/CHART must not have the
+    // whole app content recompose every time Android's scheduled dark mode
+    // flips, when their resolved `dark` value never changes.
+    val dark = if (themeChoice == ThemeChoice.SYSTEM) {
+        themeChoice.isDark(systemDark = isSystemInDarkTheme())
+    } else {
+        themeChoice.isDark(systemDark = false)
     }
     val context = LocalContext.current
     // Remembered on its four inputs. `ColorScheme` has no `equals`, and
@@ -116,14 +159,7 @@ fun FlightPlannerTheme(
     // every recomposition [SystemBarsAppearance] below used to cause here,
     // before it was split out.
     val colorScheme: ColorScheme = remember(themeChoice, dynamicColor, dark, context) {
-        when {
-            themeChoice == ThemeChoice.COCKPIT -> CockpitColorScheme
-            themeChoice == ThemeChoice.CHART -> ChartColorScheme
-            dynamicColor ->
-                if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            dark -> BrandDarkColorScheme
-            else -> BrandLightColorScheme
-        }
+        resolveColorScheme(themeChoice, dynamicColor, dark, context)
     }
 
     // Which screens currently have a photograph under the status bar. Held here,

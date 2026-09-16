@@ -35,6 +35,10 @@ fun LogbookRoute(
     onOpenRoute: (LogbookRow) -> Unit,
     onOpenAirport: (Airport) -> Unit,
     modifier: Modifier = Modifier,
+    /** True while the "Log a flight" shortcut is pending; see [onAddFlightOpened]. */
+    openAddFlight: Boolean = false,
+    /** Called once the add-flight sheet is up, so the shortcut's request can be consumed. */
+    onAddFlightOpened: () -> Unit = {},
 ) {
     val twoPanes = calculatePaneScaffoldDirective(currentWindowAdaptiveInfoV2())
         .maxHorizontalPartitions > 1
@@ -44,6 +48,8 @@ fun LogbookRoute(
             onOpenSettings = onOpenSettings,
             onOpenRoute = onOpenRoute,
             modifier = modifier,
+            openAddFlight = openAddFlight,
+            onAddFlightOpened = onAddFlightOpened,
         )
         return
     }
@@ -73,6 +79,8 @@ fun LogbookRoute(
                                 navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, route.key())
                             }
                         },
+                        openAddFlight = openAddFlight,
+                        onAddFlightOpened = onAddFlightOpened,
                     )
                 }
             },

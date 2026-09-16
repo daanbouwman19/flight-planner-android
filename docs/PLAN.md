@@ -704,7 +704,11 @@ same masked key field, so nothing is lost — but the worst first-run papercut i
 **Widgets and shortcuts** — a **Glance** widget, "Today's challenge": one route seeded by
 `LocalDate.toEpochDay()`, deterministic across the day, tap to open. The seeded RNG makes it nearly
 free and it is the best retention feature available. Plus static shortcuts: "Generate route", "Log
-a flight", "Last route". Skip a quick-settings tile.
+a flight", "Last route". Skip a quick-settings tile. *Shipped as H3 and H4 (UI-PLAN.md §10). Two
+things the plan did not foresee: Glance brings WorkManager and its start-up initializer, which had
+to be made on-demand to keep the cold-start invariant; and `MainActivity` had to become
+`singleTask` the moment anything outside the app could start it. "Last route" means the route last
+opened, with the newest logbook flight as the fallback.*
 
 ---
 
@@ -821,7 +825,7 @@ that reruns the ETL, updates row-count expectations and opens a PR.
 | **M4** | Fleet, Airports, Stats; `NavigationSuiteScaffold` + `ListDetailPaneScaffold`; DataStore settings; full theming | globe, weather |
 | **M5** | NOAA client, batched METAR, cache, flight-rules chips throughout, AVWX fallback | globe |
 | **M6** | Globe, in this order: `Camera` + `Quadtree` ported and unit-tested with **no rendering at all**, then a solid-colour Filament sphere, then the tile atlas, then arc + markers, then gestures, then inertia and polish | — |
-| **M7** | Motion, haptics, predictive back, Glance widget, shortcuts, screenshot goldens, baseline profile, R8 rules, Play listing | — |
+| **M7** | Motion, haptics, predictive back, Glance widget, shortcuts, screenshot goldens, baseline profile, R8 rules, ~~Play listing~~ (dropped by user decision, 2026-09-15) | — |
 
 M3 matters: the app is genuinely usable end-to-end within the first third of the schedule, and
 every later milestone replaces a stub rather than adding a missing layer.

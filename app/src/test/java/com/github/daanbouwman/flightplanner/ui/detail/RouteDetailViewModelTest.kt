@@ -183,6 +183,7 @@ class RouteDetailViewModelTest {
         airports: AirportRepository,
         weather: WeatherRepository = StagedWeatherRepository(emptyMap()),
         outline: () -> WorldOutline = { WorldOutline.Empty },
+        remembered: MutableList<Destination.RouteDetail> = mutableListOf(),
     ) = RouteDetailViewModel(
         route = toKennedy,
         loader = RouteDetailLoader(
@@ -191,7 +192,18 @@ class RouteDetailViewModelTest {
             worldOutlineLoader = { outline() },
             weatherRepository = weather,
         ),
+        rememberLastRoute = { remembered += it },
     )
+
+    @Test
+    fun `opening a route records it as the last route, before anything has been read`() = runTest(dispatcher) {
+        val remembered = mutableListOf<Destination.RouteDetail>()
+        viewModel(StagedAirportRepository(listOf(eham, kjfk)), remembered = remembered)
+
+        // Synchronously: the "Last route" shortcut should find this route even
+        // if the user leaves before the airports have loaded.
+        remembered shouldBe listOf(toKennedy)
+    }
 
     @Test
     fun `the state leads with the arguments before anything has been read`() = runTest(dispatcher) {

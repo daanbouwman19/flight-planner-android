@@ -112,11 +112,27 @@ fun LogbookScreen(
     contentPadding: PaddingValues,
     header: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Opens the add-flight sheet on arrival — the "Log a flight" shortcut.
+     *
+     * A parameter and a callback rather than a saved flag: the request's owner
+     * (`LaunchViewModel`) holds it until [onAddFlightOpened] says the sheet is
+     * up, so it fires once and never replays from a restored back stack.
+     */
+    openAddFlight: Boolean = false,
+    onAddFlightOpened: () -> Unit = {},
     viewModel: LogbookViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showAddFlightSheet by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(openAddFlight) {
+        if (openAddFlight) {
+            showAddFlightSheet = true
+            onAddFlightOpened()
+        }
+    }
 
     val deletedMessage = stringResource(R.string.logbook_flight_deleted)
     val undoLabel = stringResource(R.string.plan_action_undo)

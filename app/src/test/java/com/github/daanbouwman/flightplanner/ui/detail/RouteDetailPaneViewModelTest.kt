@@ -195,14 +195,30 @@ class RouteDetailPaneViewModelTest {
         gates: Map<String, CompletableDeferred<Unit>> = emptyMap(),
         airports: AirportRepository = GatedAirportRepository(listOf(eham, kjfk, egll), gates),
         weather: WeatherRepository = NoWeather,
+        remembered: MutableList<Destination.RouteDetail> = mutableListOf(),
     ) = RouteDetailPaneViewModel(
-        RouteDetailLoader(
+        loader = RouteDetailLoader(
             airportRepository = airports,
             fleetRepository = PaneFleetRepository(listOf(boeing)),
             worldOutlineLoader = { WorldOutline.Empty },
             weatherRepository = weather,
         ),
+        rememberLastRoute = { remembered += it },
     )
+
+    @Test
+    fun `each selection is recorded as the last route, clearing is not`() = runTest(dispatcher) {
+        val remembered = mutableListOf<Destination.RouteDetail>()
+        val model = viewModel(remembered = remembered)
+
+        model.select(toKennedy)
+        model.clear()
+        val toHeathrow = toKennedy.copy(destinationIcao = "EGLL")
+        model.select(toHeathrow)
+        advanceUntilIdle()
+
+        remembered shouldBe listOf(toKennedy, toHeathrow)
+    }
 
     @Test
     fun `a selection publishes three times - airports, then runways, then weather - under one identity`() =

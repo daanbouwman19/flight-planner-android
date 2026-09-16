@@ -1,9 +1,18 @@
 package com.github.daanbouwman.flightplanner.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.compose.currentBackStackEntryAsState
+import com.github.daanbouwman.flightplanner.launch.LaunchRequest
+import com.github.daanbouwman.flightplanner.launch.LaunchRequests
+import com.github.daanbouwman.flightplanner.launch.NoLaunchRequests
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -47,7 +56,10 @@ import com.github.daanbouwman.flightplanner.ui.plan.PlanViewModel
 fun FlightPlannerNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier,
+    launchRequests: LaunchRequests = NoLaunchRequests,
 ) {
+    val launchRequest by launchRequests.pending.collectAsStateWithLifecycle()
+
     // Resolved once, outside the transition lambdas: those lambdas are not
     // composable, so a motion token — which is — has to be read here and closed
     // over. This is also the only place :app decides how a screen change looks,
@@ -243,6 +255,13 @@ fun FlightPlannerNavHost(
             composable<Destination.Logbook> {
                 LogbookRoute(
                     onOpenSettings = openSettings,
+                    // The "Log a flight" shortcut. The request stays pending
+                    // until the screen has actually opened the sheet, which is
+                    // the one-shot boundary a nav argument could not give it —
+                    // an argument is restored with the back stack and would
+                    // re-open the sheet after every rotation.
+                    openAddFlight = launchRequest is LaunchRequest.LogFlight,
+                    onAddFlightOpened = { launchRequests.consume(LaunchRequest.LogFlight) },
                     onOpenRoute = { row ->
                         navController.navigateToDetail(
                             Destination.RouteDetail(
@@ -299,6 +318,77 @@ fun FlightPlannerNavHost(
             composable<Destination.Licences> {
                 LicencesScreen(onBack = { navController.popBackStack() })
             }
+        }
+
+        // After `NavHost`, so the graph is set by the time this first composes.
+        LaunchRequestConsumer(navController, launchRequests, launchRequest)
+    }
+}
+
+/**
+ * Acts on an arriving [LaunchRequest] — a widget tap or a shortcut — once the
+ * graph can be navigated.
+ *
+ * The PlanGraph entry is the readiness signal. It is the root start graph, and
+ * [navigateToTopLevel] only ever pops *to* the start destination, so once the
+ * host has a current entry at all the PlanGraph entry is on the stack for the
+ * rest of the host's life; until then [planViewModel] is null and the effect
+ * simply waits for it. The ViewModel is resolved in composition, not inside the
+ * effect, because `hiltViewModel` is a composable — the same way every
+ * `composable<…>` above reaches it.
+ *
+ * [LaunchRequest.LogFlight] is deliberately not consumed here: it is consumed by
+ * `LogbookScreen` when the sheet opens, see `composable<Destination.Logbook>`.
+ */
+@Composable
+private fun LaunchRequestConsumer(
+    navController: NavHostController,
+    launchRequests: LaunchRequests,
+    request: LaunchRequest?,
+) {
+    val current by navController.currentBackStackEntryAsState()
+    // Found once and cached, not re-keyed on `current`: per this function's own
+    // KDoc, the PlanGraph entry never leaves the stack once found, so re-walking
+    // it on every navigation elsewhere in the app — Fleet, Airports, Stats,
+    // Settings, all of which change `current` — would repeat the lookup and
+    // re-resolve `hiltViewModel` forever for an answer that cannot change.
+    var planEntry by remember { mutableStateOf<NavBackStackEntry?>(null) }
+    if (planEntry == null && current != null) {
+        planEntry = runCatching { navController.getBackStackEntry(Destination.PlanGraph) }.getOrNull()
+    }
+    val planViewModel: PlanViewModel? = planEntry?.let { hiltViewModel(it) }
+
+    LaunchedEffect(request, planViewModel) {
+        if (request == null || planViewModel == null) return@LaunchedEffect
+        when (request) {
+            is LaunchRequest.OpenRoute -> {
+                // Over Plan, not on top of wherever the user was: back from a
+                // widget's route then lands on the place that generates more,
+                // and the bar's selection follows the stack for free. Nothing
+                // shares an element with it on a cold start, so RouteDetail's
+                // shared transitions degrade to the plain fade.
+                navController.navigateToTopLevel(TopLevelDestination.PLAN)
+                navController.navigateToDetail(request.route)
+                launchRequests.consume(request)
+            }
+
+            LaunchRequest.GenerateRoutes -> {
+                navController.navigateToTopLevel(TopLevelDestination.PLAN)
+                // On a cold start `PlanViewModel.init` has already begun a
+                // batch; bumping the generation cancels it under `collectLatest`
+                // for a sub-millisecond cost, which is cheaper than knowing.
+                planViewModel.generate()
+                launchRequests.consume(request)
+            }
+
+            LaunchRequest.LastRoute -> {
+                val route = launchRequests.resolveLastRoute()
+                navController.navigateToTopLevel(TopLevelDestination.PLAN)
+                if (route != null) navController.navigateToDetail(route)
+                launchRequests.consume(request)
+            }
+
+            LaunchRequest.LogFlight -> navController.navigateToTopLevel(TopLevelDestination.LOGBOOK)
         }
     }
 }

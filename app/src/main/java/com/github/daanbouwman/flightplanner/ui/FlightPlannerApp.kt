@@ -19,6 +19,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.github.daanbouwman.flightplanner.launch.LaunchRequests
+import com.github.daanbouwman.flightplanner.launch.NoLaunchRequests
 import com.github.daanbouwman.flightplanner.navigation.FlightPlannerNavHost
 import com.github.daanbouwman.flightplanner.navigation.TopLevelDestination
 import com.github.daanbouwman.flightplanner.navigation.isIn
@@ -60,6 +62,7 @@ import com.github.daanbouwman.flightplanner.ui.chrome.NavigationReselect
 fun FlightPlannerApp(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    launchRequests: LaunchRequests = NoLaunchRequests,
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
@@ -151,7 +154,7 @@ fun FlightPlannerApp(
             navigationSuiteType = navigationSuiteType,
             state = suiteState,
         ) {
-            FlightPlannerNavHost(navController = navController)
+            FlightPlannerNavHost(navController = navController, launchRequests = launchRequests)
         }
     }
 }

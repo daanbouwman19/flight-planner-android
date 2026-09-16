@@ -116,6 +116,16 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
 
+    // The "Today's challenge" home-screen widget. `glance-appwidget` brings
+    // `work-runtime` with it (Glance renders inside a WorkManager worker), and
+    // WorkManager's default `androidx.startup` initializer is removed in the
+    // manifest so that it costs nothing at cold start; `work-runtime-ktx` is
+    // named here because `FlightPlannerApplication` implements its
+    // `Configuration.Provider`, and a module should say what it calls.
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
+    implementation(libs.androidx.work.ktx)
+
     // The JUnit 5 variant by name: an Android module resolves plain `kotlin-test`
     // through a variant that maps to JUnit 4, where `kotlin.test.Test` is simply
     // absent. See the note in libs.versions.toml.
@@ -123,6 +133,7 @@ dependencies {
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    testImplementation(libs.androidx.glance.appwidget.testing)
 
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.compose.ui.test.junit4)

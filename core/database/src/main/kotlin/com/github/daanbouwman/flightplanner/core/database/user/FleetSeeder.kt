@@ -6,6 +6,8 @@ import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.FleetCsv
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,6 +29,20 @@ class FleetSeeder @Inject constructor(
 ) {
 
     /**
+     * Serialises [seedIfEmpty] against itself.
+     *
+     * `PlanViewModel.prepare()` and the "Today's challenge" widget's
+     * `DailyChallengeSource` both call this on an empty fleet, from two
+     * independent coroutines in the same process — a fresh install with the
+     * widget already placed can have the Plan screen's first load and a widget
+     * render race. Without a lock both see `count() == 0` and both insert the
+     * starter fleet, doubling every default airframe permanently. `FleetSeeder`
+     * is a `@Singleton`, so one mutex here covers every caller through
+     * `FleetRepository`.
+     */
+    private val seedMutex = Mutex()
+
+    /**
      * Seeds the fleet if it is empty.
      *
      * Deliberately a no-op once any airframe exists: re-seeding would resurrect
@@ -35,12 +51,14 @@ class FleetSeeder @Inject constructor(
      *
      * @return the number of airframes inserted.
      */
-    suspend fun seedIfEmpty(): Int = withContext(Dispatchers.IO) {
-        if (aircraftDao.count() > 0) return@withContext 0
-        val aircraft = readSeedFleet() ?: return@withContext 0
-        aircraftDao.insertAll(aircraft.map { it.toEntity(isCustom = false) })
-        Log.i(TAG, "Seeded ${aircraft.size} aircraft")
-        aircraft.size
+    suspend fun seedIfEmpty(): Int = seedMutex.withLock {
+        withContext(Dispatchers.IO) {
+            if (aircraftDao.count() > 0) return@withContext 0
+            val aircraft = readSeedFleet() ?: return@withContext 0
+            aircraftDao.insertAll(aircraft.map { it.toEntity(isCustom = false) })
+            Log.i(TAG, "Seeded ${aircraft.size} aircraft")
+            aircraft.size
+        }
     }
 
     /**
