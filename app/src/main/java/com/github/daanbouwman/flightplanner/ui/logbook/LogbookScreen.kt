@@ -633,27 +633,31 @@ internal const val FabTestTag = "logbook_fab"
 
 @Composable
 private fun PreviewLogbook(state: LogbookUiState) {
-    FlightPlannerTheme(dynamicColor = false) {
-        Surface(color = MaterialTheme.colorScheme.background) {
-            LogbookContent(
-                state = state,
-                onOpenRoute = {},
-                onDeleteRoute = {},
-                listState = rememberLazyListState(),
-                contentPadding = PaddingValues(16.dp),
-                header = {
-                    Text(
-                        text = "Profile",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                },
-            )
-        }
+    FlightPlannerTheme(dynamicColor = false) { LogbookPreviewContent(state) }
+}
+
+/** The Logbook list at rest, minus theme — shared by the previews and the goldens. */
+@Composable
+internal fun LogbookPreviewContent(state: LogbookUiState) {
+    Surface(color = MaterialTheme.colorScheme.background) {
+        LogbookContent(
+            state = state,
+            onOpenRoute = {},
+            onDeleteRoute = {},
+            listState = rememberLazyListState(),
+            contentPadding = PaddingValues(16.dp),
+            header = {
+                Text(
+                    text = "Profile",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            },
+        )
     }
 }
 
-private val previewRows = listOf(
+internal val previewRows = listOf(
     LogbookRow(
         id = 1,
         departureIcao = "EHAM",

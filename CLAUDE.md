@@ -167,6 +167,25 @@ because a rule that matches nothing passes silently and looks identical to a cle
 The remaining invariants — the empty system bars, cold start, the flight-rules colours —
 are not expressible this way and are still enforced by tests, `:macrobenchmark`, and you.
 
+**Screenshot goldens are part of `check`.** `:app:verifyRoborazziDebug` compares 161
+PNGs under `app/src/test/goldens/` pixel for pixel, so a visual change — intended or
+not — fails `build` and CI until the goldens are re-recorded:
+
+```bash
+./gradlew :app:recordRoborazziDebug            # rewrites every golden
+./gradlew :app:recordRoborazziDebug --tests '*PlanGoldens*'   # one subject
+git diff --stat -- app/src/test/goldens         # then LOOK at what changed
+```
+
+A failed verify writes reference / diff / new triptychs under
+`app/build/outputs/roborazzi/<subject>/<state>/` (CI uploads them). Look at the diff
+before re-recording: a golden that changed for a reason you did not intend is the
+test doing its job. Each screen sits under eight variants — light, dark, Cockpit,
+Chart, RTL, font 2.0, 700 dp, 1280 × 800 — one axis at a time; the harness and
+what it holds still are documented on `GoldenSuite` in
+`app/src/test/java/.../ui/goldens/Goldens.kt`. The globe is not goldened: under
+Robolectric it takes the app's own no-renderer fallback.
+
 `adb` is not on `PATH`:
 `C:\Users\daanb\AppData\Local\Android\Sdk\platform-tools\adb.exe`
 

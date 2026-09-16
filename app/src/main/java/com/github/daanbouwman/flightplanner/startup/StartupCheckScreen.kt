@@ -54,7 +54,6 @@ import com.github.daanbouwman.flightplanner.R
  * The check names and details themselves come from the ViewModel and stay as
  * they are — they are diagnostic output, read by whoever files the bug.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StartupCheckScreen(
     onBack: () -> Unit,
@@ -62,7 +61,22 @@ fun StartupCheckScreen(
     viewModel: StartupCheckViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    StartupCheckContent(state = state, onBack = onBack, modifier = modifier)
+}
 
+/**
+ * The screen minus its ViewModel: the headline and every check card for one
+ * [StartupUiState]. [StartupCheckScreen] feeds it the live run; the screenshot
+ * goldens feed it finished, running and failed states that a real run only
+ * passes through.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun StartupCheckContent(
+    state: StartupUiState,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {

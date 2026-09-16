@@ -59,6 +59,7 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlanne
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.ThemeChoice
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
+import com.github.daanbouwman.flightplanner.settings.AppSettings
 import com.github.daanbouwman.flightplanner.settings.UnitSystem
 import com.github.daanbouwman.flightplanner.settings.WeatherProvider
 import com.github.daanbouwman.flightplanner.ui.asFigure
@@ -81,7 +82,6 @@ import com.github.daanbouwman.flightplanner.ui.detail.rememberRouteActionLaunche
  * asked for the defaults, so dynamic colour won on every device and the brand
  * work was invisible.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
@@ -93,6 +93,49 @@ fun SettingsScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val datasetInfo by viewModel.datasetInfo.collectAsStateWithLifecycle()
 
+    SettingsContent(
+        settings = settings,
+        datasetInfo = datasetInfo,
+        onBack = onBack,
+        onOpenSelfCheck = onOpenSelfCheck,
+        onOpenLicences = onOpenLicences,
+        onThemeChoice = viewModel::setThemeChoice,
+        onDynamicColour = viewModel::setDynamicColour,
+        onUnitSystem = viewModel::setUnitSystem,
+        onIcaoOnly = viewModel::setIcaoOnly,
+        onWeatherProvider = viewModel::setWeatherProvider,
+        onAvwxApiKey = viewModel::setAvwxApiKey,
+        modifier = modifier,
+    )
+}
+
+/**
+ * The screen minus its ViewModel: every row against [settings] and [datasetInfo],
+ * every change reported through a lambda. [SettingsScreen] binds it to
+ * [SettingsViewModel]; the preview and the screenshot goldens hand it fixed state.
+ *
+ * One thing in here still reads the device rather than a parameter:
+ * [GlobeInfoBlock] asks `rememberGlobeStatus()`, which under Robolectric resolves
+ * to *no renderer* (`reqGlEsVersion` is 0 there), so a golden of this screen shows
+ * that line. That is the same implicit seam the goldens rely on for every
+ * `GlobeSurface`; see UI-PLAN §10 H5.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SettingsContent(
+    settings: AppSettings,
+    datasetInfo: DatasetInfo?,
+    onBack: () -> Unit,
+    onOpenSelfCheck: () -> Unit,
+    onOpenLicences: () -> Unit,
+    onThemeChoice: (ThemeChoice) -> Unit,
+    onDynamicColour: (Boolean) -> Unit,
+    onUnitSystem: (UnitSystem) -> Unit,
+    onIcaoOnly: (Boolean) -> Unit,
+    onWeatherProvider: (WeatherProvider) -> Unit,
+    onAvwxApiKey: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -132,7 +175,7 @@ fun SettingsScreen(
                     ThemeRow(
                         choice = choice,
                         selected = settings.themeChoice == choice,
-                        onSelect = { viewModel.setThemeChoice(choice) },
+                        onSelect = { onThemeChoice(choice) },
                     )
                 }
             }
@@ -152,7 +195,7 @@ fun SettingsScreen(
                 },
                 checked = settings.dynamicColour,
                 enabled = !settings.themeChoice.ignoresDynamicColour,
-                onCheckedChange = viewModel::setDynamicColour,
+                onCheckedChange = onDynamicColour,
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -169,7 +212,7 @@ fun SettingsScreen(
                     UnitRow(
                         system = system,
                         selected = settings.unitSystem == system,
-                        onSelect = { viewModel.setUnitSystem(system) },
+                        onSelect = { onUnitSystem(system) },
                     )
                 }
             }
@@ -188,7 +231,7 @@ fun SettingsScreen(
                 detail = stringResource(R.string.settings_icao_only_detail),
                 checked = settings.icaoOnly,
                 enabled = true,
-                onCheckedChange = viewModel::setIcaoOnly,
+                onCheckedChange = onIcaoOnly,
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -205,20 +248,20 @@ fun SettingsScreen(
                     label = stringResource(R.string.settings_weather_provider_noaa),
                     detail = stringResource(R.string.settings_weather_provider_noaa_detail),
                     selected = settings.weatherProvider == WeatherProvider.NOAA,
-                    onSelect = { viewModel.setWeatherProvider(WeatherProvider.NOAA) },
+                    onSelect = { onWeatherProvider(WeatherProvider.NOAA) },
                 )
                 WeatherProviderRow(
                     label = stringResource(R.string.settings_weather_provider_avwx),
                     detail = stringResource(R.string.settings_weather_provider_avwx_detail),
                     selected = settings.weatherProvider == WeatherProvider.AVWX,
-                    onSelect = { viewModel.setWeatherProvider(WeatherProvider.AVWX) },
+                    onSelect = { onWeatherProvider(WeatherProvider.AVWX) },
                 )
             }
 
             AnimatedVisibility(visible = settings.weatherProvider == WeatherProvider.AVWX) {
                 AvwxApiKeyField(
                     stored = settings.avwxApiKey.orEmpty(),
-                    onCommit = viewModel::setAvwxApiKey,
+                    onCommit = onAvwxApiKey,
                 )
             }
 
@@ -542,47 +585,26 @@ private val ThemeChoice.ignoresDynamicColour: Boolean
 @Composable
 private fun SettingsPreview() {
     FlightPlannerTheme(dynamicColor = false) {
-        SettingsContentPreview()
+        SettingsContent(
+            settings = AppSettings(themeChoice = ThemeChoice.COCKPIT),
+            datasetInfo = previewDatasetInfo,
+            onBack = {},
+            onOpenSelfCheck = {},
+            onOpenLicences = {},
+            onThemeChoice = {},
+            onDynamicColour = {},
+            onUnitSystem = {},
+            onIcaoOnly = {},
+            onWeatherProvider = {},
+            onAvwxApiKey = {},
+        )
     }
 }
 
-/**
- * The screen minus its ViewModel.
- *
- * `SettingsScreen` takes a Hilt ViewModel and cannot be rendered by the tooling,
- * so the preview draws the same rows against fixed state — which is also the only
- * way to see all four themes listed at once.
- */
-@Composable
-private fun SettingsContentPreview() {
-    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ThemeChoice.entries.forEach { choice ->
-            ThemeRow(choice = choice, selected = choice == ThemeChoice.COCKPIT, onSelect = {})
-        }
-        SwitchRow(
-            title = stringResource(R.string.settings_dynamic_colour),
-            detail = stringResource(R.string.settings_dynamic_colour_detail),
-            checked = true,
-            enabled = true,
-            onCheckedChange = {},
-        )
-        UnitSystem.entries.forEach { system ->
-            UnitRow(system = system, selected = system == UnitSystem.AVIATION, onSelect = {})
-        }
-        SwitchRow(
-            title = stringResource(R.string.settings_icao_only),
-            detail = stringResource(R.string.settings_icao_only_detail),
-            checked = false,
-            enabled = true,
-            onCheckedChange = {},
-        )
-        DatasetInfoBlock(
-            info = DatasetInfo(
-                source = "https://ourairports.com",
-                upstreamModified = "2026-06-01",
-                airportCount = 24_073,
-                runwayCount = 41_812,
-            ),
-        )
-    }
-}
+/** Fixed dataset row for the preview and the goldens; the counts are deliberately not today's. */
+internal val previewDatasetInfo = DatasetInfo(
+    source = "https://ourairports.com",
+    upstreamModified = "2026-06-01",
+    airportCount = 24_073,
+    runwayCount = 41_812,
+)

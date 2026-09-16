@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.flightplanner.android.hilt)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.androidx.baselineprofile)
+    alias(libs.plugins.roborazzi)
 }
 
 android {
@@ -84,6 +85,20 @@ baselineProfile {
     mergeIntoMain = true
 }
 
+// Screenshot goldens (UI-PLAN §10 H5). The plugin registers record / compare /
+// verify tasks per variant and wires none of them into `check`; each depends on
+// `testDebugUnitTest` and the plugin reads the mode off the task graph, so making
+// `check` reach `verifyRoborazziDebug` runs the :app unit tests once, in verify
+// mode. A plain `testDebugUnitTest` still runs every golden test but
+// `captureRoboImage` returns without touching a file. A golden that is missing
+// fails verify rather than silently recording — record deliberately, with
+// `:app:recordRoborazziDebug`, and look at the diff before committing.
+roborazzi {
+    outputDir.set(file("src/test/goldens"))
+}
+
+tasks.named("check") { dependsOn("verifyRoborazziDebug") }
+
 dependencies {
     implementation(projects.core.model)
     implementation(projects.core.routing)
@@ -134,6 +149,8 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     testImplementation(libs.androidx.glance.appwidget.testing)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
 
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.compose.ui.test.junit4)

@@ -316,47 +316,8 @@ private fun StatsHeader(
 @Composable
 private fun StatsScreenPreview() {
     FlightPlannerTheme(dynamicColor = false) {
-        val sampleAircraft = AircraftSpec(
-            id = 1,
-            manufacturer = "Boeing",
-            variant = "777-300ER",
-            icaoCode = "B77W",
-            flown = true,
-            rangeNm = 7370,
-            category = "Wide-body",
-            cruiseSpeedKt = 490,
-            dateFlown = "2026-08-01",
-            takeoffDistanceMeters = 3100,
-        )
-
-        val sampleSuccess = StatsUiState.Success(
-            timeframe = StatsTimeframe.ALL_TIME,
-            chartMetric = ChartMetric.FLIGHTS,
-            totalDistanceNm = 34820,
-            earthCircumferences = 1.61,
-            totalFlights = 28,
-            averageDistanceNm = 1243.5,
-            longestFlight = LegStat("EHAM", "RJTT", 1, 5180),
-            shortestFlight = LegStat("EHAM", "EGLL", 1, 200),
-            monthlyActivity = listOf(
-                MonthlyActivity(YearMonth.of(2026, 1), "Jan", 4, 6000),
-                MonthlyActivity(YearMonth.of(2026, 2), "Feb", 6, 8200),
-                MonthlyActivity(YearMonth.of(2026, 3), "Mar", 2, 2400),
-                MonthlyActivity(YearMonth.of(2026, 4), "Apr", 8, 11000),
-                MonthlyActivity(YearMonth.of(2026, 5), "May", 5, 7220),
-            ),
-            topAircraft = listOf(
-                TopAircraftStat(sampleAircraft, 18, 24000),
-            ),
-            favoriteDeparture = AirportCount("EHAM", "Amsterdam Schiphol", 14),
-            favoriteArrival = AirportCount("KJFK", "New York JFK", 6),
-            mostVisitedAirport = AirportCount("EHAM", "Amsterdam Schiphol", 20),
-            visitedAirports = emptyList(),
-            visitedLegs = emptyList(),
-        )
-
         StatsScreen(
-            uiState = sampleSuccess,
+            uiState = previewStatsSuccess,
             onSelectTimeframe = {},
             onSelectMetric = {},
             onOpenSettings = {},
@@ -384,3 +345,43 @@ private fun StatsScreenLoadingPreview() {
         )
     }
 }
+
+private val previewStatsAircraft = AircraftSpec(
+    id = 1,
+    manufacturer = "Boeing",
+    variant = "777-300ER",
+    icaoCode = "B77W",
+    flown = true,
+    rangeNm = 7370,
+    category = "Wide-body",
+    cruiseSpeedKt = 490,
+    dateFlown = "2026-08-01",
+    takeoffDistanceMeters = 3100,
+)
+
+/** A populated statistics screen for the preview and the goldens; every figure is a literal. */
+internal val previewStatsSuccess = StatsUiState.Success(
+    timeframe = StatsTimeframe.ALL_TIME,
+    chartMetric = ChartMetric.FLIGHTS,
+    totalDistanceNm = 34820,
+    earthCircumferences = 1.61,
+    totalFlights = 28,
+    averageDistanceNm = 1243.5,
+    longestFlight = LegStat("EHAM", "RJTT", 1, 5180),
+    shortestFlight = LegStat("EHAM", "EGLL", 1, 200),
+    monthlyActivity = listOf(
+        MonthlyActivity(YearMonth.of(2026, 1), "Jan", 4, 6000),
+        MonthlyActivity(YearMonth.of(2026, 2), "Feb", 6, 8200),
+        MonthlyActivity(YearMonth.of(2026, 3), "Mar", 2, 2400),
+        MonthlyActivity(YearMonth.of(2026, 4), "Apr", 8, 11000),
+        MonthlyActivity(YearMonth.of(2026, 5), "May", 5, 7220),
+    ),
+    topAircraft = listOf(
+        TopAircraftStat(previewStatsAircraft, 18, 24000),
+    ),
+    favoriteDeparture = AirportCount("EHAM", "Amsterdam Schiphol", 14),
+    favoriteArrival = AirportCount("KJFK", "New York JFK", 6),
+    mostVisitedAirport = AirportCount("EHAM", "Amsterdam Schiphol", 20),
+    visitedAirports = PreviewAirports,
+    visitedLegs = PreviewLegs,
+)

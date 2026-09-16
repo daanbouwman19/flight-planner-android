@@ -1,8 +1,8 @@
 # Runs the full verification suite CLAUDE.md asks a human to run before calling a
-# change done: compile everything, run every unit test, run lint, and run
-# `checkInvariants` (wired into `check` by the convention plugins, so `build`
-# already covers it). A second job assembles the minified release, so R8 runs on
-# every PR too.
+# change done: compile everything, run every unit test, run lint, verify the
+# screenshot goldens and run `checkInvariants` (the last two wired into `check`,
+# so `build` already covers them). A second job assembles the minified release,
+# so R8 runs on every PR too.
 #
 # `debug-apk.yml` in this directory proves the app *assembles*; it never runs a
 # test or a lint check, so a change could break `:core:routing:test` or trip
@@ -72,6 +72,22 @@ jobs:
           path: |
             **/build/reports/tests/**
             **/build/test-results/**/*.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # `check` reaches `:app:verifyRoborazziDebug`, so a screenshot golden that
+      # no longer matches fails this job. The diffs it writes — reference, diff
+      # and new side by side, one per changed golden, in the golden's own
+      # directory — and the HTML report are what a reviewer needs to decide
+      # whether to re-record, so they come up with the failure.
+      - name: Upload screenshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: roborazzi-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            app/build/outputs/roborazzi/**
+            app/build/reports/roborazzi/**
           if-no-files-found: ignore
           retention-days: 14
 

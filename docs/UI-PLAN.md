@@ -2523,7 +2523,7 @@ did not ask for, the commit body says why, and the row says so briefly.
 | **H2** | ~~Macrobenchmark~~ | **Done as P2**, and extended to the globe on 2026-09-14 (`GlobeSpinBenchmark`, §9 *The frame callback, measured*) |
 | **H3** ✅ | Glance widget | "Today's challenge", 2026-09-16. `RouteGenerator.dailyChallenge` (`:core:routing`, tested) draws eight attempts from `Random(date.toEpochDay())` over the fleet sorted by id in `AllAircraft` mode and keeps the first survivor — so the route is the same for everyone with your fleet, unchanged by marking airframes flown, changed by adding one. `ChallengeWidget` in `app/…/widget/` is the glass, and it is the route card on the home screen: the route drawn on the world it crosses (see *What Phase H found* for how a map reaches Glance), the airframe and the date along the top, the codes at the bottom corners, DIST and ETE chips in the user's unit; two responsive layouts (the 2-cell one drops the airframe line), colours from `resolveColorScheme` through `glance-material3` so Cockpit and Chart and dynamic colour all carry over. It reaches the Hilt graph through the app's **first `@EntryPoint`** (`WidgetEntryPoint`) and never touches `AirportRepository` — codes come from the index, because reading names would run the 30 MB asset install inside a receiver on a phone that has never opened the app. Refresh is an inexact, non-waking `AlarmManager` `RTC` alarm at local midnight (`ChallengeRefresh`, re-armed on every render, cancelled in `onDisabled`) plus a manifest `TIMEZONE_CHANGED` filter; `updatePeriodMillis` cannot name a time and a WorkManager delay counts the wrong clock. The picker preview is Android 15's rendered kind, published once per `versionCode` from `MainActivity` after first composition (`PublishWidgetPreview`). Tap opens the route through the same Intent contract as H4. Tests: `DailyChallengeTest`, `DailyChallengeSourceTest`, `ChallengeRefreshTest` (a DST night is 23 h), `ChallengeContentTest` on Glance's own unit-test host. **See *What Phase H found* below for the WorkManager initializer this dragged in** |
 | **H4** ✅ | Shortcuts | Generate routes, Log a flight, Last route — `res/xml/shortcuts.xml`, three adaptive icons cut from the app's own glyphs. They and the widget share one Intent contract, `LaunchIntents` (`app/…/launch/`): four namespaced actions, primitive extras, `parse` never throws. `MainActivity` is `singleTask` now (a widget or shortcut `NEW_TASK` launch used to stack a second instance), reads the Intent only when `savedInstanceState == null`, and gains `onNewIntent`; the request waits in an activity-scoped `LaunchViewModel` until `FlightPlannerNavHost`'s `LaunchRequestConsumer` can act on it, gated on the PlanGraph entry existing. OpenRoute lands *over* Plan; GenerateRoutes calls `PlanViewModel.generate()`; LogFlight is consumed by `LogbookScreen` itself when the sheet opens (a nav argument would replay from a restored stack); **"Last route" is the route last opened** — recorded by both `RouteDetailViewModel` and `RouteDetailPaneViewModel` through a seam into a new `launch` DataStore — with the newest logbook flight as the fallback and Plan after that. `LaunchIntentsTest` parses the shortcut XML itself, so a typo there fails a unit test |
-| **H5** | Screenshot goldens | Roborazzi across light/dark, LTR/RTL, font scale 1.0/2.0, three window sizes. The globe is stubbed — it is covered by G1's math tests plus a device smoke check |
+| **H5** ✅ | Screenshot goldens | Roborazzi, 2026-09-16. **161 PNGs under `app/src/test/goldens/<subject>/<state>/<variant>.png`**, verified pixel for pixel by `:app:verifyRoborazziDebug`, which `check` reaches — so `build` and CI fail on a changed screen until `:app:recordRoborazziDebug` is run and the diff looked at. Sixteen subjects (every screen with a stateless body, the picker and add-flight pieces, and the design-system components goldened from `:app`), each at its primary state under **eight variants, one axis at a time**: base (light, LTR, 1.0, 360 × 800), dark, Cockpit, Chart, RTL, font 2.0, 700 dp, 1280 × 800 — not PLAN.md's cross-product, by user decision, and without `dynamic`, which under Robolectric is a fixed palette. Secondary states at base only. The harness is `GoldenSuite` / `captureGolden` in `app/src/test/…/ui/goldens/Goldens.kt`; its KDoc is the reference for what is held still and how. Main-source cost: `PlanPreviewContent` / `FleetPreviewContent` / `LogbookPreviewContent` split out of the preview wrappers, `SettingsContent` and `StartupCheckContent` extracted from their ViewModel-bound screens, the Stats fixture hoisted, and five `private → internal`. **See *What H5 found* — the goldens surfaced five layout defects on their first run** |
 | **H6** ✅ | ~~R8 rules and Play listing~~ R8 rules | **Play listing dropped by user decision, 2026-09-15.** The rules shipped 2026-09-16: `app/proguard-rules.pro` is down to `-keepattributes SourceFile,LineNumberTable` and `-renamesourcefileattribute SourceFile`, everything else it carried having turned out to be a copy of a rule its library already ships (see *What H6 found*). `verify.yml` gained a second job that runs `:app:assembleRelease`, so R8 now runs on every PR. The minified build was walked on the emulator across every path the macrobenchmarks do not touch — nav `toRoute`, `LastRouteStore`, NOAA METAR, Room writes, DataStore, Glance widget render and tap, shortcuts, self-check, Filament on Vulkan — with no missing class, member or serializer. Still owed to the phone: the AVWX DTO path (needs the key that lives there) and one `StartupBenchmark` run |
 
 ### What Phase H found
@@ -2549,6 +2549,69 @@ widget's `PendingIntent` carries only `NEW_TASK`, and with `standard` the system
 brings the task forward *and stacks a second instance on it*, each with its own
 NavHost. `singleTask` was the whole fix, and it is what makes `onNewIntent` the
 second place an Intent is read.
+
+**The globe was already stubbed; nobody had said so.** PLAN.md asked for a
+placeholder behind the overlay. None was needed: `GlobeSession.support()` asks the
+device for GLES 3, Robolectric reports none, and every `GlobeSurface` in the app
+already draws its still-map fallback for that answer — the route hero, the network
+card (which then offers no Globe mode), the immersive view's *unavailable* branch,
+and Settings' globe line. So the goldens show what a phone without a renderer
+shows, through the app's own code path rather than a test double. That is a
+better stub than a stub, and an implicit one, which is why it is now written down
+in `Goldens.kt`, on `SettingsContent`, and here.
+
+**RTL is `ar-rXB`, not `ldrtl`.** The harness asserts inside composition that the
+variant's font scale and layout direction actually arrived, and the first RTL run
+failed that assertion: the bare `ldrtl` qualifier reached resources but the
+framework rebuilt the layout direction from the locale — `en-US`, LTR — before the
+Activity's view saw it. Android's RTL pseudolocale `ar-XB` is what a developer
+turns on to test exactly this, and it carries the direction through: English
+strings, Latin digits, mirrored layout. A silent fallback to LTR would have been a
+green test of nothing, and the assertion is what turned it into a failing one.
+
+**Motion is held through the app's own seam.** `Settings.Global.ANIMATOR_DURATION_SCALE`
+set to 0 before composition is what `rememberReduceMotion()` reads, so the shimmer
+sits at mid alpha, the count-ups land on their targets, the windsock stops, and
+the entrance staggers do not stagger — the same path a user with animations off
+takes. The clock is then paused and advanced 1 s of virtual time so the 150 ms
+skeleton delay has fired. Nothing in the goldens reads the wall clock: the two
+METAR fixtures (`GoldenMetars.kt`) carry no observation time, so no age is counted.
+
+**Roborazzi names compare images after the golden's basename**, and a hundred
+goldens here are `base.png`. Two failures in different subjects overwrote each
+other's `base_compare.png` — planted, found, and fixed by pointing each capture's
+compare directory at the golden's own subdirectory. The CI artifact therefore
+mirrors the goldens tree.
+
+**What the goldens found on their first run.** None of these is fixed here — H5
+is the instrument, and each is a UI change to make and then re-record — but each
+is now pinned by a golden that will change when it is fixed:
+
+1. **Plan cards mirror their text in RTL but not their map.** The map is
+   geographic and correctly stays put; the code row mirrors, so `RJTT` labels the
+   *western* end of the arc. The codes, distance and time on a route card belong
+   to the map and should be forced LTR beneath it (`plan/routes/rtl.png`).
+2. **Airports at 360 dp × font 2.0 collapses the search field** to a narrow
+   column beside the Random button, and the placeholder breaks mid-word
+   (`airports/suggestions/font-2_0.png`). The button should wrap under the field
+   past a width, or the placeholder shorten.
+3. **Airports has no maximum content width**: at 1280 dp the rows run edge to
+   edge while Plan, Fleet and the detail panes stop at `MaxContentWidth`
+   (`airports/suggestions/expanded.png`).
+4. **Two clipped labels on the Plan card at font 2.0**: the filter field label
+   clips to `DEPARTUR` with no ellipsis, and the destination's runway figure
+   loses its unit (`plan/routes/font-2_0.png`).
+5. **Bidi reorders unit suffixes in RTL** — `12,467 ft` sets as `ft 12,467` on
+   every figure in the Airports rows (`airports/suggestions/rtl.png`). A figure and
+   its unit want to be one LTR run.
+
+**Recorded on Windows, verified on Linux.** Both hosts render through the same
+Robolectric native runtime and the same fonts out of `android-all`, and Roborazzi
+still declines to promise identical pixels across them. Whether they match is
+settled by the first CI run of this branch and recorded below when it is; the
+answer decides between leaving `changeThreshold` at 0 (the current setting, so a
+changed 12 sp label cannot hide inside a tolerance) and recording the goldens on
+the runner that verifies them.
 
 **The R8 rules file was three duplicates and one omission.** The audit did not
 start from the rules file; it started from what R8 actually ran.

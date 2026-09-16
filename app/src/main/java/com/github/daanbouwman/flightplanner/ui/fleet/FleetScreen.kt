@@ -550,27 +550,31 @@ private val FabClearance = 112.dp
 
 @Composable
 private fun PreviewFleet(state: FleetUiState) {
-    FlightPlannerTheme(dynamicColor = false) {
-        Surface(color = MaterialTheme.colorScheme.background) {
-            FleetContent(
-                state = state,
-                listState = rememberLazyListState(),
-                contentPadding = PaddingValues(16.dp),
-                header = {
-                    Text(
-                        text = "Fleet",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                },
-                onOpenAircraft = {},
-                onToggleFlown = {},
-            )
-        }
+    FlightPlannerTheme(dynamicColor = false) { FleetPreviewContent(state) }
+}
+
+/** The Fleet list at rest, minus theme — shared by the previews and the goldens. */
+@Composable
+internal fun FleetPreviewContent(state: FleetUiState) {
+    Surface(color = MaterialTheme.colorScheme.background) {
+        FleetContent(
+            state = state,
+            listState = rememberLazyListState(),
+            contentPadding = PaddingValues(16.dp),
+            header = {
+                Text(
+                    text = "Fleet",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            },
+            onOpenAircraft = {},
+            onToggleFlown = {},
+        )
     }
 }
 
-private val previewFleet = listOf(
+internal val previewFleet = listOf(
     AircraftSpec(
         id = 1,
         manufacturer = "Boeing",

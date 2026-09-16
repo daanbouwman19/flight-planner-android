@@ -759,3 +759,22 @@ a clipped runway figure for precisely that reason.
 3. If it animates, drive it from `FlightMotion`, and handle `rememberReduceMotion()`
    if the animation is infinite or staged.
 4. Update this file.
+5. Add it to `DesignSystemGoldens` in `app/src/test/…/ui/goldens/` and run
+   `./gradlew :app:recordRoborazziDebug --tests '*DesignSystemGoldens*'`.
+
+## Screenshot goldens
+
+The components are pinned by Roborazzi goldens that live in **`:app`**, not here:
+`app/src/test/goldens/designsystem/{atoms,states,maps,sky}/`. `:app` already carries
+the Robolectric and Compose test stack and depends on this module, so a change here
+fails `:app:verifyRoborazziDebug` — which `check`, and so `build` and CI, reach —
+exactly as a change to a screen would. Giving this module its own copy of that stack
+for one suite was not worth a second goldens tree.
+
+Each golden is a column of a component family under one theme variant; the `atoms`
+column runs under all eight (light, dark, Cockpit, Chart, RTL, font 2.0, 700 dp,
+1280 × 800). Motion is held still through `rememberReduceMotion()`'s own seam, so the
+skeleton, the count-ups and the windsock are captured at rest; see the KDoc on
+`GoldenSuite` for everything the harness holds and why. A deliberate visual change
+is re-recorded with `./gradlew :app:recordRoborazziDebug` and reviewed as a PNG diff
+before it is committed.
