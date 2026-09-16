@@ -27,6 +27,7 @@ import com.github.daanbouwman.flightplanner.R
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
+import com.github.daanbouwman.flightplanner.feature.globe.tile.ImageryAttribution
 import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeImagery
 
 /**
@@ -49,7 +50,16 @@ import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeImagery
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LicencesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun LicencesScreen(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    /**
+     * The globe imagery credit to print. The build's own by default; a parameter
+     * so the screenshot golden can pin [GlobeImagery.keyless] and stop depending
+     * on whether the recording machine had an ArcGIS key.
+     */
+    imagery: ImageryAttribution = GlobeImagery.attribution,
+) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -67,12 +77,12 @@ fun LicencesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         },
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
     ) { contentPadding ->
-        LicencesContent(modifier = Modifier.padding(contentPadding))
+        LicencesContent(imagery = imagery, modifier = Modifier.padding(contentPadding))
     }
 }
 
 @Composable
-private fun LicencesContent(modifier: Modifier = Modifier) {
+private fun LicencesContent(imagery: ImageryAttribution, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -97,7 +107,6 @@ private fun LicencesContent(modifier: Modifier = Modifier) {
         )
 
         SectionLabel(stringResource(R.string.licences_imagery_title), topPadding = 16.dp)
-        val imagery = GlobeImagery.attribution
         Text(
             text = imagery.notice,
             style = MaterialTheme.typography.bodyMedium,
@@ -125,6 +134,6 @@ private fun SectionLabel(text: String, topPadding: Dp = 8.dp) {
 @Composable
 private fun LicencesScreenPreview() {
     FlightPlannerTheme(dynamicColor = false) {
-        LicencesContent()
+        LicencesContent(imagery = GlobeImagery.keyless)
     }
 }

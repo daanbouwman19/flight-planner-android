@@ -2605,13 +2605,17 @@ is now pinned by a golden that will change when it is fixed:
    every figure in the Airports rows (`airports/suggestions/rtl.png`). A figure and
    its unit want to be one LTR run.
 
-**Recorded on Windows, verified on Linux.** Both hosts render through the same
-Robolectric native runtime and the same fonts out of `android-all`, and Roborazzi
-still declines to promise identical pixels across them. Whether they match is
-settled by the first CI run of this branch and recorded below when it is; the
-answer decides between leaving `changeThreshold` at 0 (the current setting, so a
-changed 12 sp label cannot hide inside a tolerance) and recording the goldens on
-the runner that verifies them.
+**Recorded on Windows, verified on Linux — byte for byte.** Roborazzi declines to
+promise identical pixels across hosts; the first CI run of this branch measured it.
+154 of 161 goldens passed unchanged, and the seven that failed were all the
+Licences page, which had **different text**: Esri's credit on the machine with an
+ArcGIS key in `local.properties`, NASA's on the runner without one. Not rendering
+at all — a golden depending on a credential. `LicencesScreen` now takes the
+attribution as a parameter and the golden pins `GlobeImagery.keyless`. Re-recorded
+on Windows, all seven are byte-identical to the PNGs the Linux runner had
+produced (`cmp` on the CI artifact's `*_actual.png`), so every one of the 161 is now
+known to render the same on both. `changeThreshold` stays at 0 and there is no
+record-on-CI workflow to maintain: record locally, look, commit.
 
 **The R8 rules file was three duplicates and one omission.** The audit did not
 start from the rules file; it started from what R8 actually ran.

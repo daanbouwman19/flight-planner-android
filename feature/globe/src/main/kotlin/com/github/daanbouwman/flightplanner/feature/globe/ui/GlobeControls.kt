@@ -514,4 +514,13 @@ private const val NeedleWaist = 0.16f
 object GlobeImagery {
     /** What the active provider requires drawn over its imagery. */
     val attribution: ImageryAttribution get() = TileProviders.active.attribution
+
+    /**
+     * The credit a clone without an ArcGIS key shows — NASA's. The same on every
+     * machine, which is what a screenshot golden of a screen that prints the
+     * credit needs: [attribution] follows `local.properties`, and a golden
+     * recorded beside a key and verified on a runner without one would differ
+     * in the text alone.
+     */
+    val keyless: ImageryAttribution get() = TileProviders.select(null).attribution
 }
