@@ -67,15 +67,35 @@ export type { ConfirmationDialogProps, ScrimOverlayProps } from './components/Co
 export { RouteMap, WORLD_MAP_LAND_ALPHA, WORLD_MAP_COAST_ALPHA } from './components/RouteMap'
 export type { RouteMapProps } from './components/RouteMap'
 
-export { GlobeHero, ImmersiveGlobeView, GlobeCameraControls, GlobeAttribution, GlobeSphere, GlobeRouteArc } from './components/GlobeHero'
-export type {
-  GlobeHeroProps,
-  ImmersiveGlobeViewProps,
-  GlobeCameraControlsProps,
-  GlobeAttributionProps,
-  GlobeSphereProps,
-  GlobeRouteArcProps,
-} from './components/GlobeHero'
+// Phase G — the 3D globe. In the app it is NASA imagery on a Filament sphere; the
+// mirror draws the same `land.outline` through the same camera as an outline
+// globe (the runtime has no GPU). See `geo/globeFrame.ts` for the divergence.
+export { GlobeView, GLOBE_VB_HEIGHT } from './components/GlobeView'
+export type { GlobeViewProps } from './components/GlobeView'
+export { GlobeHero, GlobeRouteScene } from './components/GlobeHero'
+export type { GlobeHeroProps, GlobeRouteSceneProps, GlobeHeroEnd } from './components/GlobeHero'
+export { GlobeNetwork } from './components/GlobeNetwork'
+export type { GlobeNetworkProps } from './components/GlobeNetwork'
+export {
+  GlobeCameraControls,
+  GlobeAttribution,
+  GLOBE_PLATE_ALPHA,
+  GLOBE_CONTROL_SIZE,
+} from './components/GlobeChrome'
+export type { GlobeCameraControlsProps, GlobeAttributionProps } from './components/GlobeChrome'
+export {
+  GlobeCamera,
+  frameRoute,
+  framePoints,
+  projectArc,
+  projectOutline,
+  projectPoint,
+  latLonToWorld,
+  GLOBE_FOV_Y,
+} from './geo/globeFrame'
+export type { GlobeViewport, ScreenPoint, Vec3, WorldOutlineLike } from './geo/globeFrame'
+export { ImmersiveGlobeScreen } from './screens/ImmersiveGlobeScreen'
+export type { ImmersiveGlobeScreenProps } from './screens/ImmersiveGlobeScreen'
 
 export { ChallengeWidgetCard } from './components/ChallengeWidget'
 export type {

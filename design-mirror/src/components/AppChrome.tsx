@@ -105,15 +105,31 @@ export interface TopAppBarProps {
   title: string
   /** Drawn on the right. Settings lives here rather than in the navigation bar. */
   action?: ReactNode
+  /**
+   * Several controls on the right, when one `action` is not enough — the route
+   * detail's Flat/Globe switch and its fullscreen action, for instance.
+   */
+  actions?: ReactNode
   /** Draws a back arrow on the left. */
   onBack?: () => void
+  /**
+   * The bar is sitting over a photograph (the route detail's globe hero). The
+   * title and every button move onto the same translucent glass plate the
+   * globe's own labels and credit use — a photograph cannot be relied on for
+   * contrast the way the theme's surface can. `overImagery` in the app.
+   */
+  onGlass?: boolean
   className?: string
 }
 
 /** The screen's app bar. Transparent, so content scrolls up under it. */
-export function TopAppBar({ title, action, onBack, className }: TopAppBarProps) {
+export function TopAppBar({ title, action, actions, onBack, onGlass, className }: TopAppBarProps) {
   return (
-    <header className={['fp-app-bar', className].filter(Boolean).join(' ')}>
+    <header
+      className={['fp-app-bar', onGlass ? 'fp-app-bar--glass' : null, className]
+        .filter(Boolean)
+        .join(' ')}
+    >
       {onBack != null && (
         <button type="button" className="fp-app-bar__back" onClick={onBack} aria-label="Back">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -121,8 +137,11 @@ export function TopAppBar({ title, action, onBack, className }: TopAppBarProps) 
           </svg>
         </button>
       )}
-      <h1 className="fp-app-bar__title fp-type-headline-medium">{title}</h1>
+      <h1 className="fp-app-bar__title fp-type-headline-medium">
+        {onGlass ? <span className="fp-app-bar__title-plate">{title}</span> : title}
+      </h1>
       {action}
+      {actions}
     </header>
   )
 }

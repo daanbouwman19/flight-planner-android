@@ -76,6 +76,35 @@ export const OneRegion = () => (
   </div>
 )
 
+/**
+ * With `globeAvailable`, the card grows a Flat/Globe toggle in its header —
+ * **Flat first**. The flat map is honest about how dense a network is and is
+ * right for a regional logbook; the globe is honest about how far apart the
+ * airports are and is what a logbook spanning hemispheres needs. The toggle is
+ * absent, not disabled, where the device cannot draw a globe (3B).
+ */
+export const WithGlobeToggle = () => (
+  <div style={{ width: 380 }}>
+    <VisitedNetworkCard
+      airports={EUROPE}
+      legs={[leg('EHAM', 'EGLL'), leg('EHAM', 'LEMD'), leg('EHAM', 'ESSA'), leg('EDDF', 'LIRF')]}
+      globeAvailable
+    />
+  </div>
+)
+
+/** The Globe state of that toggle — the same network on the sphere. */
+export const GlobeMode = () => (
+  <div style={{ width: 380 }}>
+    <VisitedNetworkCard
+      airports={EUROPE}
+      legs={[leg('EHAM', 'EGLL'), leg('EHAM', 'LEMD'), leg('EHAM', 'ESSA'), leg('EDDF', 'LIRF')]}
+      globeAvailable
+      initialView="globe"
+    />
+  </div>
+)
+
 /** Nothing logged yet — a line rather than an empty world. */
 export const NothingLogged = () => (
   <div style={{ width: 380 }}>

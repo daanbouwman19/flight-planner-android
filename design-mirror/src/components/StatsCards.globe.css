@@ -1,0 +1,19 @@
+/*
+ * The visited network's Globe mode — a full-bleed band across the card, square
+ * corners, taller than the flat map. `GlobeNetworkBand` in the app.
+ *
+ * ### Why it breaks the card's inset and takes square corners
+ *
+ * In the app the globe is a `SurfaceView` composited below the window, and a
+ * Compose clip never reaches it — rounded corners here would be rounded in a
+ * preview and square on a device. Rather than ship corners that are a lie, the
+ * globe is presented the way full-bleed media is: edge to edge, square. The
+ * mirror keeps that presentation so a concept drawn against it does not assume
+ * a rounded band it cannot have.
+ */
+.fp-visited-card__globe {
+  margin: 4px -16px 0;
+  /* Taller than the 180 dp flat map: a sphere needs a box near square before the
+     curvature reads. `GlobeBandHeight` in the app. */
+  height: 260px;
+}
