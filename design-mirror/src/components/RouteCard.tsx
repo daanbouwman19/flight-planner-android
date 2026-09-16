@@ -152,6 +152,11 @@ export function RouteCard({
           destLat={destination.lat}
           destLon={destination.lon}
           aspect={mapAspect}
+          // The band the aircraft line is printed across: the card's 16 dp
+          // padding plus titleSmall's 20 dp line height. The route is framed
+          // below it, so a north-south leg no longer parks its departure on
+          // the title's baseline. See RouteMap's `topInset`.
+          topInset={36}
         />
       </div>
 

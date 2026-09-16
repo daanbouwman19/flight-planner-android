@@ -108,9 +108,23 @@ export class MapFrame {
   /**
    * A window around a sampled route, sized to the canvas it will be drawn on.
    *
+   * ### A band at the top can be kept clear
+   *
+   * The route card prints its title across the top of the map, and a
+   * north-south leg framed symmetrically put its northern endpoint on the
+   * title's baseline and ran the arc under the letters. `topInsetFraction` is
+   * the fraction of the canvas height that belongs to that text: the route is
+   * fitted into the region *below* it, with `paddingFraction` applied within
+   * that region, and the window is then extended north to cover the full
+   * canvas. So the band is part of the map — land runs through it, and a
+   * coast is not cut off at the title — and no part of the route is. Zero by
+   * default, which is every map without text over it.
+   *
    * @param aspect canvas width divided by height. The spans are fitted to it so a
    *   degree covers the same number of pixels on both axes and land is not
    *   squashed to the card's shape.
+   * @param topInsetFraction the fraction of the canvas height, from the top, that
+   *   the route keeps clear. In `[0, 1)`.
    */
   static forRoute(
     lats: number[],
@@ -118,6 +132,33 @@ export class MapFrame {
     aspect: number,
     minSpanDegrees = MIN_SPAN_DEGREES,
     paddingFraction = PADDING_FRACTION,
+    topInsetFraction = 0,
+  ): MapFrame {
+    if (!(topInsetFraction >= 0 && topInsetFraction < 1)) {
+      throw new Error(`Top inset must leave some of the canvas for the route, was ${topInsetFraction}`)
+    }
+    if (topInsetFraction === 0) return MapFrame.fitted(lats, lons, aspect, minSpanDegrees, paddingFraction)
+
+    const remaining = 1 - topInsetFraction
+    const band = MapFrame.fitted(lats, lons, aspect / remaining, minSpanDegrees, paddingFraction)
+    const spanLat = band.spanLat / remaining
+    return new MapFrame(
+      band.centreLon,
+      // The band keeps its place at the bottom of the canvas; the extra height
+      // is all above it, so the centre moves north by half of it.
+      band.centreLat + (spanLat - band.spanLat) / 2,
+      band.spanLon,
+      spanLat,
+    )
+  }
+
+  /** {@link forRoute} with the route filling the whole canvas. */
+  private static fitted(
+    lats: number[],
+    lons: number[],
+    aspect: number,
+    minSpanDegrees: number,
+    paddingFraction: number,
   ): MapFrame {
     if (lats.length === 0 || lats.length !== lons.length) {
       throw new Error(`Need matching non-empty arrays, got ${lats.length} and ${lons.length}`)
@@ -538,4 +579,81 @@ export function distanceNm(
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRadians(depLat)) * Math.cos(toRadians(destLat)) * Math.sin(dLon / 2) ** 2
   return 2 * Math.asin(Math.min(1, Math.sqrt(a))) * 3440.065
+}
+
+/**
+ * Longitude conventions for a *set* of places — ported field-for-field from
+ * `NetworkFraming` in `:core:routing`.
+ *
+ * A route is unwrapped by walking it (see `sampleGeoArc`'s own unwrap): each
+ * sample is made continuous with the one before. A network has no walk — it
+ * is a bag of airports — so fitting a frame to raw longitudes does to Fiji and
+ * Samoa exactly what the walk exists to prevent: two fields 800 NM apart at
+ * +177° and −172° frame a window 349° wide with the whole planet between them.
+ *
+ * The seam goes where the airports are not: every set of longitudes divides
+ * the circle into gaps, and the widest gap is the one that can hold the seam.
+ */
+
+/** [lon] moved by whole turns to the value nearest [reference]. */
+export function nearestTurn(lon: number, reference: number): number {
+  return lon + Math.round((reference - lon) / 360) * 360
+}
+
+function normaliseLon(lon: number): number {
+  if (lon >= -180 && lon < 180) return lon
+  let value = ((lon + 180) % 360 + 360) % 360
+  return value - 180
+}
+
+/**
+ * [lons] shifted by whole turns onto the shortest arc of longitude that
+ * contains all of them, keeping input order.
+ */
+export function unwrapLongitudeSet(lons: number[]): number[] {
+  if (lons.length === 0) return []
+  const normalised = lons.map(normaliseLon)
+  const sorted = [...normalised].sort((a, b) => a - b)
+
+  let widest = sorted[0] + 360 - sorted[sorted.length - 1]
+  let start = sorted[0]
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gap = sorted[i + 1] - sorted[i]
+    if (gap > widest) {
+      widest = gap
+      start = sorted[i + 1]
+    }
+  }
+
+  return normalised.map((lon) => (lon < start ? lon + 360 : lon))
+}
+
+/**
+ * The whole-turn shifts, in degrees, at which a leg's raw `[departureLon,
+ * destinationLon]` has to be drawn so it appears in a frame centred on
+ * [centreLon]. One shift for the usual case; two when the ends land in
+ * different turns, so the leg is drawn once leaving one edge of the frame and
+ * once entering the other.
+ */
+export function arcShifts(departureLon: number, destinationLon: number, centreLon: number): number[] {
+  const departure = nearestTurn(departureLon, centreLon) - departureLon
+  const destination = nearestTurn(destinationLon, centreLon) - destinationLon
+  return departure === destination ? [departure] : [departure, destination]
+}
+
+/**
+ * Where a visited airport's dot sits between the smallest and the largest dot
+ * in its set, as a fraction `0..1` of the way from the minimum radius to the
+ * maximum — ported field-for-field from `nodeSizeFraction` in
+ * `:core:designsystem`. Scaled from the set's own minimum, not from zero: the
+ * least-visited field is always the small dot, the most-visited always the
+ * large one, and a set where every count is equal is all small dots. Between
+ * them the fraction goes as the square root of the count *above the floor*,
+ * so the dot's **area** grows linearly with the visits a field has over the
+ * least-visited one.
+ */
+export function nodeSizeFraction(visits: number, minVisits: number, maxVisits: number): number {
+  if (maxVisits <= minVisits) return 0
+  const above = Math.min(Math.max(visits, minVisits), maxVisits) - minVisits
+  return Math.sqrt(above / (maxVisits - minVisits))
 }

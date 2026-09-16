@@ -212,6 +212,15 @@ change one says so in words instead:
 
 The drag handle on `BottomSheet` is drawn and does nothing, for the same reason.
 
+**`GlobeHero` and `ImmersiveGlobeView` are illustration, not a 3D engine.** The
+real app's route-detail hero is a Filament/Vulkan globe with streamed satellite
+tiles, pinch-zoom and rotation — far outside what a static design canvas can
+render. What is here is a themed, non-interactive stand-in: a lit sphere, the
+route arc, the camera-control plate and the imagery credit, all real tokens. The
+arc's curve is decorative and does not change with the route's actual distance
+or bearing — read those from the figures beside it (a spine on the deep hero,
+the `RoutePlate` on the immersive view), never from the sphere.
+
 ## Where the truth lives
 
 - `_ds/<folder>/styles.css` and its imports — every token, in one place. Read it

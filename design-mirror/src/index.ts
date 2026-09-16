@@ -67,6 +67,16 @@ export type { ConfirmationDialogProps, ScrimOverlayProps } from './components/Co
 export { RouteMap, WORLD_MAP_LAND_ALPHA, WORLD_MAP_COAST_ALPHA } from './components/RouteMap'
 export type { RouteMapProps } from './components/RouteMap'
 
+export { GlobeHero, ImmersiveGlobeView, GlobeCameraControls, GlobeAttribution, GlobeSphere, GlobeRouteArc } from './components/GlobeHero'
+export type {
+  GlobeHeroProps,
+  ImmersiveGlobeViewProps,
+  GlobeCameraControlsProps,
+  GlobeAttributionProps,
+  GlobeSphereProps,
+  GlobeRouteArcProps,
+} from './components/GlobeHero'
+
 export { MapFrame, sampleGeoArc, distanceNm, MIN_SPAN_DEGREES, PADDING_FRACTION } from './geo/mapFrame'
 export type { GeoArc, ProjectedRings, ProjectedLand, WorldOutline } from './geo/mapFrame'
 export { worldOutline } from './geo/worldOutline.gen'
