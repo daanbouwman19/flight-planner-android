@@ -1,26 +1,31 @@
 package com.github.daanbouwman.flightplanner
 
+import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
-import com.github.daanbouwman.flightplanner.settings.AppSettings
-import com.github.daanbouwman.flightplanner.settings.SettingsRepository
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.getValue
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.core.database.airport.AirportAssetInstaller
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
 import com.github.daanbouwman.flightplanner.index.AirportIndexProvider
+import com.github.daanbouwman.flightplanner.launch.LaunchIntents
+import com.github.daanbouwman.flightplanner.launch.LaunchViewModel
+import com.github.daanbouwman.flightplanner.settings.AppSettings
+import com.github.daanbouwman.flightplanner.settings.SettingsRepository
 import com.github.daanbouwman.flightplanner.startup.splashShouldHold
 import com.github.daanbouwman.flightplanner.ui.FlightPlannerApp
 import com.github.daanbouwman.flightplanner.ui.LocalUnitSystem
+import com.github.daanbouwman.flightplanner.widget.PublishWidgetPreview
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -36,6 +41,12 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var settingsRepository: SettingsRepository
 
+    /**
+     * Where an arriving Intent's request waits for the NavHost. See
+     * [LaunchViewModel] for why it is a ViewModel and not a field here.
+     */
+    private val launch: LaunchViewModel by viewModels()
+
     @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
@@ -43,6 +54,14 @@ class MainActivity : ComponentActivity() {
         // Hilt injects during super.onCreate, so the provider is only safe to
         // read after this line — hence the keep-on-screen condition below it.
         super.onCreate(savedInstanceState)
+
+        // Only a *fresh* activity reads its Intent. After process death the
+        // system hands the same launch Intent back with a saved state, and the
+        // NavController restores the stack that Intent already produced — so
+        // parsing it again would replay a shortcut on top of its own result.
+        if (savedInstanceState == null) {
+            launch.offer(LaunchIntents.parse(intent))
+        }
 
         // The index build and the database install were started in
         // Application.onCreate and normally settle inside single-digit
@@ -83,10 +102,26 @@ class MainActivity : ComponentActivity() {
                     // semantics and changes nothing a user can observe.
                     FlightPlannerApp(
                         modifier = Modifier.semantics { testTagsAsResourceId = true },
+                        launchRequests = launch,
                     )
+                    // After the app, so it composes after the first frame's
+                    // content and never ahead of it.
+                    PublishWidgetPreview()
                 }
             }
         }
+    }
+
+    /**
+     * A widget tap or a shortcut while the app is already running. The
+     * manifest's `singleTask` is what routes it here rather than to a second
+     * instance; `setIntent` keeps `getIntent()` truthful for anything that
+     * asks later.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        launch.offer(LaunchIntents.parse(intent))
     }
 
     private companion object {

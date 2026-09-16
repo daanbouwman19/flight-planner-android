@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Launcher shortcut icon. Adaptive, like the launcher icon, so every launcher
+    masks and badges it the same way; the glyph is ic_plan_replace's, scaled from its
+    24 dp grid into the 66 dp safe zone of the 108 dp canvas and inked in the
+    launcher's navy. No -v26 qualifier: minSdk is 35.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_shortcut_generate_foreground" />
+    <monochrome android:drawable="@drawable/ic_shortcut_generate_foreground" />
+</adaptive-icon>

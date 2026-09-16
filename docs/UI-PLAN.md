@@ -22,7 +22,7 @@ Verified against the source tree, not against the plan.
 | `:core:designsystem` | **Complete for what exists.** Theme, motion, shapes, and the component catalogue — the states, chips and headers from Phase A, `RouteMap` and `NetworkMap` (one ink family), `RunwayDiagram`, `SkyProfile`, the dialogs and the swipe background. See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
 | `:core:network` | **Complete for Phase F′.** `NetworkModule` (the OkHttp client and its cache), the NOAA and AVWX METAR clients with their DTOs, and the bindings module. The AVWX fan-out is bounded to four in flight |
 | `:feature:globe` | **Phase G, overhauled.** Filament renderer, tile pipeline (keyed Esri or GIBS imagery, z-bucketed queue, atlas), pure-JVM camera and quadtree, the gesture recogniser, the Compose hosts and labels, `FilamentProbe`, and the offline notice. Traced on hardware: §9 *The frame callback, measured* |
-| `:app` | Shell, navigation, the self-check (with a way back), the Plan screen, the route detail (screen and pane, sharing `RouteDetailLoader`), the immersive globe, Settings, Logbook (with swipe-to-delete, undo, an add-flight sheet and a two-pane flight-detail layout), Fleet (list, detail, management, unit-aware forms), Stats (dashboard with 9 metrics, monthly chart, the visited network flat and on the globe, and timeframe filters), and Airports (browse plus detail, E1/E2) — reached from an icon on Plan's header, not the bar, see F10 |
+| `:app` | Shell, navigation, the self-check (with a way back), the Plan screen, the route detail (screen and pane, sharing `RouteDetailLoader`), the immersive globe, Settings, Logbook (with swipe-to-delete, undo, an add-flight sheet and a two-pane flight-detail layout), Fleet (list, detail, management, unit-aware forms), Stats (dashboard with 9 metrics, monthly chart, the visited network flat and on the globe, and timeframe filters), and Airports (browse plus detail, E1/E2) — reached from an icon on Plan's header, not the bar, see F10. From Phase H: the `launch` package (the Intent contract, `LaunchViewModel`, the `launch` DataStore), the `widget` package ("Today's challenge", the first `@EntryPoint`), and `res/xml/shortcuts.xml` |
 | `:macrobenchmark` | **The instrument, from P2.** `FrameTimingMetric` over a scripted fling, `StartupTimingMetric` over a cold start, and `GlobeSpinBenchmark` with `TraceSectionSamplesMetric` over the globe's frame callback, all on the `benchmarkRelease` variant, plus `BaselineProfileGenerator` from P1. See [the module README](../macrobenchmark/README.md) |
 
 The three gaps the original plan did not cover — the index carrying no display
@@ -2521,10 +2521,76 @@ did not ask for, the commit body says why, and the row says so briefly.
 | --- | --- | --- |
 | **H1** | ~~Baseline profile~~ | **Moved to P1.** It is the instrument, not the polish |
 | **H2** | ~~Macrobenchmark~~ | **Done as P2**, and extended to the globe on 2026-09-14 (`GlobeSpinBenchmark`, §9 *The frame callback, measured*) |
-| **H3** | Glance widget | "Today's challenge" — one route seeded by `LocalDate.toEpochDay()`, deterministic across the day. Nearly free given the seeded RNG |
-| **H4** | Shortcuts | Generate route, log a flight, last route |
+| **H3** ✅ | Glance widget | "Today's challenge", 2026-09-16. `RouteGenerator.dailyChallenge` (`:core:routing`, tested) draws eight attempts from `Random(date.toEpochDay())` over the fleet sorted by id in `AllAircraft` mode and keeps the first survivor — so the route is the same for everyone with your fleet, unchanged by marking airframes flown, changed by adding one. `ChallengeWidget` in `app/…/widget/` is the glass, and it is the route card on the home screen: the route drawn on the world it crosses (see *What Phase H found* for how a map reaches Glance), the airframe and the date along the top, the codes at the bottom corners, DIST and ETE chips in the user's unit; two responsive layouts (the 2-cell one drops the airframe line), colours from `resolveColorScheme` through `glance-material3` so Cockpit and Chart and dynamic colour all carry over. It reaches the Hilt graph through the app's **first `@EntryPoint`** (`WidgetEntryPoint`) and never touches `AirportRepository` — codes come from the index, because reading names would run the 30 MB asset install inside a receiver on a phone that has never opened the app. Refresh is an inexact, non-waking `AlarmManager` `RTC` alarm at local midnight (`ChallengeRefresh`, re-armed on every render, cancelled in `onDisabled`) plus a manifest `TIMEZONE_CHANGED` filter; `updatePeriodMillis` cannot name a time and a WorkManager delay counts the wrong clock. The picker preview is Android 15's rendered kind, published once per `versionCode` from `MainActivity` after first composition (`PublishWidgetPreview`). Tap opens the route through the same Intent contract as H4. Tests: `DailyChallengeTest`, `DailyChallengeSourceTest`, `ChallengeRefreshTest` (a DST night is 23 h), `ChallengeContentTest` on Glance's own unit-test host. **See *What Phase H found* below for the WorkManager initializer this dragged in** |
+| **H4** ✅ | Shortcuts | Generate routes, Log a flight, Last route — `res/xml/shortcuts.xml`, three adaptive icons cut from the app's own glyphs. They and the widget share one Intent contract, `LaunchIntents` (`app/…/launch/`): four namespaced actions, primitive extras, `parse` never throws. `MainActivity` is `singleTask` now (a widget or shortcut `NEW_TASK` launch used to stack a second instance), reads the Intent only when `savedInstanceState == null`, and gains `onNewIntent`; the request waits in an activity-scoped `LaunchViewModel` until `FlightPlannerNavHost`'s `LaunchRequestConsumer` can act on it, gated on the PlanGraph entry existing. OpenRoute lands *over* Plan; GenerateRoutes calls `PlanViewModel.generate()`; LogFlight is consumed by `LogbookScreen` itself when the sheet opens (a nav argument would replay from a restored stack); **"Last route" is the route last opened** — recorded by both `RouteDetailViewModel` and `RouteDetailPaneViewModel` through a seam into a new `launch` DataStore — with the newest logbook flight as the fallback and Plan after that. `LaunchIntentsTest` parses the shortcut XML itself, so a typo there fails a unit test |
 | **H5** | Screenshot goldens | Roborazzi across light/dark, LTR/RTL, font scale 1.0/2.0, three window sizes. The globe is stubbed — it is covered by G1's math tests plus a device smoke check |
-| **H6** | R8 rules and Play listing | |
+| **H6** | ~~R8 rules and Play listing~~ R8 rules | **Play listing dropped by user decision, 2026-09-15.** The R8 rules remain |
+
+### What Phase H found
+
+**Glance drags WorkManager in, and WorkManager arrives with a start-up initializer.**
+Glance renders every widget session inside a WorkManager worker, so `glance-appwidget`
+brings `work-runtime` transitively, and its manifest merges
+`androidx.work.WorkManagerInitializer` into the `androidx.startup.InitializationProvider`
+the app already carries for ProfileInstaller, EmojiCompat, ProcessLifecycle and
+OkHttp. Left alone, every launch of the app — widget or no widget — would have built
+`WorkManagerImpl` (executors, schedulers, a Room database, a `ForceStopRunnable`)
+before `Application.onCreate`. That is exactly the spend the cold-start invariant
+forbids, for a feature the launch does not use. The manifest removes that one
+`<meta-data>` with `tools:node="remove"` and `FlightPlannerApplication` implements
+`Configuration.Provider` as a getter, so WorkManager initialises the first time
+Glance asks. The merged manifest is the proof: the only `WorkManagerInitializer`
+left in it is the comment saying it must be absent. Recorded in
+[API-GROUND-TRUTH.md](API-GROUND-TRUTH.md) with the rest of the Glance probe.
+
+**A single-activity app is `standard` until something outside it starts it.** The
+launcher always started `MainActivity` fresh, so `launchMode` never mattered. A
+widget's `PendingIntent` carries only `NEW_TASK`, and with `standard` the system
+brings the task forward *and stacks a second instance on it*, each with its own
+NavHost. `singleTask` was the whole fix, and it is what makes `onNewIntent` the
+second place an Intent is read.
+
+**Cold start, measured after all of it.** `StartupBenchmark` on the SM-S942B,
+2026-09-16, `benchmarkRelease`, twelve iterations each:
+
+| variant | min | median | max |
+| --- | --- | --- | --- |
+| `startupBaselineProfile` (the shipped state) | 149.7 | **165.6** | 227.2 |
+| `startupPartialCompilation` | 155.7 | 164.0 | 198.1 |
+| `startupNoCompilation` | 183.9 | 196.3 | 229.5 |
+
+Against the 169 ms on record: unchanged, inside the noise. The WorkManager
+initializer removal is what kept it there; nothing else in Phase H runs before
+first frame. `user.db` was backed up before and restored after, per the memory
+rule the last benchmark day taught.
+
+**The widget is the route card, so it draws the route card's map.** The first
+build was text on a plain card; the user asked for the map, which was the right
+call — a route without the world under it is a pair of codes. Glance cannot draw,
+so `RouteMap`'s geometry and drawing moved out of its `drawWithCache` into
+`RouteMapScene` / `drawRouteMap` (`:core:designsystem`), and a new
+`renderRouteMapLayers` paints the same scene off-screen as **three alpha masks** —
+land and coast, casing, route — that the widget shows as tinted `Image`s: land
+in `onSurface`, casing in `surface`, route in `primary`. The card itself is
+`surface` too, **not Glance's `widgetBackground`**: that role is the wallpaper's
+*secondary accent* tone (`system_accent2_800` at night), which is why the first
+build came out saturated green on a green-seeded wallpaper while every card in
+the app is a neutral surface. The one role swap made the widget the app's colour.
+**Verified on the SM-S942B in light mode** (One UI, the user's wallpaper palette):
+LFPO → LRBC over France and the Balkans, sea at the near-white `surface`, land 8 %
+darker, coast darker still, the route in the wallpaper's primary — sampled at the
+pixel, because at a glance the Channel read as a white coastline. One UI keeps
+widgets in a **stack** (a bar at the card's right edge); a vertical swipe inside
+the card cycles it, and the launcher's accessibility nodes carry the *launcher's*
+package name, so grepping a `uiautomator` dump for the app's package finds nothing.
+Masks rather
+than one coloured bitmap because Glance tints with a colour *provider* that
+resolves at display time, so the map follows a night-mode switch and a wallpaper
+change that a pre-coloured bitmap would miss until the midnight alarm. The one
+visible difference from the card: drawn a layer at a time, the arrowhead's casing
+sits under the route line instead of cutting it. `ChallengeMapTest` draws the masks
+for real under Robolectric's native graphics and pins that they are white, that
+land never exceeds the coast's 16 %, and that the route layer has ink.
 
 ---
 

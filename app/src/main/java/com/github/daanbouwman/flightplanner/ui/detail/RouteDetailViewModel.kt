@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
+import com.github.daanbouwman.flightplanner.launch.LastRouteStore
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.Metar
@@ -85,18 +86,33 @@ data class RouteDetailUiState(
 class RouteDetailViewModel internal constructor(
     private val route: Destination.RouteDetail,
     private val loader: RouteDetailLoader,
+    /**
+     * Records the route as the one most recently opened, for the "Last route"
+     * shortcut. A seam, defaulting to nothing, so tests need no store.
+     */
+    private val rememberLastRoute: (Destination.RouteDetail) -> Unit = {},
 ) : ViewModel() {
 
     @Inject
     constructor(
         savedStateHandle: SavedStateHandle,
         loader: RouteDetailLoader,
-    ) : this(route = savedStateHandle.toRoute<Destination.RouteDetail>(), loader = loader)
+        lastRouteStore: LastRouteStore,
+    ) : this(
+        route = savedStateHandle.toRoute<Destination.RouteDetail>(),
+        loader = loader,
+        rememberLastRoute = lastRouteStore::remember,
+    )
 
     private val _state = MutableStateFlow(RouteDetailUiState(distanceNm = route.distanceNm))
     val state: StateFlow<RouteDetailUiState> = _state.asStateFlow()
 
     init {
+        // Here, at the one point a route is actually shown, rather than in the
+        // loader (a read with a side effect) or in the navigation code (which
+        // would miss a card tap): whatever screen this ViewModel serves, the
+        // user is looking at this route now.
+        rememberLastRoute(route)
         viewModelScope.launch {
             val loaded = loader.load(route)
             _state.value = loaded

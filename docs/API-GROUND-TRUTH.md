@@ -21,6 +21,8 @@ it.
 | `androidx.compose.material3:material3` | **1.5.0-alpha26**, pinned above the BOM |
 | `androidx.compose.material3.adaptive:adaptive-*` | 1.3.0 (`m3Adaptive` in the catalog; `material3-adaptive-navigation-suite` comes from the BOM) |
 | `androidx.graphics:graphics-shapes` | 1.1.0 |
+| `androidx.glance:glance-appwidget` / `glance-material3` / `glance-appwidget-testing` | 1.2.0 (see *Glance beside the material3 alpha*) |
+| `androidx.work:work-runtime` | 2.11.2, **transitively via Glance**, initialised on demand |
 
 ## Why material3 is pinned above the BOM
 
@@ -167,6 +169,61 @@ recalled, so `MotionScheme.expressive()` and any token we mirror agree exactly:
 Spatial springs are underdamped on purpose — that overshoot *is* the expressive
 character. Effects springs are critically damped (ratio 1.0) because a colour or
 alpha that overshoots reads as a flicker rather than as motion.
+
+## Glance beside the material3 alpha
+
+Probed 2026-09-16 for the "Today's challenge" widget (Phase H, H3). All of the
+following compile against Glance **1.2.0** with material3 `1.5.0-alpha26` on the
+classpath:
+
+- `GlanceAppWidget.providePreview(context: Context, widgetCategory: Int)` and
+  `GlanceAppWidgetManager.setWidgetPreviews(receiver: KClass<out GlanceAppWidgetReceiver>)`
+  — the Android 15 generated picker preview. **It returns an `Int`, not a
+  `Boolean`**: compare against `GlanceAppWidgetManager.SET_WIDGET_PREVIEWS_RESULT_SUCCESS`
+  (`…_RATE_LIMITED` is the other value).
+- `androidx.glance.material3.ColorProviders(light = BrandLightColorScheme, dark = BrandDarkColorScheme)`.
+  `glance-material3` declares an older material3 and Gradle resolves the pin; only
+  stable `ColorScheme` fields are read, so it works. Note the two names: the
+  *function* is `androidx.glance.material3.ColorProviders`, the *type* it returns is
+  `androidx.glance.color.ColorProviders` — both imports are needed.
+- `actionStartActivity(intent: Intent)` (the explicit-Intent overload), `GlanceTheme(colors = …)`,
+  `SizeMode.Responsive`, `LocalSize`, `cornerRadius`.
+  Two things seen on the emulator: a **reinstall wipes the published preview**
+  (the picker falls back to the launcher icon until the next successful publish),
+  and a second publish minutes after the first is **rate-limited by the system** —
+  `GlanceAppWidgetManager` logs `setWidgetPreview … was rate-limited` at warning
+  level. `PublishWidgetPreview` stamps only on success, so it simply tries again
+  next launch; when iterating on the widget at one `versionCode`, delete
+  `files/datastore/launch.preferences_pb` (via `run-as`) to force a republish.
+- **Glance's `widgetBackground` role is an accent, not a surface.** With dynamic
+  colour it resolves to `@android:color/system_accent2_800` at night and
+  `system_accent2_50` by day (read from `glance:1.2.0`'s `values-night-v31` /
+  `values-v31`), so a card on it takes the wallpaper's secondary hue. `surface`
+  and `background` are the neutral `system_neutral1_900` / `system_neutral1_10`;
+  `surfaceVariant` is `system_neutral2_700` / `system_neutral2_100`. Cards that
+  should look like the app's cards go on `surface`.
+- **The emulator does not reliably push a new wallpaper palette to running apps.**
+  After a wallpaper change the theming service reported a new palette and
+  `cmd overlay lookup --user 0 android android:color/system_accent2_800` returned
+  it, yet the launcher, the app and the widget all kept the old one through
+  force-stops. Judge wallpaper-following on the phone.
+- **`am force-stop` cancels the app's PendingIntents**, the widget's click among
+  them, so a tap after a force-stop does nothing until the next render. A user
+  never force-stops; do not read that as a broken widget.
+- `Configuration.Provider` in work 2.11.2 exposes `workManagerConfiguration` as a **property**.
+- `ComponentActivity.onNewIntent(intent: Intent)` is non-null in activity 1.13.0.
+
+**Glance brings WorkManager, and WorkManager brings a start-up initializer.**
+`glance:1.2.0 → work-runtime 2.7.1 → 2.11.2`, whose manifest merges
+`androidx.work.WorkManagerInitializer` into the `androidx.startup.InitializationProvider`
+that ProfileInstaller, EmojiCompat, ProcessLifecycle and OkHttp already share. Left
+alone it constructs `WorkManagerImpl` before `Application.onCreate` on every launch,
+which is spend against the cold-start budget for a feature only the widget uses.
+The app removes that one `<meta-data>` with `tools:node="remove"` and implements
+`Configuration.Provider` on the Application, so WorkManager initialises the first
+time Glance asks for it. Verify after any Glance or WorkManager bump by grepping
+`app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml`
+for `WorkManagerInitializer` — the only hit must be the comment.
 
 ## Re-verifying after a dependency bump
 

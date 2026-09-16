@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The night halves of the widget's surface tones. See values/colors.xml. -->
+<resources>
+    <color name="widget_card">@android:color/system_surface_container_dark</color>
+    <color name="widget_chip">@android:color/system_surface_container_high_dark</color>
+</resources>

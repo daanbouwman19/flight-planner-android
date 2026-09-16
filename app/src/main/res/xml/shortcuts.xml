@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Static launcher shortcuts, in rank order. Each intent carries one of the
+    actions LaunchIntents knows, and LaunchIntentsTest parses this file to
+    prove it; MainActivity turns the action into a LaunchRequest on arrival.
+
+    The ids are the identity a pinned shortcut keeps across updates, so they
+    are never renamed. Package and class are literal because resource XML has
+    no manifest placeholders; no build type suffixes the application id.
+    Launchers show at most four static and dynamic shortcuts together, so three
+    static ones leave one slot.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="generate_routes"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_generate"
+        android:shortcutShortLabel="@string/shortcut_generate_short"
+        android:shortcutLongLabel="@string/shortcut_generate_long">
+        <intent
+            android:action="com.github.daanbouwman.flightplanner.action.GENERATE_ROUTES"
+            android:targetPackage="com.github.daanbouwman.flightplanner"
+            android:targetClass="com.github.daanbouwman.flightplanner.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="log_flight"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_log_flight"
+        android:shortcutShortLabel="@string/shortcut_log_flight_short"
+        android:shortcutLongLabel="@string/shortcut_log_flight_long">
+        <intent
+            android:action="com.github.daanbouwman.flightplanner.action.LOG_FLIGHT"
+            android:targetPackage="com.github.daanbouwman.flightplanner"
+            android:targetClass="com.github.daanbouwman.flightplanner.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="last_route"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_last_route"
+        android:shortcutShortLabel="@string/shortcut_last_route_short"
+        android:shortcutLongLabel="@string/shortcut_last_route_long">
+        <intent
+            android:action="com.github.daanbouwman.flightplanner.action.LAST_ROUTE"
+            android:targetPackage="com.github.daanbouwman.flightplanner"
+            android:targetClass="com.github.daanbouwman.flightplanner.MainActivity" />
+    </shortcut>
+</shortcuts>

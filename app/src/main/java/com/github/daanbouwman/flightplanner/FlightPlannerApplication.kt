@@ -1,13 +1,14 @@
 package com.github.daanbouwman.flightplanner
 
 import android.app.Application
+import androidx.work.Configuration
 import com.github.daanbouwman.flightplanner.core.database.airport.AirportAssetInstaller
 import com.github.daanbouwman.flightplanner.index.AirportIndexProvider
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
 @HiltAndroidApp
-class FlightPlannerApplication : Application() {
+class FlightPlannerApplication : Application(), Configuration.Provider {
 
     @Inject
     lateinit var airportIndexProvider: AirportIndexProvider
@@ -31,4 +32,22 @@ class FlightPlannerApplication : Application() {
         // the main thread, during the Plan screen's first composition.
         airportAssetInstaller.warm()
     }
+
+    /**
+     * WorkManager, initialised on demand rather than at process start.
+     *
+     * Nothing in this app schedules work. WorkManager is here because Glance
+     * renders every widget session inside one of its workers, and its default
+     * `androidx.startup` initializer would then build `WorkManagerImpl` — its
+     * executors, schedulers, a Room database and a `ForceStopRunnable` that
+     * queries it — inside the `InitializationProvider`, before `onCreate`, on
+     * *every* launch of the app, widget or no widget. That is spend against the
+     * cold-start budget for a feature the launch does not use. The manifest
+     * removes that initializer and this getter replaces it: WorkManager builds
+     * itself the first time something asks for it, which is the widget path and
+     * only the widget path. A getter runs nothing until it is called, so this
+     * class's start-up cost is unchanged.
+     */
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().build()
 }

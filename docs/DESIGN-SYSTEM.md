@@ -42,6 +42,19 @@ and `FlightTypography`. Scheme selection, in order:
 That is what makes the theme choice, rather than the tone mapping, the right key
 for anything scenic — see `SkyColors` below.
 
+```kotlin
+fun ThemeChoice.isDark(systemDark: Boolean): Boolean
+fun resolveColorScheme(themeChoice: ThemeChoice, dynamicColor: Boolean, dark: Boolean, context: Context): ColorScheme
+```
+
+The same selection, as two plain functions. `FlightPlannerTheme` calls them inside
+its `remember`; they are public for the one surface that has no composition of ours
+to inherit from — the home-screen widget, which Glance draws in the launcher's
+process and which builds its `ColorProviders` from these so it arrives at the app's
+own colours rather than a second palette. `resolveColorScheme` is not pure (dynamic
+colour reads the system palette through `context`) but it is not a composable
+either, so it can run in a `BroadcastReceiver`.
+
 It also sets the **system-bar appearance** from the scheme it just resolved —
 `isAppearanceLightStatusBars` and `isAppearanceLightNavigationBars` — because the
 bars are transparent and nothing else is keeping the clock legible. It must come

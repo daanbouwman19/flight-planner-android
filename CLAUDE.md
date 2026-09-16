@@ -67,8 +67,10 @@ raise this floor rather than branch beneath it.
 ```
 
 Twelve cold launches, ~35 seconds, on the `benchmarkRelease` variant. Latest figure:
-**169 ms median `timeToInitialDisplayMs`** on the SM-S942B. The older ~370 ms
-came off an emulator and is different hardware, not a regression that was fixed.
+**166 ms median `timeToInitialDisplayMs`** on the SM-S942B (2026-09-16, after Phase H
+added the widget and its WorkManager dependency; 169 ms before it). The older
+~370 ms came off an emulator and is different hardware, not a regression that was
+fixed.
 
 Anything added to `Application.onCreate`, a Hilt `@Singleton` constructor, or an
 `androidx.startup` Initializer runs before first frame and spends that budget. In

@@ -55,6 +55,8 @@ fun ProfileScreen(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenRoute: (LogbookRow) -> Unit = {},
+    openAddFlight: Boolean = false,
+    onAddFlightOpened: () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     ScrollToTopOnReselect(listState = listState)
@@ -86,6 +88,8 @@ fun ProfileScreen(
         LogbookScreen(
             onOpenRoute = onOpenRoute,
             listState = listState,
+            openAddFlight = openAddFlight,
+            onAddFlightOpened = onAddFlightOpened,
             // A sticky month header pins to the LazyColumn's own top edge, not
             // to its contentPadding — Compose's stickyHeader ignores content
             // padding when it clamps a header's pinned offset, so the top

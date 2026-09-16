@@ -3,4 +3,18 @@
     <!-- Chart paper. Shared with the splash screen, so both move together. -->
     <color name="splash_background">#F4EFE4</color>
     <color name="ic_launcher_background">#F4EFE4</color>
+
+    <!--
+        The widget's card and chips under dynamic colour, as the platform's own
+        Material 3 role colours. Android 14 exposes the full role set as system
+        resources (minSdk is 35, so no fallback), and these two are the tones the
+        app's route card and its chips sit on — `surfaceContainer` and
+        `surfaceContainerHigh` — which Glance's own colour roles do not include.
+        A launcher resolves them at inflate time, so the card follows the
+        wallpaper and the night switch without a re-render. The dark halves are
+        in values-night/colors.xml. Non-dynamic themes do not read these: they
+        take the same two roles from the design system's schemes instead.
+    -->
+    <color name="widget_card">@android:color/system_surface_container_light</color>
+    <color name="widget_chip">@android:color/system_surface_container_high_light</color>
 </resources>

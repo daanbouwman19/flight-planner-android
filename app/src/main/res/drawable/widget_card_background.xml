@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The widget card's surface under dynamic colour: the platform's own
+    `surfaceContainer` role (see values/colors.xml), which the launcher resolves
+    when it inflates the widget, so the card follows the wallpaper and the night
+    switch live. A drawable rather than a colour because Glance's public API has
+    no colour provider that takes a resource id — the one that does is restricted
+    to the library — while a drawable background is ordinary RemoteViews.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_card" />
+    <corners android:radius="24dp" />
+</shape>
