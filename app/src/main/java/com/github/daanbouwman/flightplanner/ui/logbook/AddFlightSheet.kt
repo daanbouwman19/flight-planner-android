@@ -285,7 +285,7 @@ fun AddFlightSheet(
  * itself expects) can be previewed without a `SheetState`.
  */
 @Composable
-private fun AddFlightFields(
+internal fun AddFlightFields(
     aircraft: AircraftSpec?,
     date: LocalDate,
     departure: Airport?,

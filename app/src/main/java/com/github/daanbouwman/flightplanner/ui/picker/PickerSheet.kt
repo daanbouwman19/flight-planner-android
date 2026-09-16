@@ -243,7 +243,7 @@ fun PlanPickerSheet(
 }
 
 @Composable
-private fun AirportResults(
+internal fun AirportResults(
     query: String,
     airports: List<Airport>,
     onPick: (Airport) -> Unit,
@@ -263,7 +263,7 @@ private fun AirportResults(
 }
 
 @Composable
-private fun AircraftResults(
+internal fun AircraftResults(
     query: String,
     aircraft: List<AircraftSpec>,
     onPick: (AircraftSpec) -> Unit,
@@ -371,7 +371,7 @@ internal fun SearchScopeNotice(
 }
 
 @Composable
-private fun NoResults(query: String) {
+internal fun NoResults(query: String) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
         EmptyState(
             title = stringResource(R.string.plan_picker_no_results_title),

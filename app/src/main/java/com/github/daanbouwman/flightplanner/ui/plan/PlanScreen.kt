@@ -1303,39 +1303,47 @@ private const val CommitFraction = 0.33f
 
 @Composable
 private fun PreviewPlan(state: PlanUiState) {
-    FlightPlannerTheme(dynamicColor = false) {
-        Surface(color = MaterialTheme.colorScheme.background) {
-            PlanContent(
-                state = state,
-                outline = rememberPreviewWorldOutline(),
-                listState = rememberLazyListState(),
-                contentPadding = PaddingValues(
-                    start = ScreenHorizontalGutter,
-                    end = ScreenHorizontalGutter,
-                    top = ScreenTopGutter,
-                    bottom = ScreenBottomGutter,
-                ),
-                header = {
-                    PlanHeader(
-                        state = state,
-                        onOpenSettings = {},
-                        onOpenAirports = {},
-                        onModeChange = {},
-                        onPickDeparture = {},
-                        onPickAircraft = {},
-                    )
-                },
-                onOpenRoute = {},
-                onMarkFlown = {},
-                onReplace = {},
-                // Already entered, so the preview renders the rows at rest
-                // rather than at the first frame of a fade.
-                hasEntered = { true },
-                markEntered = {},
-                onGenerate = {},
-                onPickAircraft = {},
-            )
-        }
+    FlightPlannerTheme(dynamicColor = false) { PlanPreviewContent(state) }
+}
+
+/**
+ * The Plan screen at rest, minus theme: the previews above wrap it in
+ * [FlightPlannerTheme], the screenshot goldens in theirs. Hoisted apart from
+ * [PreviewPlan] for exactly that second caller.
+ */
+@Composable
+internal fun PlanPreviewContent(state: PlanUiState) {
+    Surface(color = MaterialTheme.colorScheme.background) {
+        PlanContent(
+            state = state,
+            outline = rememberPreviewWorldOutline(),
+            listState = rememberLazyListState(),
+            contentPadding = PaddingValues(
+                start = ScreenHorizontalGutter,
+                end = ScreenHorizontalGutter,
+                top = ScreenTopGutter,
+                bottom = ScreenBottomGutter,
+            ),
+            header = {
+                PlanHeader(
+                    state = state,
+                    onOpenSettings = {},
+                    onOpenAirports = {},
+                    onModeChange = {},
+                    onPickDeparture = {},
+                    onPickAircraft = {},
+                )
+            },
+            onOpenRoute = {},
+            onMarkFlown = {},
+            onReplace = {},
+            // Already entered, so the preview renders the rows at rest
+            // rather than at the first frame of a fade.
+            hasEntered = { true },
+            markEntered = {},
+            onGenerate = {},
+            onPickAircraft = {},
+        )
     }
 }
 

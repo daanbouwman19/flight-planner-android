@@ -795,10 +795,13 @@ filters results; predictive back dismisses the sheet; semantics exist. Prefer se
 over test tags.
 
 **Screenshot tests — Roborazzi**, not Paparazzi (Paparazzi handles `AndroidView` and newer Compose
-APIs poorly). Goldens per screen × {light, dark, dynamic} × {LTR, RTL} × {fontScale 1.0, 2.0} ×
-{compact, medium, expanded}, gated by `verifyRoborazziDebug`. **The globe cannot be
-screenshot-tested** — stub a placeholder behind the overlay; the renderer is covered by the math
-tests plus a manual device smoke check.
+APIs poorly). As built (H5, 2026-09-16): goldens per screen state at a base of light / LTR / font 1.0 /
+360 × 800 dp, plus **one variant per axis** — dark, Cockpit, Chart, RTL, font 2.0, 700 dp, 1280 × 800 —
+rather than the cross-product first written here, by user decision; `dynamic` is not an axis because
+under Robolectric it is a fixed palette. Gated by `verifyRoborazziDebug`, which `check` reaches.
+**The globe is not screenshot-tested** and needs no placeholder: Robolectric reports no GLES 3, so
+every `GlobeSurface` takes its own still-map fallback. The renderer is covered by `:feature:globe`'s
+tests plus a device smoke check. UI-PLAN §10 H5 has the rest.
 
 **Benchmarks** — `:macrobenchmark` for cold start and frame timing while flinging the list and
 spinning the globe (`StartupBenchmark`, `flingBaselineProfile`, `GlobeSpinBenchmark`), feeding a
@@ -808,9 +811,12 @@ has needed a per-algorithm number, so the algorithms are held by their unit test
 the macrobenchmarks. If one is ever wanted, JMH on `:core:routing` is the place, for the reason
 given — ART and HotSpot differ materially on float math, so a JVM figure is a guide, not a result.
 
-**CI** (GitHub Actions): per-PR `assemble + lint + jvmTest + verifyRoborazzi + verifyAirportAsset`;
-nightly `connectedCheck` on API 34 and 36 emulators; a **monthly scheduled dataset-refresh job**
-that reruns the ETL, updates row-count expectations and opens a PR.
+**CI** (GitHub Actions), as built: per-PR `verify.yml` runs `check` (every unit test, lint,
+`checkInvariants`, `verifyAirportAsset`) in one job and `:app:assembleRelease` (the R8 pass, added by H6) in a
+parallel one; `debug-apk.yml` uploads an installable debug APK. `check` includes
+`:app:verifyRoborazziDebug` since H5, and the run uploads the screenshot diffs on failure. The nightly `connectedCheck` on emulators and the **monthly scheduled
+dataset-refresh job** (rerun the ETL, update row-count expectations, open a PR) this plan
+called for were never built; both remain open.
 
 ---
 

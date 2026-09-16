@@ -1,7 +1,8 @@
 # Runs the full verification suite CLAUDE.md asks a human to run before calling a
-# change done: compile everything, run every unit test, run lint, and run
-# `checkInvariants` (wired into `check` by the convention plugins, so `build`
-# already covers it).
+# change done: compile everything, run every unit test, run lint, verify the
+# screenshot goldens and run `checkInvariants` (the last two wired into `check`,
+# so `build` already covers them). A second job assembles the minified release,
+# so R8 runs on every PR too.
 #
 # `debug-apk.yml` in this directory proves the app *assembles*; it never runs a
 # test or a lint check, so a change could break `:core:routing:test` or trip
@@ -46,8 +47,8 @@ jobs:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       # `check`, not `build`: the same unit tests, lint and checkInvariants, without
-      # assembling the release and benchmark variants and their R8 passes. The
-      # Debug APK workflow already proves the app assembles.
+      # assembling the release and benchmark variants. The Debug APK workflow
+      # proves the app assembles; the `release` job below proves it minifies.
       - name: Check
         run: ./gradlew check --no-daemon
 
@@ -73,3 +74,46 @@ jobs:
             **/build/test-results/**/*.xml
           if-no-files-found: ignore
           retention-days: 14
+
+      # `check` reaches `:app:verifyRoborazziDebug`, so a screenshot golden that
+      # no longer matches fails this job. The diffs it writes — reference, diff
+      # and new side by side, one per changed golden, in the golden's own
+      # directory — and the HTML report are what a reviewer needs to decide
+      # whether to re-record, so they come up with the failure.
+      - name: Upload screenshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: roborazzi-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            app/build/outputs/roborazzi/**
+            app/build/reports/roborazzi/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The minified release is the only variant R8 touches, and the only place a
+  # keep rule that is missing or a library rule that stopped shipping shows up —
+  # as a build error, so there is nothing to upload. It is a separate job rather
+  # than a task appended to `check` so the two run side by side and neither
+  # lengthens the other. `release` is debug-signed (see app/build.gradle.kts), and
+  # AGP writes `~/.android/debug.keystore` itself on a fresh runner, so no secret
+  # is involved. Runtime behaviour of the minified build is still a device pass,
+  # per UI-PLAN §10 H6; this job only proves it builds.
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: Assemble release
+        run: ./gradlew :app:assembleRelease --no-daemon

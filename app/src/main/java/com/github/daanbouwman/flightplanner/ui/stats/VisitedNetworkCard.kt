@@ -352,14 +352,14 @@ private val GlassGutter: Dp = 12.dp
 // ---- previews -----------------------------------------------------------------
 
 /** The phone's own fixture: two flights, four fields, two legs, both continents. */
-private val PreviewAirports = listOf(
+internal val PreviewAirports = listOf(
     VisitedAirport("EVRA", "Riga International Airport", 56.92, 23.97, 1),
     VisitedAirport("EHTW", "Twente Airport", 52.28, 6.89, 1),
     VisitedAirport("KOLD", "Old Town Municipal Airport", 44.95, -68.67, 1),
     VisitedAirport("KVGC", "Hamilton Municipal Airport", 43.02, -75.38, 1),
 )
 
-private val PreviewLegs = listOf(
+internal val PreviewLegs = listOf(
     previewLeg(PreviewAirports[0], PreviewAirports[1]),
     previewLeg(PreviewAirports[2], PreviewAirports[3]),
 )
