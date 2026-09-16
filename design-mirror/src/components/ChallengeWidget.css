@@ -1,0 +1,130 @@
+/* ChallengeWidget — the home-screen "today's challenge" widget, ported from
+   ChallengeWidget.kt / ChallengeWidgetTheme.kt. The real surface is Glance
+   (RemoteViews); this reproduces its two responsive cell sizes and the same
+   card/chip tones the in-app route card uses. */
+
+.fp-widget-card {
+  position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 24px; /* CORNER in ChallengeWidget.kt — a widget-local literal, not a shared shape token */
+  background: var(--fp-surface-container);
+  color: var(--fp-on-surface);
+}
+
+.fp-widget-card--wide {
+  width: 250px;
+  height: 100px;
+}
+
+.fp-widget-card--compact {
+  /* ChallengeWidget.COMPACT (140 x 100 dp) is the SizeMode.Responsive bucket's
+     breakpoint, not what actually renders: a launcher's real per-cell width is
+     usually wider (most grids span ~360-400 dp over 4-5 columns), and the
+     bucket applies for any granted width from there up to WIDE_THRESHOLD
+     (220 dp). 180 px is a representative width inside that range — 140 px
+     itself crushes two 26 px bold codes and two figure pills into 108 px of
+     content width, which would overflow the same way on a genuinely 140 dp
+     grant and is not a useful preview of the common case. */
+  width: 180px;
+  height: 100px;
+}
+
+.fp-widget-card__map {
+  position: absolute;
+  inset: 0;
+  color: var(--fp-on-surface);
+}
+
+/* The route mask over the card's own surfaceContainer casing, rather than a
+   picture — see RouteMap.tsx and ChallengeWidget.kt's "three tinted masks"
+   note. RouteMap's own --fp-primary/--fp-surface-container already match. */
+
+.fp-widget-card__content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* content-box would add this padding on top of the 100 % height, overflowing
+     the outer card's fixed 100 px cell and clipping the figures row. */
+  box-sizing: border-box;
+  padding: 16px;
+  line-height: 1;
+}
+
+.fp-widget-card__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fp-widget-card__aircraft {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fp-on-surface);
+}
+
+.fp-widget-card__date {
+  font-size: 11px;
+  color: var(--fp-on-surface-variant);
+  white-space: nowrap;
+}
+
+.fp-widget-card__spacer {
+  flex: 1;
+}
+
+.fp-widget-card__row--codes {
+  align-items: baseline;
+}
+
+.fp-widget-card__code {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--fp-on-surface);
+}
+
+.fp-widget-card__figures {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.fp-widget-figure {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--fp-shape-medium);
+  background: var(--fp-surface-container-high);
+}
+
+.fp-widget-figure__label {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-widget-figure__value {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--fp-on-surface);
+}
+
+.fp-widget-card__message {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  font-size: 14px;
+  color: var(--fp-on-surface);
+}

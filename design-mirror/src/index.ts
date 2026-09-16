@@ -77,6 +77,15 @@ export type {
   GlobeRouteArcProps,
 } from './components/GlobeHero'
 
+export { ChallengeWidgetCard } from './components/ChallengeWidget'
+export type {
+  ChallengeWidgetCardProps,
+  ChallengeWidgetState,
+  ChallengeWidgetReady,
+  ChallengeWidgetFleetEmpty,
+  ChallengeWidgetUnavailable,
+} from './components/ChallengeWidget'
+
 export { MapFrame, sampleGeoArc, distanceNm, MIN_SPAN_DEGREES, PADDING_FRACTION } from './geo/mapFrame'
 export type { GeoArc, ProjectedRings, ProjectedLand, WorldOutline } from './geo/mapFrame'
 export { worldOutline } from './geo/worldOutline.gen'

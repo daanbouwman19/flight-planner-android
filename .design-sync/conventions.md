@@ -221,6 +221,15 @@ arc's curve is decorative and does not change with the route's actual distance
 or bearing — read those from the figures beside it (a spine on the deep hero,
 the `RoutePlate` on the immersive view), never from the sphere.
 
+**`ChallengeWidgetCard` is the home-screen widget, not an app screen.** It
+lives outside `PhoneFrame`/`TabletFrame` at its own fixed cell sizes — pass
+`wide` for the 250×100 dp four-cell layout (airframe name, date, codes,
+DIST/ETE) or omit it for the ~180-220 dp compact bucket that drops the
+airframe line. It reuses `RouteMap` for its background at `topInset={36}`,
+the same figure the route card itself uses, so the leg stays clear of the top
+row. Design it as a small, glanceable card — it has no navigation, no
+scrolling and no interaction beyond a single tap that opens the app.
+
 ## Where the truth lives
 
 - `_ds/<folder>/styles.css` and its imports — every token, in one place. Read it

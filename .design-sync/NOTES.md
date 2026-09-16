@@ -281,6 +281,40 @@ the 2026-08-29 sync and this one. What each needed:
   navigation, see "shared-element transition is not reproduced" above); the
   `sharedExit` retune affects only the unreproduced transition itself.
 
+## `ChallengeWidgetCard` — the home-screen widget, added same day on request
+
+Ported from `ChallengeWidget.kt`/`ChallengeWidgetTheme.kt`/`DailyChallengeSource.kt`
+(the Phase H3 daily-challenge widget), not scoped into the original run because
+nobody had asked yet. It reuses `RouteMap` directly for its background — the
+real widget can't (Glance only shows bitmaps, so it renders three tinted alpha
+masks via `renderRouteMapLayers`), but this mirror has no such constraint, so
+`<RouteMap topInset={36} .../>` draws the identical geometry live. `topInset`
+is `PADDING (16dp) + TITLE_LINE (20dp)`, the same figure `renderChallengeMap`
+computes. Card tones (`surfaceContainer`/`surfaceContainerHigh`) match
+`widgetPalette`'s non-dynamic-colour branch — dynamic colour itself (the
+`system_accent2_*` resources Android 14 publishes) has no web equivalent and
+isn't attempted.
+
+- **A `box-sizing: content-box` default nearly shipped a clipped widget.**
+  `.fp-widget-card__content` had `height: 100%` and its own `padding: 16px`;
+  without `box-sizing: border-box` the padding adds on top of the 100%,
+  overflowing the outer card's fixed-`height` box and clipping the bottom row
+  under `overflow: hidden` — invisible until the actual screenshot was looked
+  at (the div measured "correct" by every static check). **Any fixed-height
+  card with its own padding needs `box-sizing: border-box` stated explicitly**;
+  the rest of this mirror gets away without it because most cards size to
+  their content rather than to a hard pixel height.
+- **The `Compact` cell is 180 px wide, not the real `COMPACT` constant's literal
+  140 dp.** `ChallengeWidget.COMPACT = DpSize(140.dp, 100.dp)` is the
+  `SizeMode.Responsive` bucket's breakpoint name, not a guarantee of the actual
+  rendered width — Glance composes at whatever width the launcher's grid cell
+  actually grants, and that bucket covers everything from there up to
+  `WIDE_THRESHOLD` (220 dp). At a literal 140 px, two 26 px bold ICAO codes and
+  two figure pills do not fit in the 108 px of content width left after
+  padding — previewing it at exactly 140 px would show a card that reads as
+  broken for what is, in practice, the common case. 180 px is inside the real
+  range and renders cleanly.
+
 ## Re-sync risks
 
 - **The airport database and the world outline are read at build time.** If
