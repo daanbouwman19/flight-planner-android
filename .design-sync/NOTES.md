@@ -1,10 +1,95 @@
 # design-sync notes — flight-planner-android
 
+## Where the mirror lives now
+
+The mirror is published as a **Design System artifact**:
+<https://claude.ai/artifact/Dmjit3682NXRcbiuwninnt>. Until 2026-09-16 it was a
+`claude.ai/design` project (`projectId` in `.design-sync/config.json`, kept only
+because `.ds-sync`'s config validator requires the key); that project was migrated
+to the artifact type mechanically, nothing redesigned. The `DesignSync` tool the
+old upload used cannot write to an artifact, so the upload is now the Artifact
+tool, fed by a converter in this directory.
+
+### Re-sync recipe
+
+```bash
+./gradlew :core:designsystem:testDebugUnitTest --tests "*DesignTokenExportTest*"   # tokens.json from Kotlin
+(cd design-mirror && npm run build)                                                  # dist/, tokens.gen.ts
+node .ds-sync/resync.mjs --config .design-sync/config.json \
+  --node-modules design-mirror/node_modules --entry design-mirror/dist/index.js \
+  --out ./ds-bundle --remote .design-sync/.cache/remote-sync.json                    # ds-bundle/, render check, grades
+# Artifact read  url=<the artifact>  path=project/design-system.json   → the live index, saved locally
+node .design-sync/artifact/build.mjs --index <that file> --note "<what changed>"    # .design-sync/.cache/artifact/
+# Artifact publish, twice, straight from .design-sync/.cache/artifact/publish.json:
+#   call 1 = every content file; call 2 = the index (+ deletions). The index goes last, always.
+```
+
+`--entry` is needed because the mirror is its own source repo: `.ds-sync` otherwise
+looks for the package under `node_modules/@flightplanner/design-mirror`. `.ds-sync/`
+and `ds-bundle/` are the former `/design-sync` skill's toolchain and output, gitignored;
+the converter reads `ds-bundle/` and everything the converter *owns* is tracked here:
+
+| `.design-sync/artifact/` | What it is |
+| --- | --- |
+| `build.mjs` | the converter: `ds-bundle/` → `project/**` in the artifact's own layout, plus `publish.json` |
+| `README.md` | the brand book, the artifact's `project/README.md` verbatim (also `config.readmeHeader`) |
+| `token-usage.json` | the `usage` note on every colour, radius and motion token, and `sample`/`usage` per type style. **The build fails on a token without a note, and on a note without a token** |
+| `cover.html` | `components/Cover/preview.html`, written to the artifact type's `cover.md` brief |
+
+What the converter changes on the way through, so a diff against `ds-bundle/`
+does not read as corruption:
+
+- `components/<group>/<Name>/<Name>.html` → `components/<Name>/preview.html`; the
+  group moves into the `@dsCard` marker, `viewport="WxH"` becomes `width=W`, a card
+  with no `_preview/<Name>.js` is marked `floor`. The stylesheet links and the
+  react / bundle / preview `<script src>` tags go — the artifact's frame preloads all
+  of them — and the preview module is inlined in their place. `body{background:#fff}`
+  becomes `var(--fp-background)` so a non-default page theme is not framed in white.
+- `<Name>.prompt.md` → `<Name>/README.md`, with each story's JSDoc placed **above its
+  own fence** as prose. `.ds-sync`'s slicer attaches every story's doc to the previous
+  story's code and drops the first one entirely; the converter re-reads
+  `.design-sync/previews/<Name>.tsx` for the right pairing.
+- `_ds_bundle.css` → `components/bundle.css` **minus the four named-scheme blocks**
+  (between the `@schemes` sentinels `design-mirror/build.mjs` writes). The page
+  compiles those from `tokens.json` into its own `tokens.css`; shipping them twice
+  would let a page-side edit silently lose to the bundle. What stays is what
+  `tokens.json` cannot express: `fp-system` under `prefers-color-scheme`, the sampled
+  spring easings, every component style. The local `dist/styles.css` keeps the
+  blocks — `.gallery` and the Playwright capture have no `tokens.css` of their own.
+- `tokens.json` is regenerated in the page's list shape from the mirror's map-shaped
+  one: four themes (`fp-brand-light` first — the page needs a default — then
+  `fp-brand-dark`, `fp-cockpit`, `fp-chart`), no `light` duplicate, no `fp-system`
+  (a page theme cannot follow the device; `bundle.css` does that), no `spacing`
+  family (Kotlin has no spacing scale to export — add one there first).
+- The `@ds-bundle` header keeps the namespace and component order and drops the
+  `sourcePath`s, which pointed at `.jsx` re-export stubs the artifact does not carry.
+
+### The theme attribute and the page picker
+
+`FlightPlannerTheme` scopes its colours under `data-theme="fp-<id>"` — the same
+attribute the artifact's page sets on `<html>` from its theme picker — rather than a
+mirror-only `data-fp-theme`. With the picker at its default (`fp-brand-light`, the
+first theme) every wrapper wears its own theme; on any other choice the wrapper sets
+no attribute and reports the page's theme through `useFlightTheme()`, so one picker
+restyles every wrapper, nested ones included (`pageTheme()` in
+`FlightPlannerTheme.tsx`). No local consumer sets `data-theme` on `<html>`, so
+locally nothing changed. `system` still resolves in CSS, never in JS: the artifact's
+own hand-edited bundle read `matchMedia` for it and would have flashed light for a
+frame; that branch was deliberately not ported.
+
+### Roboto is one variable file
+
+Google serves the same woff2 for every Roboto weight, so requesting `400;500;700`
+produced three `@font-face` rules pointing at one file misleadingly named
+`roboto-400.woff2`. `fetch-fonts.mjs` now asks for `400..700` and writes one face,
+`font-weight: 400 700`, in `roboto-400-700.woff2`. Nothing rendered differently
+before; the name was the only lie.
+
 ## What is being synced
 
 `design-mirror/` is a **React mirror of `:core:designsystem`**, written for this
 purpose. This repo has no JavaScript design system of its own: the app is Kotlin
-and Jetpack Compose, and Claude Design's runtime executes React out of a JS bundle,
+and Jetpack Compose, and the artifact's preview frame executes React out of a JS bundle,
 so a Compose `@Composable` cannot be uploaded. The mirror is the bridge.
 
 **As of the 2026-09-06 re-sync it also carries Phase G — the 3D globe** (commit

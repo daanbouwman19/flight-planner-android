@@ -1,0 +1,40 @@
+<!-- @dsCard height=320 -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;background:var(--fp-background)}
+  .cover{position:relative;width:960px;height:320px;overflow:hidden;background:var(--fp-background)}
+  .cover svg{position:absolute;inset:0;width:960px;height:320px}
+  .slab{fill:var(--fp-primary)}
+  .amber{fill:var(--fp-tertiary-fixed-dim)}
+  .ink{fill:var(--fp-inverse-surface)}
+  .tint{fill:var(--fp-primary-container)}
+  .card{rx:var(--fp-shape-large-increased);ry:var(--fp-shape-large-increased)}
+  .leg{fill:none;stroke:var(--fp-sky-sock-band);stroke-width:var(--fp-shape-extra-small);stroke-linecap:round}
+  .text{position:absolute;left:40px;bottom:40px;max-width:440px}
+  .name{margin:0;font-family:var(--font-sans,Roboto,system-ui,sans-serif);font-weight:400;font-size:104px;line-height:.95;letter-spacing:-0.2px;color:var(--fp-on-background)}
+  .tagline{margin:16px 0 0;font-family:var(--font-sans,Roboto,system-ui,sans-serif);font-size:14px;line-height:20px;color:var(--fp-on-surface-variant)}
+</style>
+</head><body>
+<div class="cover">
+  <!--
+    blocks: fp-primary 200x240 slab; fp-tertiary-fixed-dim 128x128; fp-inverse-surface 128x176; fp-primary-container 280x64 (sides are fp-shape-extra-extra-large 48px multiples + 16/32 steps), corners fp-shape-large-increased (the card corner)
+    arrangement: one tall slab bleeding off the top with satellites stacked flush against the right edge and a low tint band bleeding off the bottom, all right of x=480
+    pattern: literal motif, three route legs as concentric arcs; "the route on the sphere: the arc bending over the curve" is this brand's own figure
+    steps/radii: arc radii 96/160/224 (48px pitch plus shape-large), stroke fp-shape-extra-small 4px in fp-sky-sock-band, block gap fp-shape-large 16px
+  -->
+  <svg viewBox="0 0 960 320" aria-hidden="true">
+    <rect class="slab card" x="552" y="-24" width="200" height="264"/>
+    <rect class="amber card" x="768" y="-24" width="216" height="152"/>
+    <rect class="ink card" x="768" y="144" width="216" height="200"/>
+    <rect class="tint card" x="504" y="256" width="248" height="88"/>
+    <path class="leg" d="M 864 320 A 96 96 0 0 0 768 224"/>
+    <path class="leg" d="M 928 320 A 160 160 0 0 0 768 160"/>
+    <path class="leg" d="M 992 320 A 224 224 0 0 0 768 96"/>
+  </svg>
+  <div class="text">
+    <h1 class="name">Flight<br>Planner</h1>
+    <p class="tagline">Real airports, flyable routes, weather as a chart.</p>
+  </div>
+</div>
+</body></html>

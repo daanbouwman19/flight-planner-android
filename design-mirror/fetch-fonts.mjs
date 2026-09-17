@@ -24,8 +24,12 @@ mkdirSync(fontsDir, { recursive: true })
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
 
+// Roboto is served as one variable font, so a weight *range* is one file with one
+// @font-face carrying `font-weight: 400 700`. Asking for `400;500;700` instead gets
+// three faces that all point at the same bytes, and a file named for a weight it
+// does not stop at.
 const CSS_URL =
-  'https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400&display=swap'
+  'https://fonts.googleapis.com/css2?family=Roboto:wght@400..700&family=Roboto+Mono:wght@400&display=swap'
 
 const css = await (await fetch(CSS_URL, { headers: { 'User-Agent': UA } })).text()
 
@@ -38,7 +42,7 @@ for (const block of blocks) {
   const subset = block.slice(0, block.indexOf('*/')).trim()
   if (subset !== 'latin') continue
   const family = /font-family:\s*'([^']+)'/.exec(block)?.[1]
-  const weight = /font-weight:\s*(\d+)/.exec(block)?.[1]
+  const weight = /font-weight:\s*(\d+(?: \d+)?)/.exec(block)?.[1]
   const url = /url\((https:\/\/[^)]+\.woff2)\)/.exec(block)?.[1]
   if (family && url) wanted.push({ family, weight: weight ?? '400', url })
 }
@@ -48,7 +52,7 @@ if (wanted.length === 0) throw new Error('No latin subsets found in the Google F
 const seen = new Map()
 const faces = []
 for (const face of wanted) {
-  const slug = `${face.family.toLowerCase().replace(/\s+/g, '-')}-${face.weight}`
+  const slug = `${face.family.toLowerCase().replace(/\s+/g, '-')}-${face.weight.replace(' ', '-')}`
   const file = `${slug}.woff2`
   if (!seen.has(face.url)) {
     const bytes = new Uint8Array(await (await fetch(face.url, { headers: { 'User-Agent': UA } })).arrayBuffer())

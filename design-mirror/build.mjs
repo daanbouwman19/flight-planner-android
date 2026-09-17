@@ -144,7 +144,12 @@ function schemeVars(scheme, indent) {
 }
 
 // Theme-invariant tokens: shape, type and motion do not vary by scheme.
-lines.push(':root, [data-fp-theme] {')
+//
+// Colours are scoped under `[data-theme="fp-<id>"]` — the same attribute the
+// Design System artifact's own page sets from its picker — rather than a
+// design-mirror-only `data-fp-theme`, so `FlightPlannerTheme`'s wrapper and the
+// artifact's page-compiled tokens.css resolve one selector instead of two.
+lines.push(':root, [data-theme] {')
 for (const [name, dp] of Object.entries(tokens.shapes)) {
   lines.push(`  --fp-shape-${kebab(name)}: ${dp}px;`)
 }
@@ -158,26 +163,34 @@ lines.push('')
 
 // The brand light scheme is the default, so a page that forgets the provider is
 // still on-brand rather than unstyled.
+//
+// The sentinels mark what the Design System artifact's page already compiles from
+// tokens.json: its bundle.css omits this region (.design-sync/artifact/build.mjs)
+// so a scheme has one source there. Everything outside the sentinels the page
+// cannot express and must ship here.
+lines.push('/* @schemes:start */')
 lines.push(':root {')
 lines.push(...schemeVars('brandLight', '  '))
 lines.push('}')
 lines.push('')
 for (const scheme of Object.keys(tokens.schemes)) {
-  lines.push(`[data-fp-theme="${kebab(scheme)}"] {`)
+  lines.push(`[data-theme="fp-${kebab(scheme)}"] {`)
   lines.push(...schemeVars(scheme, '  '))
   lines.push('}')
   lines.push('')
 }
+lines.push('/* @schemes:end */')
+lines.push('')
 
 // `system` is resolved here rather than from matchMedia in the provider, so a
 // design paints the right scheme on the first frame instead of correcting itself
 // after mount.
-lines.push('[data-fp-theme="system"] {')
+lines.push('[data-theme="fp-system"] {')
 lines.push(...schemeVars('brandLight', '  '))
 lines.push('}')
 lines.push('')
 lines.push('@media (prefers-color-scheme: dark) {')
-lines.push('  [data-fp-theme="system"] {')
+lines.push('  [data-theme="fp-system"] {')
 lines.push(...schemeVars('brandDark', '    '))
 lines.push('  }')
 lines.push('}')
