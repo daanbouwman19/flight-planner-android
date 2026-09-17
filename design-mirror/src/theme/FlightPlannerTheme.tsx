@@ -64,11 +64,18 @@ export interface FlightPlannerThemeProps {
 /**
  * **Wrap every design in this.** It is where the design system's colours live.
  *
- * Each scheme is a block of CSS custom properties keyed on `data-fp-theme`, so a
- * component outside this wrapper resolves `var(--fp-primary)` against nothing and
- * renders unstyled — the single most common way to get a broken-looking design out
- * of this library. Nesting is fine and is how a design shows two themes side by
- * side; the inner wrapper wins for its own subtree.
+ * Each scheme is a block of CSS custom properties keyed on `data-theme="fp-<id>"`,
+ * so a component outside this wrapper resolves `var(--fp-primary)` against nothing
+ * and renders unstyled — the single most common way to get a broken-looking design
+ * out of this library. Nesting is fine and is how a design shows two themes side by
+ * side; the inner wrapper wins for its own subtree. The `fp-` prefix (rather than a
+ * separate `data-fp-theme` attribute) is deliberate: it is the same attribute the
+ * Design System artifact's own page sets on `<html>` from its theme picker and
+ * scopes its compiled `tokens.css` under, so a wrapper here and the page's picker
+ * resolve the identical selector instead of two parallel theming mechanisms. When
+ * that picker is on a theme other than the default, the wrapper defers to it —
+ * sets no attribute of its own and reports the page's theme through the context —
+ * so one picker restyles every wrapper on the page, nested ones included.
  *
  * ```tsx
  * <FlightPlannerTheme theme="brandDark" fullBleed>
@@ -93,13 +100,15 @@ export function FlightPlannerTheme({
   // component branching on it while the CSS around that component was already
   // dark. So the media query is read here too, once, for the hooks alone.
   const systemDark = useSystemDark()
-  const resolved: ResolvedTheme = theme === 'system' ? (systemDark ? 'brandDark' : 'brandLight') : theme
-  const attr = theme === 'system' ? 'system' : kebab(theme)
+  const page = pageTheme()
+  const resolved: ResolvedTheme =
+    page ?? (theme === 'system' ? (systemDark ? 'brandDark' : 'brandLight') : theme)
+  const attr = page ? undefined : `fp-${theme === 'system' ? 'system' : kebab(theme)}`
 
   return (
     <ThemeContext.Provider value={resolved}>
       <div
-        data-fp-theme={attr}
+        data-theme={attr}
         className={['fp-root', fullBleed ? 'fp-root--full-bleed' : null, className]
           .filter(Boolean)
           .join(' ')}
@@ -113,6 +122,23 @@ export function FlightPlannerTheme({
 
 function kebab(s: string): string {
   return s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+}
+
+/**
+ * The page-level themes a wrapper defers to. `fp-brand-light` is absent on purpose:
+ * it is the page's first (default) theme, so its presence on `<html>` says nothing
+ * about whether anyone chose it, and a wrapper keeps its own theme under it.
+ */
+const pageThemes: Record<string, ResolvedTheme> = {
+  'fp-brand-dark': 'brandDark',
+  'fp-cockpit': 'cockpit',
+  'fp-chart': 'chart',
+}
+
+function pageTheme(): ResolvedTheme | undefined {
+  if (typeof document === 'undefined') return undefined
+  const id = document.documentElement.getAttribute('data-theme')
+  return id !== null && Object.prototype.hasOwnProperty.call(pageThemes, id) ? pageThemes[id] : undefined
 }
 
 /** Every colour role in the scheme, for a design that needs to enumerate them. */

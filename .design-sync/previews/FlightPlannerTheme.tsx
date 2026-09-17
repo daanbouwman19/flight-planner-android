@@ -22,7 +22,7 @@ const sample = (
 /**
  * **Wrap every design in this.** It is where the design system's colours live.
  *
- * Each scheme is a block of CSS custom properties keyed on `data-fp-theme`, so a
+ * Each scheme is a block of CSS custom properties keyed on `data-theme="fp-<id>"`, so a
  * component outside this wrapper resolves `var(--fp-primary)` against nothing and
  * renders unstyled — the single most common way to get a broken-looking design out
  * of this library.
