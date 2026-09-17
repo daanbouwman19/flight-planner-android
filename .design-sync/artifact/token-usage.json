@@ -86,7 +86,8 @@
     "fp-lifr-container": "LIFR chip fill in `FlightRulesBadge`. Standard chart magenta; never re-themed or reused.",
     "fp-lifr-on-container": "LIFR letters on `fp-lifr-container` (5.6:1 or more in every theme).",
     "fp-unknown-container": "Chip fill when a station has no category (`rules=\"UNKNOWN\"`) in `FlightRulesBadge`.",
-    "fp-unknown-on-container": "Letters on `fp-unknown-container` (5.7:1 or more in every theme)."
+    "fp-unknown-on-container": "Letters on `fp-unknown-container` (5.7:1 or more in every theme).",
+    "background": "Alias of `fp-background`, under the plain name this page paints a preview's ground from. Nothing in the app or the mirror reads it; use `fp-background`."
   },
   "radius": {
     "fp-shape-extra-small": "4px corner: the globe's glass plates and glass app-bar buttons, the `TextField` box.",

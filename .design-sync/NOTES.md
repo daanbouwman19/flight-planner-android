@@ -63,6 +63,16 @@ does not read as corruption:
   family (Kotlin has no spacing scale to export — add one there first).
 - The `@ds-bundle` header keeps the namespace and component order and drops the
   `sourcePath`s, which pointed at `.jsx` re-export stubs the artifact does not carry.
+- `tokens.css` is written too, in the page's own compile format. The type says the
+  page generates it, and it does — but only on the page's own save, so a publish alone
+  left previews on the previous compile, pointing at fonts that no longer existed. The
+  page overwrites it identically on its next save.
+- One extra colour token, `background`, an alias of `fp-background`. The page paints the
+  ground behind every preview from a token named exactly `background` / `bg` / `page` /
+  `canvas` / `paper`; with none it guesses light or dark from the theme's *name*
+  (`/dark|night/`), which put Cockpit on a cream well. Found by reading the type's
+  `app.js` (`Ho0`, `HE`); the alias gives the page the name it looks for.
+- TSDoc `{@link X}` in a guideline becomes `` `X` ``; the slicer passed it through raw.
 
 ### The theme attribute and the page picker
 

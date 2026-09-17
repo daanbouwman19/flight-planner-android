@@ -133,6 +133,8 @@ function storyDocs(name) {
 function componentReadme({ name, dir }) {
   let md = read(join(dir, `${name}.prompt.md`))
   md = md.replace('(bundle loaded from the root `_ds_bundle.js`)', '(`components/bundle.js`)')
+  // TSDoc `{@link X}` survives the .ds-sync slicer verbatim; the page renders markdown.
+  md = md.replace(/\{@link ([^}|]+?)(?:\|([^}]+))?\}/g, (_, target, label) => `\`${(label ?? target).trim()}\``)
 
   // The .ds-sync slicer attaches each story's JSDoc to the *previous* story's
   // fence. Cut those trailing comments and put every story's own doc above its
@@ -241,6 +243,11 @@ for (const cat of Object.keys(tokens.flightRules.light)) {
   colorToken(`fp-${cat}-container`, (s) => tokens.flightRules[tone(s)][cat].container)
   colorToken(`fp-${cat}-on-container`, (s) => tokens.flightRules[tone(s)][cat].onContainer)
 }
+// The page paints the ground behind every preview from a token named exactly
+// `background` (or `bg`, `page`, `canvas`, `paper`); without one it guesses light
+// or dark from the theme's *name*, which puts Cockpit on a cream well. An alias
+// keeps one value and gives the page the name it looks for.
+colorToken('background', () => '{fp-background}')
 
 const radius = Object.entries(tokens.shapes).map(([name, dp]) => {
   const id = `fp-shape-${kebab(name)}`
@@ -315,6 +322,32 @@ emit(
     2,
   ) + '\n',
 )
+
+// tokens.css is what the preview frame actually loads. The page recompiles it
+// from tokens.json only on its own save, so a publish alone would leave previews
+// on the previous compile — pointing at fonts that no longer exist. Write the
+// same compile the page would, in its own format, so a publish is complete.
+{
+  const css = (v) => (v.startsWith('{') ? `var(--${v.slice(1, -1)})` : v)
+  const decl = (t, id) => `  --${t.name}: ${css(t.value[id])};`
+  const first = THEMES[0][1]
+  const lines = ['/* Flight Planner — generated from tokens.json */']
+  lines.push(`:root, [data-theme="${first}"] {`, ...color.map((t) => decl(t, first)), '}')
+  for (const [, id] of THEMES.slice(1)) lines.push(`[data-theme="${id}"] {`, ...color.map((t) => decl(t, id)), '}')
+  lines.push(':root {', ...[...radius, ...motion].map((t) => `  --${t.name}: ${t.value};`), '}')
+  for (const f of fonts) {
+    lines.push(
+      '@font-face {',
+      `  font-family: "${f.family}";`,
+      `  src: url("${f.file}") format("woff2");`,
+      `  font-weight: ${f.weight};`,
+      `  font-style: ${f.style};`,
+      '  font-display: swap;',
+      '}',
+    )
+  }
+  emit('project/tokens.css', lines.join('\n') + '\n')
+}
 
 // ---------------------------------------------------------------------------
 // The index — read live right before, sent last, every other key kept
