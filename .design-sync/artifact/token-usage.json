@@ -1,0 +1,172 @@
+{
+  "color": {
+    "fp-primary": "Key brand colour: filled `fp-button`, text buttons, the selected day in `FlightDatePickerDialog`, icons in `EmptyState`/`ErrorState`. As text it holds 4.5:1 on `fp-surface`, `fp-background` and every surface container in every theme. Cockpit turns it amber, Chart navy.",
+    "fp-on-primary": "Text and icons on `fp-primary` fills (`fp-button` label, selected date); also the thumb of an 'on' switch.",
+    "fp-primary-container": "Tonal primary fill: the route-detail hero band, the FAB and the contained `MorphingLoadingIndicator`.",
+    "fp-on-primary-container": "Text and icons on `fp-primary-container` (hero, FAB, contained loader).",
+    "fp-inverse-primary": "Primary accent on `fp-inverse-surface` (5:1 or more in every theme); Material role carried from the Kotlin scheme, no mirror component paints it yet.",
+    "fp-secondary": "Secondary accent role from the Kotlin scheme; no mirror component paints it directly. Use `fp-secondary-container` for selection instead.",
+    "fp-on-secondary": "Text on `fp-secondary` fills; carried Material role, unused by the mirror.",
+    "fp-secondary-container": "Selection fill: the active `NavigationBar`/`NavigationRail` indicator, `fp-button--tonal`, a selected `FilterField` and the selected `ModeSelector` chip.",
+    "fp-on-secondary-container": "Text and icons on `fp-secondary-container` (active nav item, tonal button, selected chip or filter).",
+    "fp-tertiary": "Warning accent: the 'warn' result on `StartupCheckScreen`. Amber in the brand themes, sky blue in Cockpit. Holds 4.5:1 on surfaces except `fp-surface-dim` in Chart (4.39:1).",
+    "fp-on-tertiary": "Text on `fp-tertiary` fills; carried Material role, unused by the mirror.",
+    "fp-tertiary-container": "Tonal tertiary fill; carried Material role, unused by the mirror.",
+    "fp-on-tertiary-container": "Text on `fp-tertiary-container`; carried Material role, unused by the mirror.",
+    "fp-background": "The window behind everything: `FlightPlannerTheme fullBleed`, `PhoneFrame`, `TabletFrame`. Same value as `fp-surface`.",
+    "fp-on-background": "Default text on `fp-background` (frames, the status-bar clock, screen headlines).",
+    "fp-surface": "Base surface: the `fp-surface` class and the sticky `MonthHeader` in the logbook.",
+    "fp-on-surface": "Primary text and icons on every surface and surface container: app bar titles, card titles, figures, the active nav label. 8.9:1 or more on all of them in every theme.",
+    "fp-surface-variant": "Variant surface role carried from the Kotlin scheme; the mirror paints surface containers instead.",
+    "fp-on-surface-variant": "Secondary text and icons: the inactive nav bar, app-bar back and action icons, field labels, captions under figures, the sheet drag handle. 6:1 or more on every surface and container in every theme.",
+    "fp-surface-tint": "Elevation tint role, equal to `fp-primary`; carried from the Kotlin scheme, the mirror does not tint surfaces.",
+    "fp-inverse-surface": "Inverse ground (snackbar-style surfaces); carried Material role, unused by the mirror.",
+    "fp-inverse-on-surface": "Text on `fp-inverse-surface`; carried Material role, unused by the mirror.",
+    "fp-error": "Failure: the border and label of a failing `TextField`, its supporting text, and the `ErrorState` title. 4.5:1 on surfaces except `fp-surface-container-highest` (4.41:1) and `fp-surface-dim` (4.08:1) in Chart.",
+    "fp-on-error": "Text on `fp-error` fills; carried Material role, unused by the mirror.",
+    "fp-error-container": "Tonal error fill; carried Material role, unused by the mirror (`SwipeActionBackground` and `ErrorState` do not paint it).",
+    "fp-on-error-container": "Text on `fp-error-container`; carried Material role, unused by the mirror.",
+    "fp-outline": "Borders that carry meaning: the `TextField` box, an unselected `ModeSelector` chip, the switch track and its off thumb. 3.7:1 or more on `fp-surface` and `fp-surface-container-low`.",
+    "fp-outline-variant": "Hairlines that only separate: the glass plate edge on the globe, a filled field's border, `FilterField`, the date-picker headline rule, the METAR raw-report rule. Below 3:1 by design; never the only mark of a control.",
+    "fp-scrim": "The dimmed layer under a modal: `ScrimOverlay`'s dim layer.",
+    "fp-surface-bright": "Brightest surface role from the Kotlin scheme; unused by the mirror.",
+    "fp-surface-dim": "Dimmest surface role from the Kotlin scheme; unused by the mirror.",
+    "fp-surface-container": "Default card ground: `fp-card`, `RouteCard`, the `NavigationBar`, `ChallengeWidgetCard`, and at 0.82 alpha the globe's glass plates and glass app bar.",
+    "fp-surface-container-high": "Raised ground: `ConfirmationDialog`, the icon disc in `EmptyState`/`ErrorState`, widget figures, a hovered picker result.",
+    "fp-surface-container-highest": "Highest ground: the switch track and a hovered date in the picker.",
+    "fp-surface-container-low": "Low ground: `BottomSheet`, `MetarPanel`, `VisitedNetworkCard`, and the notch behind a `TextField` label.",
+    "fp-surface-container-lowest": "Lowest container role from the Kotlin scheme; unused by the mirror.",
+    "fp-primary-fixed": "Fixed primary fill (the same in light and dark); carried Material role, unused by the mirror.",
+    "fp-primary-fixed-dim": "Dimmer fixed primary fill; carried Material role, unused by the mirror.",
+    "fp-on-primary-fixed": "Text on `fp-primary-fixed` and `fp-primary-fixed-dim`; carried Material role, unused.",
+    "fp-on-primary-fixed-variant": "Lower-emphasis text on `fp-primary-fixed`; carried Material role, unused.",
+    "fp-secondary-fixed": "Fixed secondary fill; carried Material role, unused by the mirror.",
+    "fp-secondary-fixed-dim": "Dimmer fixed secondary fill; carried Material role, unused by the mirror.",
+    "fp-on-secondary-fixed": "Text on `fp-secondary-fixed` and `fp-secondary-fixed-dim`; carried Material role, unused.",
+    "fp-on-secondary-fixed-variant": "Lower-emphasis text on `fp-secondary-fixed`; carried Material role, unused.",
+    "fp-tertiary-fixed": "Fixed tertiary fill; carried Material role, unused by the mirror.",
+    "fp-tertiary-fixed-dim": "Dimmer fixed tertiary fill (brand amber); carried Material role, unused by the mirror.",
+    "fp-on-tertiary-fixed": "Text on `fp-tertiary-fixed` and `fp-tertiary-fixed-dim`; carried Material role, unused.",
+    "fp-on-tertiary-fixed-variant": "Lower-emphasis text on `fp-tertiary-fixed`; carried Material role, unused.",
+    "fp-sky-day-low": "`SkyProfile` daytime sky at the horizon (bottom stop of the sky gradient). Scenery, not a text ground.",
+    "fp-sky-day-high": "`SkyProfile` daytime sky aloft (top stop); also the ocean behind `GlobeView`'s sphere.",
+    "fp-sky-day-cloud-body": "`SkyProfile` cloud deck fill by day.",
+    "fp-sky-twilight-low": "`SkyProfile` twilight sky at the horizon.",
+    "fp-sky-twilight-high": "`SkyProfile` twilight sky aloft.",
+    "fp-sky-twilight-cloud-body": "`SkyProfile` cloud deck fill at twilight.",
+    "fp-sky-night-low": "`SkyProfile` night sky at the horizon.",
+    "fp-sky-night-high": "`SkyProfile` night sky aloft.",
+    "fp-sky-night-cloud-body": "`SkyProfile` cloud deck fill at night.",
+    "fp-sky-ground-subsurface": "`SkyProfile` ground below the surface line; carried from the Kotlin scenery set, not referenced by the mirror bundle.",
+    "fp-sky-ground-fog": "`SkyProfile` fog lying on the field; carried scenery colour, not referenced by the mirror bundle.",
+    "fp-sky-ground-dry": "`SkyProfile` ground strip for a dry field (the one surface state the mirror draws).",
+    "fp-sky-ground-wet": "`SkyProfile` ground for a wet field; carried scenery colour, not referenced by the mirror bundle.",
+    "fp-sky-ground-snow": "`SkyProfile` ground under snow; carried scenery colour, not referenced by the mirror bundle.",
+    "fp-sky-ground-frost": "`SkyProfile` ground under frost; carried scenery colour, not referenced by the mirror bundle.",
+    "fp-sky-ground-icy": "`SkyProfile` ground for an icy field; carried scenery colour, not referenced by the mirror bundle.",
+    "fp-sky-day-cloud-edge": "`SkyProfile` outline of a cloud deck by day.",
+    "fp-sky-day-convective": "`SkyProfile` convective (CB/TCU) cloud by day.",
+    "fp-sky-twilight-cloud-edge": "`SkyProfile` outline of a cloud deck at twilight.",
+    "fp-sky-twilight-convective": "`SkyProfile` convective cloud at twilight.",
+    "fp-sky-night-cloud-edge": "`SkyProfile` outline of a cloud deck at night.",
+    "fp-sky-night-convective": "`SkyProfile` convective cloud at night.",
+    "fp-sky-celestial-sun": "`SkyProfile` sun disc. Never drawn over an IFR field: the category follows from the sky.",
+    "fp-sky-celestial-sun-glow": "`SkyProfile` halo around the sun.",
+    "fp-sky-celestial-moon-lit": "`SkyProfile` lit face of the moon.",
+    "fp-sky-celestial-moon-dark": "`SkyProfile` shadowed face of the moon; carried scenery colour, not referenced by the mirror bundle.",
+    "fp-sky-sock-mast": "The windsock mast in `SkyProfile` and `RunwayDiagram`.",
+    "fp-sky-sock-band": "Windsock orange: the sock's bands, and in `RunwayDiagram` the favoured runway's wind ray and ident. 3.2:1 or more on `fp-surface` and `fp-surface-container`, so use it for marks and bold idents, not body text.",
+    "fp-sky-sock-alternate-band": "The windsock's alternate (white) bands.",
+    "fp-vfr-container": "VFR chip fill in `FlightRulesBadge`. Standard chart green; never re-themed, never used for anything but a flight category.",
+    "fp-vfr-on-container": "VFR letters on `fp-vfr-container` (6.5:1 or more in every theme).",
+    "fp-mvfr-container": "MVFR chip fill in `FlightRulesBadge`. Standard chart blue; never re-themed or reused.",
+    "fp-mvfr-on-container": "MVFR letters on `fp-mvfr-container` (6.4:1 or more in every theme).",
+    "fp-ifr-container": "IFR chip fill in `FlightRulesBadge`. Standard chart red; never re-themed or reused.",
+    "fp-ifr-on-container": "IFR letters on `fp-ifr-container` (6.2:1 or more in every theme).",
+    "fp-lifr-container": "LIFR chip fill in `FlightRulesBadge`. Standard chart magenta; never re-themed or reused.",
+    "fp-lifr-on-container": "LIFR letters on `fp-lifr-container` (5.6:1 or more in every theme).",
+    "fp-unknown-container": "Chip fill when a station has no category (`rules=\"UNKNOWN\"`) in `FlightRulesBadge`.",
+    "fp-unknown-on-container": "Letters on `fp-unknown-container` (5.7:1 or more in every theme)."
+  },
+  "radius": {
+    "fp-shape-extra-small": "4px corner: the globe's glass plates and glass app-bar buttons, the `TextField` box.",
+    "fp-shape-small": "8px corner: `FlightRulesBadge`, `ValueChip`, `ModeSelector` chips, `SkeletonBox`, picker result rows.",
+    "fp-shape-medium": "12px corner: `FilterField`, `SkyProfile`, `VisitedNetworkCard`, widget figures.",
+    "fp-shape-large": "16px corner: `MetarPanel`, `SkeletonCard`, list rows and the FAB on screens.",
+    "fp-shape-large-increased": "20px corner: cards. `RouteCard`, `fp-card`, `SwipeActionBackground`, the immersive globe's figure plate.",
+    "fp-shape-extra-large": "28px corner: `BottomSheet` (top corners only), `ConfirmationDialog`, `FlightDatePickerDialog`, the `EmptyState`/`ErrorState` icon disc, the outline hero on screens.",
+    "fp-shape-extra-large-increased": "32px corner from the Expressive scale; no mirror component uses it.",
+    "fp-shape-extra-extra-large": "48px corner, the top of the Expressive scale; no mirror component uses it."
+  },
+  "motion": {
+    "fp-motion-spatial-duration": "Default spatial spring (451ms): anything that moves or resizes, e.g. `RouteCard` entering or replacing. Pair with `--fp-motion-spatial-easing` from bundle.css.",
+    "fp-motion-spatial-fast-duration": "Fast spatial spring (376ms): the swipe-action icon and the switch thumb.",
+    "fp-motion-spatial-slow-duration": "Slow spatial spring (616ms) for large moves; no mirror component uses it yet.",
+    "fp-motion-effects-duration": "Default effects spring (247ms): fades, colour and elevation, e.g. the nav indicator and `FilterField` selection. Never overshoots.",
+    "fp-motion-effects-fast-duration": "Fast effects spring (166ms): date-picker day and pressable card feedback.",
+    "fp-motion-effects-slow-duration": "Slow effects spring (343ms); no mirror component uses it yet.",
+    "fp-stagger": "30ms per row for a list entrance (`RouteCard enterIndex`), capped at eight rows; off under prefers-reduced-motion."
+  },
+  "type": {
+    "display-large": {
+      "sample": "3,153 NM",
+      "usage": "Mirrors `fp-type-display-large`; in markup use that class, which also sets tabular figures. Largest figure slot; no mirror component sets it."
+    },
+    "display-medium": {
+      "sample": "3,153 NM",
+      "usage": "Mirrors `fp-type-display-medium`; in markup use that class, which also sets tabular figures. Display figure slot; no mirror component sets it."
+    },
+    "display-small": {
+      "sample": "3,153 NM",
+      "usage": "Mirrors `fp-type-display-small`; in markup use that class, which also sets tabular figures. Display figure slot; no mirror component sets it."
+    },
+    "headline-large": {
+      "sample": "EHAM → KJFK",
+      "usage": "Mirrors `fp-type-headline-large`; in markup use that class, which also sets tabular figures. The statistics headline figure: total distance in `HeroDistanceCard`."
+    },
+    "headline-medium": {
+      "sample": "EHAM → KJFK",
+      "usage": "Mirrors `fp-type-headline-medium`; in markup use that class, which also sets tabular figures. Screen titles: Plan, Fleet, Logbook in the list screens."
+    },
+    "headline-small": {
+      "sample": "EHAM → KJFK",
+      "usage": "Mirrors `fp-type-headline-small`; in markup use that class, which also sets tabular figures. Detail titles: the airframe name in `FleetDetailPane`, the leg in `FlightDetailPane`."
+    },
+    "title-large": {
+      "sample": "Cessna 172S Skyhawk",
+      "usage": "Mirrors `fp-type-title-large`; in markup use that class, which also sets tabular figures. Secondary figures: `MetricGrid` and `StatSummaryStrip` values, the route plate on the immersive globe."
+    },
+    "title-medium": {
+      "sample": "Cessna 172S Skyhawk",
+      "usage": "Mirrors `fp-type-title-medium`; in markup use that class, which also sets tabular figures. List-row titles: the airframe or leg in fleet and logbook rows."
+    },
+    "title-small": {
+      "sample": "Cessna 172S Skyhawk",
+      "usage": "Mirrors `fp-type-title-small`; in markup use that class, which also sets tabular figures. The aircraft name on `RouteCard`, the month in the date picker, compact row titles."
+    },
+    "body-large": {
+      "sample": "Pick an aircraft and generate a few.",
+      "usage": "Mirrors `fp-type-body-large`; in markup use that class, which also sets proportional figures. A typed `TextField` value (the field itself sets it tabular and left to right) and large row titles. Otherwise keep figures out of body."
+    },
+    "body-medium": {
+      "sample": "Pick an aircraft and generate a few.",
+      "usage": "Mirrors `fp-type-body-medium`; in markup use that class, which also sets proportional figures. Supporting copy: dialog and empty- or error-state messages, the METAR sky line, a pane's category or date line."
+    },
+    "body-small": {
+      "sample": "Pick an aircraft and generate a few.",
+      "usage": "Mirrors `fp-type-body-small`; in markup use that class, which also sets proportional figures. Small row details, and the raw METAR set in the mono family."
+    },
+    "label-large": {
+      "sample": "DIST 92 NM",
+      "usage": "Mirrors `fp-type-label-large`; in markup use that class, which also sets tabular figures. Button labels (`fp-button`) and row figures."
+    },
+    "label-medium": {
+      "sample": "DIST 92 NM",
+      "usage": "Mirrors `fp-type-label-medium`; in markup use that class, which also sets tabular figures. Navigation labels on `NavigationBar` and `NavigationRail`."
+    },
+    "label-small": {
+      "sample": "DIST 92 NM",
+      "usage": "Mirrors `fp-type-label-small`; in markup use that class, which also sets tabular figures. The smallest labels: field and filter labels, `RouteCard` category, date-picker weekdays, row details, stat eyebrows such as TOTAL DISTANCE."
+    }
+  }
+}
