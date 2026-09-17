@@ -346,13 +346,16 @@ if (has('purge-legacy')) {
     'project/publish-progress.json',
     'project/assets/notes/MIGRATION-REPORT.md',
     'project/assets/notes/README.legacy.md',
+    'project/fonts/roboto-400.woff2',
     ...components.map((c) => `project/components/src/${c.group}/${c.name}/${c.name}.jsx`),
   )
 }
 
+// `.d.ts` is not a served extension; the artifact keeps types as text/plain.
+const source = (p) => (p.endsWith('.d.ts') ? { from: p, contentType: 'text/plain' } : p)
 const [first, ...others] = written
 const calls = [
-  { url: ARTIFACT_URL, root: posix(OUT), file_path: posix(join(OUT, first)), files: Object.fromEntries(others.map((p) => [p, p])) },
+  { url: ARTIFACT_URL, root: posix(OUT), file_path: posix(join(OUT, first)), files: Object.fromEntries(others.map((p) => [p, source(p)])) },
   {
     url: ARTIFACT_URL,
     root: posix(OUT),
