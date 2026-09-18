@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    "Aircraft of the day". Four cells by two by default, resizable down to the
+    compact bucket at 180dp, where the layout keeps the range alone and states
+    the flown status as a dot (see AircraftWidget.COMPACT). Height is fixed at
+    one row of content: taller would only be padding.
+
+    The floor is 180dp rather than the challenge widget's 140dp because this
+    card's top line carries an airframe name, which has nothing to say in two
+    cells. Everything else here matches widget_challenge_info.xml, deliberately:
+    the two widgets share a slot and should offer the same handles in the picker.
+
+    updatePeriodMillis is 0 because the widget is refreshed by a wall-clock
+    alarm at local midnight (MidnightRefresh.AIRCRAFT), not by polling. There is
+    no previewImage: Android 15 takes a rendered preview from the widget itself
+    (PublishWidgetPreview), so a hand-drawn one would only go stale.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="100dp"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="100dp"
+    android:maxResizeWidth="360dp"
+    android:maxResizeHeight="100dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="0"
+    android:description="@string/widget_aircraft_description"
+    android:initialLayout="@layout/glance_default_loading_layout" />

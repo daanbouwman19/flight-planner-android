@@ -7,7 +7,7 @@ import com.github.daanbouwman.flightplanner.navigation.Destination
  * The one Intent encoding of a [LaunchRequest], read and written here and
  * nowhere else.
  *
- * The widget writes it with [putLaunchRequest]; `res/xml/shortcuts.xml` writes
+ * The widgets write it with [putLaunchRequest]; `res/xml/shortcuts.xml` writes
  * it by hand with the same action strings; `MainActivity` reads it with [parse].
  * `LaunchIntentsTest` round-trips every request and parses the shortcut XML, so
  * a typo in either place fails a unit test rather than a tap on a device.
@@ -23,6 +23,7 @@ object LaunchIntents {
     const val ACTION_GENERATE_ROUTES: String = PREFIX + "GENERATE_ROUTES"
     const val ACTION_LOG_FLIGHT: String = PREFIX + "LOG_FLIGHT"
     const val ACTION_LAST_ROUTE: String = PREFIX + "LAST_ROUTE"
+    const val ACTION_OPEN_AIRCRAFT: String = PREFIX + "OPEN_AIRCRAFT"
 
     const val EXTRA_DEPARTURE_ICAO: String = "departure_icao"
     const val EXTRA_DESTINATION_ICAO: String = "destination_icao"
@@ -36,13 +37,23 @@ object LaunchIntents {
      * Null for the launcher's own MAIN intent, for an action this object does
      * not know, and for an `OPEN_ROUTE` missing any of its fields — an Intent
      * from outside the process is input, and malformed input is "do nothing",
-     * never a crash on the way into the app.
+     * never a crash on the way into the app. `OPEN_AIRCRAFT` is the one action
+     * with an optional field rather than required ones; see
+     * [LaunchRequest.OpenAircraft].
      */
     fun parse(intent: Intent?): LaunchRequest? {
         when (intent?.action) {
             ACTION_GENERATE_ROUTES -> return LaunchRequest.GenerateRoutes
             ACTION_LOG_FLIGHT -> return LaunchRequest.LogFlight
             ACTION_LAST_ROUTE -> return LaunchRequest.LastRoute
+            ACTION_OPEN_AIRCRAFT -> return LaunchRequest.OpenAircraft(
+                // Absent is "the fleet list", not "malformed" — see
+                // `LaunchRequest.OpenAircraft`. An id that no longer names an
+                // airframe is the Fleet detail screen's problem, as it already
+                // is for one reached from a restored back stack.
+                airframeId = if (intent.hasExtra(EXTRA_AIRCRAFT_ID)) intent.getIntExtra(EXTRA_AIRCRAFT_ID, 0) else null,
+            )
+
             ACTION_OPEN_ROUTE -> Unit
             else -> return null
         }
@@ -71,6 +82,11 @@ object LaunchIntents {
         LaunchRequest.GenerateRoutes -> setAction(ACTION_GENERATE_ROUTES)
         LaunchRequest.LogFlight -> setAction(ACTION_LOG_FLIGHT)
         LaunchRequest.LastRoute -> setAction(ACTION_LAST_ROUTE)
+        // The extra is written only when there is an airframe to name, so
+        // that "no id" and "id 0" stay distinguishable on the way back out.
+        is LaunchRequest.OpenAircraft -> setAction(ACTION_OPEN_AIRCRAFT).also { intent ->
+            request.airframeId?.let { id -> intent.putExtra(EXTRA_AIRCRAFT_ID, id) }
+        }
         is LaunchRequest.OpenRoute -> setAction(ACTION_OPEN_ROUTE)
             .putExtra(EXTRA_DEPARTURE_ICAO, request.route.departureIcao)
             .putExtra(EXTRA_DESTINATION_ICAO, request.route.destinationIcao)

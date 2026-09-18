@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The compact aircraft card's flown mark: a white disc, tinted at display time
+    by `AircraftWidget.FlownDot`. White because it is a mask — the colour is a
+    Glance `ColorFilter` over a colour *provider*, so it follows the launcher's
+    day and night the way the challenge card's map layers do, rather than being
+    baked in at the render that drew it.
+
+    An intrinsic size, so the drawable is measurable even where the ImageView is
+    not yet laid out; the widget gives it an explicit one anyway.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#FFFFFFFF" />
+    <size
+        android:width="12dp"
+        android:height="12dp" />
+</shape>

@@ -62,7 +62,7 @@
             broadcast of our own choosing: TIMEZONE_CHANGED is on the platform's
             exemption list for manifest receivers and moves local midnight, so
             the widget re-renders on it. The date itself changes on an alarm
-            (ChallengeRefresh), because DATE_CHANGED is not deliverable this way.
+            (MidnightRefresh), because DATE_CHANGED is not deliverable this way.
             Exported, as every widget provider must be for the launcher to reach it.
         -->
         <receiver
@@ -76,6 +76,27 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_challenge_info" />
+        </receiver>
+
+        <!--
+            The "Aircraft of the day" widget: the same shape as the one above,
+            for the same reasons, on its own MidnightRefresh alarm so that
+            removing one widget does not disarm the other. A second provider
+            rather than a configuration of the first, because the launcher's
+            picker lists providers — one entry each is how a user chooses
+            between them.
+        -->
+        <receiver
+            android:name=".widget.AircraftWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_aircraft_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_aircraft_info" />
         </receiver>
 
         <!--

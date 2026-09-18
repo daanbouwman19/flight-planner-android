@@ -388,6 +388,18 @@ private fun LaunchRequestConsumer(
                 launchRequests.consume(request)
             }
 
+            is LaunchRequest.OpenAircraft -> {
+                // Over Fleet, for the same reason OpenRoute lands over Plan:
+                // back from the aircraft widget's airframe then lands on the
+                // list it came from, and the bar's selection follows the stack.
+                // A null id is the list alone — see `LaunchRequest.OpenAircraft`.
+                navController.navigateToTopLevel(TopLevelDestination.FLEET)
+                request.airframeId?.let { id ->
+                    navController.navigate(Destination.FleetDetail(id)) { launchSingleTop = true }
+                }
+                launchRequests.consume(request)
+            }
+
             LaunchRequest.LogFlight -> navController.navigateToTopLevel(TopLevelDestination.LOGBOOK)
         }
     }

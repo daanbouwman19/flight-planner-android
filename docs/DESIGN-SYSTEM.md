@@ -48,10 +48,11 @@ fun resolveColorScheme(themeChoice: ThemeChoice, dynamicColor: Boolean, dark: Bo
 ```
 
 The same selection, as two plain functions. `FlightPlannerTheme` calls them inside
-its `remember`; they are public for the one surface that has no composition of ours
-to inherit from — the home-screen widget, which Glance draws in the launcher's
-process and which builds its `ColorProviders` from these so it arrives at the app's
-own colours rather than a second palette. `resolveColorScheme` is not pure (dynamic
+its `remember`; they are public for the one *kind* of surface that has no
+composition of ours to inherit from — the home-screen widgets ("Today's challenge"
+and "Aircraft of the day"), which Glance draws in the launcher's process and which
+build their `ColorProviders` from these, through one shared `widgetPalette`, so
+they arrive at the app's own colours rather than a second palette. `resolveColorScheme` is not pure (dynamic
 colour reads the system palette through `context`) but it is not a composable
 either, so it can run in a `BroadcastReceiver`.
 

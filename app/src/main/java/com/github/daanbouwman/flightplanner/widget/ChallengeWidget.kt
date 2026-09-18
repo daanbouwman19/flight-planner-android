@@ -98,7 +98,7 @@ class ChallengeWidget : GlanceAppWidget() {
     override val previewSizeMode: PreviewSizeMode = SizeMode.Responsive(setOf(WIDE))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        ChallengeRefresh.scheduleNextMidnight(context)
+        MidnightRefresh.CHALLENGE.scheduleNext(context)
 
         val graph = WidgetEntryPoint.from(context)
         // `settings` is a StateFlow started eagerly in the application scope
@@ -112,7 +112,7 @@ class ChallengeWidget : GlanceAppWidget() {
         val outline = graph.worldOutlineLoader().load()
         val palette = widgetPalette(settings, context)
 
-        provideContent { Themed(palette) { ChallengeSurface(state, outline, palette) } }
+        provideContent { WidgetTheme(palette) { ChallengeSurface(state, outline, palette) } }
     }
 
     /**
@@ -122,7 +122,7 @@ class ChallengeWidget : GlanceAppWidget() {
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
         val outline = WidgetEntryPoint.from(context).worldOutlineLoader().load()
         val palette = widgetPalette(AppSettings(), context)
-        provideContent { Themed(palette) { ChallengeSurface(PREVIEW_STATE, outline, palette) } }
+        provideContent { WidgetTheme(palette) { ChallengeSurface(PREVIEW_STATE, outline, palette) } }
     }
 
     companion object {
@@ -165,7 +165,7 @@ fun renderChallengeMap(state: ChallengeState, outline: WorldOutline, size: DpSiz
             density = density,
             // The band the airframe line is printed across; the route is framed
             // below it, exactly as on the route card.
-            topInsetPx = (PADDING + TITLE_LINE).toPx(),
+            topInsetPx = (WidgetPadding + TITLE_LINE).toPx(),
         )
     } ?: return null
     return ChallengeMap(
@@ -200,18 +200,11 @@ private fun ChallengeSurface(state: ChallengeState, outline: WorldOutline, palet
             // the one thing on the home screen that did not look like the app.
             // See `WidgetPalette` for where the tone comes from.
             .surface(palette.card)
-            .cornerRadius(CORNER)
+            .cornerRadius(WidgetCorner)
             .clickable(open),
     ) {
         ChallengeContent(state, map, palette)
     }
-}
-
-/** `GlanceTheme` with the palette's colours, or Glance's own dynamic ones when it has none. */
-@Composable
-private fun Themed(palette: WidgetPalette, content: @Composable () -> Unit) {
-    val colors = palette.colors
-    if (colors == null) GlanceTheme(content = content) else GlanceTheme(colors = colors, content = content)
 }
 
 /**
@@ -240,7 +233,7 @@ fun ChallengeContent(
             MapLayer(map.casing, palette.casing)
             MapLayer(map.route, colors.primary)
         }
-        Column(modifier = GlanceModifier.fillMaxSize().padding(PADDING)) {
+        Column(modifier = GlanceModifier.fillMaxSize().padding(WidgetPadding)) {
             when (state) {
                 is ChallengeState.Ready -> {
                     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -275,7 +268,7 @@ fun ChallengeContent(
                     Spacer(GlanceModifier.height(8.dp))
                     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Figure(context.getString(R.string.plan_chip_distance), state.distanceText, palette.chip)
-                        Spacer(GlanceModifier.width(8.dp))
+                        Spacer(GlanceModifier.width(WidgetFigureGap))
                         Figure(context.getString(R.string.plan_chip_time), state.eteText, palette.chip)
                     }
                 }
@@ -300,49 +293,8 @@ private fun MapLayer(mask: Bitmap, tint: ColorProvider) {
     )
 }
 
-/** A figure with its label, on a quiet pill so the coast can pass behind it. */
-@Composable
-private fun Figure(label: String, value: String, chip: WidgetSurface) {
-    val colors = GlanceTheme.colors
-    Row(
-        modifier = GlanceModifier
-            .surface(chip)
-            .cornerRadius(CHIP_CORNER)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = TextStyle(color = colors.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Medium),
-        )
-        Spacer(GlanceModifier.width(6.dp))
-        Text(
-            text = value,
-            style = TextStyle(color = colors.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium),
-        )
-    }
-}
-
-@Composable
-private fun Message(text: String) {
-    Column(modifier = GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.Vertical.CenterVertically) {
-        Text(
-            text = text,
-            style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 14.sp),
-            maxLines = 3,
-        )
-    }
-}
-
-private fun codeStyle(color: ColorProvider) = TextStyle(color = color, fontSize = CODE_SIZE, fontWeight = FontWeight.Bold)
-
-private val CODE_SIZE = 26.sp
-private val PADDING: Dp = 16.dp
-
 /** The height of the airframe line the map keeps its route clear of. */
 private val TITLE_LINE: Dp = 20.dp
-private val CORNER = 24.dp
-private val CHIP_CORNER = 12.dp
 
 /** Below this width the airframe line goes. */
 private val WIDE_THRESHOLD = 220.dp
