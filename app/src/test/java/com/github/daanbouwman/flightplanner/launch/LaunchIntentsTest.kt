@@ -16,7 +16,7 @@ import org.robolectric.annotation.Config
 import org.xmlpull.v1.XmlPullParser
 
 /**
- * The Intent contract between the widget, the shortcuts and `MainActivity`.
+ * The Intent contract between the two widgets, the shortcuts and `MainActivity`.
  *
  * Robolectric rather than a pure function, because the property that matters is
  * the round trip through a real `Intent` and its extras — a hand-rolled bundle
@@ -45,6 +45,8 @@ class LaunchIntentsTest {
             LaunchRequest.GenerateRoutes,
             LaunchRequest.LogFlight,
             LaunchRequest.LastRoute,
+            LaunchRequest.OpenAircraft(7),
+            LaunchRequest.OpenAircraft(null),
         )
         requests.map { LaunchIntents.parse(Intent().putLaunchRequest(it)) } shouldBe requests
     }
@@ -53,6 +55,23 @@ class LaunchIntentsTest {
     fun `an open-route request keeps every field, including the flown flag`() {
         val parsed = LaunchIntents.parse(Intent().putLaunchRequest(LaunchRequest.OpenRoute(route)))
         parsed shouldBe LaunchRequest.OpenRoute(route)
+    }
+
+    /**
+     * The aircraft widget's tap, and the one request whose field is optional:
+     * absent means the fleet list, so it must not come back as `0` — the id of
+     * a real airframe — and `0` must not come back as absent.
+     */
+    @Test
+    fun `an open-aircraft request tells a named airframe from none`() {
+        val named = LaunchIntents.parse(Intent().putLaunchRequest(LaunchRequest.OpenAircraft(7)))
+        named shouldBe LaunchRequest.OpenAircraft(7)
+
+        val bare = LaunchIntents.parse(Intent().putLaunchRequest(LaunchRequest.OpenAircraft(null)))
+        bare shouldBe LaunchRequest.OpenAircraft(null)
+
+        val zero = LaunchIntents.parse(Intent().putLaunchRequest(LaunchRequest.OpenAircraft(0)))
+        zero shouldBe LaunchRequest.OpenAircraft(0)
     }
 
     @Test

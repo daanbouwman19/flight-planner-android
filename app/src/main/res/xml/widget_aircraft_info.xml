@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    "Aircraft of the day". Two cells by one by default: one airframe is a
+    smaller fact than a route, and the short compact layout (AircraftWidget)
+    carries all of it in two lines — the airframe, the date, the type code,
+    the range, the flown status as a dot. Resizable to four cells, which adds
+    the runway figure and states the status in words, and to two rows, which
+    is the challenge card's three-band layout with an empty band where that
+    card draws its map.
+
+    The width floor is the challenge widget's 140dp, deliberately: the two
+    widgets share a slot, and a floor above what a launcher's two cells
+    measure (One UI: 176–184dp) is a widget that cannot be made two cells wide
+    at all. One UI derives the picker's column count from minWidth as well —
+    176dp listed as 3×1 — so minWidth cannot be raised to what the layout
+    needs (about 174dp) without losing the two-cell default. Its picker also
+    draws every preview at 0.83 of the grid, in dp, without scaling the
+    content, so the two-cell preview there clips the range chip's last glyph;
+    the widget itself, at a real 176dp, does not. The height floor is 40dp — not what the short layout needs (about
+    80dp) but what a launcher needs to *hear* "one row": One UI sizes the
+    picker entry by the classic 70n − 30 formula, so anything above 40dp is
+    listed and placed as two rows and targetCellHeight is ignored. A real
+    one-row grant is around 100dp (One UI: 102dp), which the short layout
+    fits with room.
+
+    updatePeriodMillis is 0 because the widget is refreshed by a wall-clock
+    alarm at local midnight (MidnightRefresh.AIRCRAFT), not by polling. There is
+    no previewImage: Android 15 takes a rendered preview from the widget itself
+    (PublishWidgetPreview), so a hand-drawn one would only go stale.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="140dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="140dp"
+    android:minResizeHeight="40dp"
+    android:maxResizeWidth="360dp"
+    android:maxResizeHeight="260dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="0"
+    android:description="@string/widget_aircraft_description"
+    android:initialLayout="@layout/glance_default_loading_layout" />

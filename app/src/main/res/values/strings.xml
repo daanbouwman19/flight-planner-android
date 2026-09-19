@@ -605,4 +605,24 @@
     <string name="widget_challenge_fleet_empty">Add an aircraft to your fleet and a challenge appears here.</string>
     <string name="widget_challenge_unavailable">Open the app to load today\'s challenge.</string>
 
+    <!--
+         The "Aircraft of the day" home-screen widget. RNG and RWY are chart
+         abbreviations, uppercase in the resource like plan_chip_distance rather
+         than uppercased in code, which would follow the device locale's casing
+         rules for a label that is not prose.
+
+         FLOWN / NOT FLOWN are the badge on the wide card and are uppercase for
+         the same reason; the compact card states the same fact through the dot's
+         content description, which reuses fleet_detail_flown / _not_flown
+         because it is the same label for the same fact.
+    -->
+    <string name="widget_aircraft_label">Aircraft of the day</string>
+    <string name="widget_aircraft_description">One airframe from your fleet each day, with the runway and range it needs. Tap to open it.</string>
+    <string name="widget_aircraft_fleet_empty">Add an aircraft to your fleet and one appears here each day.</string>
+    <string name="widget_aircraft_unavailable">Open the app to load today\'s aircraft.</string>
+    <string name="widget_aircraft_chip_range">RNG</string>
+    <string name="widget_aircraft_chip_runway">RWY</string>
+    <string name="widget_aircraft_flown">FLOWN</string>
+    <string name="widget_aircraft_not_flown">NOT FLOWN</string>
+
 </resources>

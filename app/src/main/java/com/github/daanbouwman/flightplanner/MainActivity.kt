@@ -26,6 +26,7 @@ import com.github.daanbouwman.flightplanner.startup.splashShouldHold
 import com.github.daanbouwman.flightplanner.ui.FlightPlannerApp
 import com.github.daanbouwman.flightplanner.ui.LocalUnitSystem
 import com.github.daanbouwman.flightplanner.widget.PublishWidgetPreview
+import com.github.daanbouwman.flightplanner.widget.RefreshWidgetsOnFleetChange
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -107,6 +108,7 @@ class MainActivity : ComponentActivity() {
                     // After the app, so it composes after the first frame's
                     // content and never ahead of it.
                     PublishWidgetPreview()
+                    RefreshWidgetsOnFleetChange()
                 }
             }
         }

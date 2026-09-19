@@ -5,7 +5,7 @@
     Height is fixed at one row of content: taller would only be padding.
 
     updatePeriodMillis is 0 because the widget is refreshed by a wall-clock
-    alarm at local midnight (ChallengeRefresh), not by polling. There is no
+    alarm at local midnight (MidnightRefresh.CHALLENGE), not by polling. There is no
     previewImage: Android 15 takes a rendered preview from the widget itself
     (PublishWidgetPreview), so a hand-drawn one would only go stale. Until the
     app has run once the picker shows the launcher icon.

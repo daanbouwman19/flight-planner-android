@@ -413,7 +413,9 @@ per-chunk `Random(baseSeed + chunkIndex)` so results stay reproducible.
 
 **Determinism**: `Random` is a parameter everywhere — never `Math.random()`, never
 `ThreadLocalRandom`. Production passes `Random.Default`, tests `Random(42)`, and the daily-challenge
-widget `Random(LocalDate.now().toEpochDay())`.
+widget `Random(LocalDate.now().toEpochDay())`. "Aircraft of the day" seeds from the same epoch day
+*mixed*, so its sequence is independent of the challenge's rather than a second read of it —
+`dailyAircraftSeed`.
 
 **Statistics are computed once, in `:core:routing`.** `FlightStatisticsCalculator` mirrors the desktop's
 `StatsAccumulator` field for field, and `StatsViewModel` calls its `calculateDetailed()` on the
@@ -701,7 +703,8 @@ generate-complete.
 thresholds in the Rust `FlightRules::description()`. AVWX stays as an optional provider with the
 same masked key field, so nothing is lost — but the worst first-run papercut is.
 
-**Widgets and shortcuts** — a **Glance** widget, "Today's challenge": one route seeded by
+**Widgets and shortcuts** — **Glance** widgets, "Today's challenge" and (H7) "Aircraft of the
+day", which share one card grammar and one Hilt entry point. The first: one route seeded by
 `LocalDate.toEpochDay()`, deterministic across the day, tap to open. The seeded RNG makes it nearly
 free and it is the best retention feature available. Plus static shortcuts: "Generate route", "Log
 a flight", "Last route". Skip a quick-settings tile. *Shipped as H3 and H4 (UI-PLAN.md §10). Two
