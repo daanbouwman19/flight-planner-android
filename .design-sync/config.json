@@ -46,6 +46,9 @@
     "ChallengeWidgetCard": {
       "cardMode": "column"
     },
+    "AircraftWidgetCard": {
+      "cardMode": "column"
+    },
     "SettingsScreen": {
       "cardMode": "column",
       "viewport": "420x900"

@@ -101,6 +101,7 @@
   display: flex;
   align-items: center;
   box-sizing: border-box;
+  white-space: nowrap; /* a figure is one line; the short compact card is exactly wide enough for it */
   gap: 6px;
   padding: 5px 10px;
   border-radius: var(--fp-shape-medium);
