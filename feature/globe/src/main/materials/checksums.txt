@@ -12,7 +12,16 @@
 #   ./gradlew :feature:globe:updateFilamatChecksums
 #   git add src/main/materials/checksums.txt src/main/assets/materials/<name>.filamat
 #
-# Format: <name>  <sha256 of the .mat>  <sha256 of the .filamat>
-globe_overlay  49e2c272fda9ebf1b23849c69f921124582c7585e81e55e24c80f00e063121fa  6f25af4e213b18a196ab6537dd6b954e76677a217b85e88e816dc3fb633631c9
-globe_solid  4314bf5a5ec370e9bc0f9c7653670d08886db0107d497124dfdde7f858b1dc6c  f2e8b22f83d4c159af2a00e6df7d6a6e568d3cd05e81a86a9aa3264d7dede06d
-globe_tile  e96abcdbb69b092f8d4507804abf302005ef503f556238b1f65cd14d4cf7e1b6  56ab30e781af358f5f07a988d64f0b48ed6dab77a0420e198e7543031bb46edc
+# The `matc` line names the Filament release whose matc produced the blobs. A
+# .filamat carries a material format version that the runtime refuses to load
+# when it differs (Filament 1.76.1 aborted on blobs from 1.75: "Material version
+# mismatch. Expected 76 but received 75"), so a runtime bump in
+# gradle/libs.versions.toml must come with a recompile from that release's
+# archive. verifyFilamatFreshness fails when the two disagree.
+#
+# Format: matc  <Filament release version>
+#         <name>  <sha256 of the .mat>  <sha256 of the .filamat>
+matc  1.76.1
+globe_overlay  49e2c272fda9ebf1b23849c69f921124582c7585e81e55e24c80f00e063121fa  45654ec0fa7a8e550f78f01a6abfae0b7431871704ca407c21809da6eda09405
+globe_solid  4314bf5a5ec370e9bc0f9c7653670d08886db0107d497124dfdde7f858b1dc6c  7048dff0aa3b52d4f891434fdeeb226a2090b079b22c35ee048768c9aaf95ee7
+globe_tile  e96abcdbb69b092f8d4507804abf302005ef503f556238b1f65cd14d4cf7e1b6  928cf5e39af2c676115c8f8737acaa31d644b0ae3e8ccd4b6b9fedc7205189d4

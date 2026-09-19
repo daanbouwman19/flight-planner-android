@@ -66,8 +66,45 @@ android {
 // then regenerated the manifest". A real matc run on a changed source produces a
 // different blob; a comment-only edit that genuinely compiles to the same bytes is
 // the one false positive, and -PallowUnchangedFilamat=true is its escape hatch.
+//
+// The second thing it catches is a *runtime* bump. A .filamat opens with a
+// MAT_VERSION chunk, and Material.Builder.build() aborts the process when it is
+// not the version the linked libfilament expects — Dependabot's 1.75 -> 1.76.1
+// bump shipped with blobs still at 75 and the globe crashed on open with
+// "Material version mismatch. Expected 76 but received 75". Neither hash moves in
+// that case, so the manifest also records the Filament release whose matc built
+// the blobs (`matc  1.76.1`), and verifyFilamatFreshness fails when that is not
+// the version the catalog pins. Every runtime bump therefore costs a recompile,
+// even one whose material version happens not to change; a recompile is always
+// safe and the alternative is a crash that only a device can show.
 val materialsDirFile: File = layout.projectDirectory.dir("src/main/materials").asFile
 val filamatDirFile: File = layout.projectDirectory.dir("src/main/assets/materials").asFile
+val filamentVersion: String = libs.versions.filament.get()
+
+/** The parsed manifest: the `matc` release line, and one (matHash, filamatHash) per material. */
+data class FilamatManifest(val matc: String?, val entries: Map<String, Pair<String, String>>) {
+    // A companion rather than a script-level function: a task action calling a
+    // script function captures the script object, which the configuration cache
+    // refuses to serialise. A companion call is a static access and captures nothing.
+    companion object {
+        fun read(file: File): FilamatManifest {
+            var matc: String? = null
+            val entries = mutableMapOf<String, Pair<String, String>>()
+            file.readLines()
+                .map { it.substringBefore('#').trim() }
+                .filter { it.isNotEmpty() }
+                .forEach { line ->
+                    val parts = line.split(Regex("\\s+"))
+                    when {
+                        parts.size == 2 && parts[0] == "matc" -> matc = parts[1]
+                        parts.size == 3 -> entries[parts[0]] = parts[1] to parts[2]
+                        else -> throw GradleException("malformed checksums.txt line: \"$line\"")
+                    }
+                }
+            return FilamatManifest(matc, entries)
+        }
+    }
+}
 
 val verifyFilamatFreshness = tasks.register("verifyFilamatFreshness") {
     description = "Fails if a Filament .mat source no longer matches its committed .filamat."
@@ -75,27 +112,30 @@ val verifyFilamatFreshness = tasks.register("verifyFilamatFreshness") {
 
     val materials = materialsDirFile
     val filamats = filamatDirFile
+    val runtime = filamentVersion
     inputs.dir(materials)
     inputs.dir(filamats)
+    inputs.property("filamentVersion", runtime)
 
     doLast {
         fun sha256(file: File): String =
             MessageDigest.getInstance("SHA-256").digest(file.readBytes())
                 .joinToString("") { "%02x".format(it) }
 
-        val manifest: Map<String, Pair<String, String>> =
-            File(materials, "checksums.txt").readLines()
-                .map { it.substringBefore('#').trim() }
-                .filter { it.isNotEmpty() }
-                .associate { line ->
-                    val parts = line.split(Regex("\\s+"))
-                    require(parts.size == 3) { "malformed checksums.txt line: \"$line\"" }
-                    parts[0] to (parts[1] to parts[2])
-                }
+        val (matc, manifest) = FilamatManifest.read(File(materials, "checksums.txt"))
 
         val matNames = materials.listFiles { f -> f.extension == "mat" }
             .orEmpty().map { it.nameWithoutExtension }.sorted()
         val problems = mutableListOf<String>()
+
+        when (matc) {
+            null -> problems += "checksums.txt has no \"matc <version>\" line"
+            runtime -> Unit
+            else -> problems +=
+                "the .filamat files were compiled by matc $matc but libs.versions.toml " +
+                    "pins filament-android $runtime; the runtime will refuse the old material " +
+                    "format and abort the process"
+        }
 
         for (name in matNames) {
             val mat = File(materials, "$name.mat")
@@ -122,7 +162,8 @@ val verifyFilamatFreshness = tasks.register("verifyFilamatFreshness") {
                     appendLine("Filament materials are out of sync:")
                     problems.forEach { appendLine("  - $it") }
                     appendLine()
-                    appendLine("Recompile with matc, then:")
+                    appendLine("Recompile with matc from the Filament v$runtime release archive")
+                    appendLine("(https://github.com/google/filament/releases), then:")
                     appendLine("  ./gradlew :feature:globe:updateFilamatChecksums")
                     append("and commit checksums.txt with the regenerated .filamat.")
                 },
@@ -137,6 +178,7 @@ tasks.register("updateFilamatChecksums") {
 
     val materials = materialsDirFile
     val filamats = filamatDirFile
+    val runtime = filamentVersion
     // Read at configuration time: touching `providers` inside the task action
     // captures the Project, which the configuration cache refuses to serialise.
     val allowUnchanged = providers.gradleProperty("allowUnchangedFilamat")
@@ -148,16 +190,13 @@ tasks.register("updateFilamatChecksums") {
                 .joinToString("") { "%02x".format(it) }
 
         val manifestFile = File(materials, "checksums.txt")
-
-        val recorded: Map<String, Pair<String, String>> = manifestFile.readLines()
-            .map { it.substringBefore('#').trim() }
-            .filter { it.isNotEmpty() }
-            .associate { line ->
-                val parts = line.split(Regex("\\s+"))
-                parts[0] to (parts[1] to parts[2])
-            }
+        val recorded = FilamatManifest.read(manifestFile).entries
 
         val header = manifestFile.readLines().takeWhile { it.startsWith("#") || it.isBlank() }
+        // The blobs are taken to have come from the matc that matches the pinned
+        // runtime: that is the only matc whose output the runtime is known to
+        // load, and the task cannot tell which binary was run.
+        val matcLine = "matc  $runtime"
         val stale = mutableListOf<String>()
         val lines = materials.listFiles { f -> f.extension == "mat" }
             .orEmpty().sortedBy { it.name }.map { mat ->
@@ -198,7 +237,7 @@ tasks.register("updateFilamatChecksums") {
                 },
             )
         }
-        manifestFile.writeText((header + lines).joinToString("\n") + "\n")
+        manifestFile.writeText((header + matcLine + lines).joinToString("\n") + "\n")
         logger.lifecycle("Wrote src/main/materials/checksums.txt")
     }
 }
