@@ -19,9 +19,17 @@ node .ds-sync/resync.mjs --config .design-sync/config.json \
   --node-modules design-mirror/node_modules --entry design-mirror/dist/index.js \
   --out ./ds-bundle --remote .design-sync/.cache/remote-sync.json                    # ds-bundle/, render check, grades
 # Artifact read  url=<the artifact>  path=project/design-system.json   → the live index, saved locally
-node .design-sync/artifact/build.mjs --index <that file> --note "<what changed>"    # .design-sync/.cache/artifact/
+# Artifact read  url=<the artifact>  (no path)  and  Artifact list scope=files url=<the artifact>
+#   — both required in the same session before a publish: the tool refuses to replace a path it has
+#   not seen listed, and refuses outright until the artifact itself has been read (2026-09-19)
+node .design-sync/artifact/build.mjs --live-paths                                   # every path the last publish wrote
+# Artifact read  url=<the artifact>  paths=<that JSON array>  — no out_dir: a multi-path read only saves
+#   into the scratchpad's artifact-files/<id>/ folder (≤256 paths per call; split when over, same folder)
+node .design-sync/artifact/build.mjs --index <the index> --live <that folder> --note "<what changed>"
+#   → .design-sync/.cache/artifact/, and refuses to build over anything edited on the page (below)
 # Artifact publish, twice, straight from .design-sync/.cache/artifact/publish.json:
 #   call 1 = every content file; call 2 = the index (+ deletions). The index goes last, always.
+git add .design-sync/artifact/published.json                                        # commit with the re-sync
 ```
 
 `--entry` is needed because the mirror is its own source repo: `.ds-sync` otherwise
@@ -34,7 +42,41 @@ the converter reads `ds-bundle/` and everything the converter *owns* is tracked 
 | `build.mjs` | the converter: `ds-bundle/` → `project/**` in the artifact's own layout, plus `publish.json` |
 | `README.md` | the brand book, the artifact's `project/README.md` verbatim (also `config.readmeHeader`) |
 | `token-usage.json` | the `usage` note on every colour, radius and motion token, and `sample`/`usage` per type style. **The build fails on a token without a note, and on a note without a token** |
-| `cover.html` | `components/Cover/preview.html`, written to the artifact type's `cover.md` brief |
+| `cover.html` | `components/Cover/preview.html`, written to the artifact type's `cover.md` brief. **Hand-authored, and the only place the cover survives a re-sync** — a cover designed on the page has to be copied here verbatim |
+| `published.json` | sha256 of every file the last build staged, keyed by published path. The page-side guard reads it; commit it with every re-sync |
+
+### Which way the pipeline runs, and the page-side guard
+
+Repo → artifact, one way, every file — a publish replaces each path it names
+unconditionally, and the converter names all of them. Nothing flows back on its
+own. So an edit made on the page lasts exactly until the next re-sync unless it
+is brought into the repo first: verbatim for the two hand-authored files
+(`cover.html`, `README.md`), re-expressed in `.design-sync/previews/*.tsx` or
+`design-mirror/src` for anything generated. This bit on 2026-09-19: the cover was
+redesigned on the page (the staircase), the AircraftWidgetCard re-sync rebuilt
+from the repo's `cover.html` (still the arcs) and put the old one back. The
+earlier re-sync had "carried it through" only because the staircase did not
+exist yet.
+
+Since then `build.mjs` refuses to overwrite a page-side edit. For every path it
+would publish it compares the live copy (`--live`, the folder an `Artifact read
+paths=` saved to) against two hashes: what this build wrote, and what the last
+build staged (`published.json`). Equal to either is fine — a no-op, or the repo
+moving while the page stood still. Equal to neither means the page changed it,
+and the build stops, naming each path, its saved live copy and the repo source it
+belongs in. `--discard-live <path>` publishes over one on purpose; a discard for a
+path not in conflict is itself an error, so a stale flag cannot linger in a
+script. A path the manifest knows but the read left out is also an error — the
+guard cannot pass on a file it has not seen. Verified by planting an edit in a
+live copy and watching the build fail, then pass with the discard, then fail on
+a stale discard (2026-09-19).
+
+Two edges, both conservative: the manifest is written at build time, so a build
+whose publish never happened records hashes that were never live — the next run
+then reports a conflict that a look at the live copy resolves; and a page-authored
+file at a path the repo has *never* published is not seen at all (no manifest
+entry, and the read does not ask for it) — the `Artifact list scope=files` the
+recipe already requires is where such a file would show up.
 
 What the converter changes on the way through, so a diff against `ds-bundle/`
 does not read as corruption:
@@ -465,6 +507,39 @@ isn't attempted.
   padding — previewing it at exactly 140 px would show a card that reads as
   broken for what is, in practice, the common case. 180 px is inside the real
   range and renders cleanly.
+
+## `AircraftWidgetCard` — the second widget, 2026-09-19 re-sync
+
+Ported from `AircraftWidget.kt` and the grammar both widgets now share in
+`WidgetCard.kt` (app PR #30, Phase H7). `ChallengeWidget.kt`'s own diff in that PR
+is a pure refactor onto `WidgetCard` — same tones, same numbers — so
+`ChallengeWidgetCard` needed no mirror change. The new card takes `wide` and `tall`
+(both default false, as the widget is two by one by default) for the four Glance
+layouts, and reuses `.fp-widget-card` / `.fp-widget-figure` from
+`ChallengeWidget.css`; `AircraftWidget.css` adds only the sizes, the wrapping name,
+the FLOWN badge and the status dot.
+
+- **Sized at the reference launcher's real grants, not the bucket floors.** The
+  brand book's Layout section (added 2026-09-19, from the phone) says to design a
+  widget at 176 × 90, 376 × 90, 184 × 204 and 376 × 204 dp, so this card does — the
+  first component to. `ChallengeWidgetCard` still draws at 250 × 100 / 180 × 100,
+  which its own CSS note explains and which was not retuned here (its Kotlin did
+  not change). Restating it at the grants is the obvious follow-up so the two
+  cards' base lines meet on the tall layout as `AircraftWidget.kt`'s KDoc intends.
+- **A figure pill wrapped.** At a true 176 px the short compact card's content
+  width is 144 px and `B789` + gap + the range pill is ~148, so `7,355 NM` broke
+  onto two lines inside its pill. The Kotlin `Figure` never wraps (the XML's own
+  comment says the layout wants ~174 dp and the real 176 dp grant fits it), so
+  `.fp-widget-figure` is now `white-space: nowrap` — in `ChallengeWidget.css`,
+  because both cards share the pill. The few pixels of overflow land in the
+  card's own gutter, invisible.
+- The quiet NOT FLOWN state is a filled `surfaceContainerHigh` pill, not the
+  mock's outlined one, because that is what the app ships: Glance has no themed
+  stroke, and `AircraftWidget.kt`'s `FlownBadge` KDoc records the choice. The
+  compact card's dot carries an `aria-label` for the reason the real `Image` has
+  a `contentDescription`.
+- Verified from the resync's own `_screenshots/general__AircraftWidgetCard.png`,
+  not the live page: the built-in browser is not signed in to claude.ai.
 
 ## Re-sync risks
 

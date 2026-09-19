@@ -2,8 +2,11 @@
 // Turns the .ds-sync build (ds-bundle/) into the Design System artifact's
 // `project/` tree, and writes the exact Artifact-tool calls that publish it.
 //
-//   node .design-sync/artifact/build.mjs --index <live design-system.json> --note "<what changed>"
-//       [--bundle ./ds-bundle] [--out .design-sync/.cache/artifact] [--by Daan] [--purge-legacy]
+//   node .design-sync/artifact/build.mjs --live-paths
+//       → the paths to read from the artifact before building (JSON, for `Artifact read paths=`)
+//   node .design-sync/artifact/build.mjs --index <live design-system.json> --live <folder the read saved to>
+//       --note "<what changed>" [--bundle ./ds-bundle] [--out .design-sync/.cache/artifact] [--by Daan]
+//       [--purge-legacy] [--discard-live <published path>]...
 //
 // Nothing here invents a value: colours, type, shapes and motion come from
 // design-mirror's tokens.json (itself generated from :core:designsystem), the
@@ -11,8 +14,18 @@
 // from .design-sync/previews/ via the .ds-sync build. The artifact type's own
 // contract — file paths, the @dsCard marker, the list-shaped tokens.json — is
 // documented in the SKILL.md the artifact serves at its own URL.
+//
+// Truth runs one way, repo → artifact, but the artifact's page is editable and a
+// publish replaces every path unconditionally — which is how a cover redesigned on
+// the page was put back to the old one by the next re-sync (2026-09-19). So the
+// build refuses to overwrite anything edited there: `published.json` beside this
+// file records the sha256 of every file the last build staged, `--live` is the
+// folder an `Artifact read paths=` of those same paths saved to, and a live file
+// matching neither its last-published hash nor what this build wrote was changed on
+// the page. The build stops and names the repo source each one belongs in.
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, rmSync, copyFileSync, existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join, dirname, resolve, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -32,15 +45,36 @@ const OUT = resolve(flag('out', join(here, '../.cache/artifact')))
 const INDEX = flag('index')
 const NOTE = flag('note')
 const BY = flag('by', 'Daan')
+const LIVE = flag('live')
+const DISCARD_LIVE = new Set(argv.flatMap((a, i) => (a === '--discard-live' ? [argv[i + 1]] : [])))
 const ARTIFACT_URL = 'https://claude.ai/artifact/Dmjit3682NXRcbiuwninnt'
 
-if (!INDEX || !NOTE) {
-  console.error('usage: build.mjs --index <live design-system.json> --note "<what changed>"')
-  process.exit(2)
-}
+/** sha256 per published path of what the last build staged — tracked, committed with each re-sync. */
+const MANIFEST = join(here, 'published.json')
 
 const read = (p) => readFileSync(p, 'utf8')
 const posix = (p) => p.replace(/\\/g, '/')
+
+if (has('live-paths')) {
+  if (!existsSync(MANIFEST)) {
+    console.error(`${posix(MANIFEST)} does not exist — read call 1 of the last publish.json instead, then build once to create it`)
+    process.exit(2)
+  }
+  console.log(JSON.stringify(Object.keys(JSON.parse(read(MANIFEST)))))
+  process.exit(0)
+}
+
+if (!INDEX || !NOTE || !LIVE) {
+  console.error(
+    'usage: build.mjs --index <live design-system.json> --live <folder the Artifact read saved to> --note "<what changed>"\n' +
+      '       build.mjs --live-paths   (the paths that read must fetch)',
+  )
+  process.exit(2)
+}
+if (!existsSync(join(LIVE, 'project'))) {
+  console.error(`--live ${LIVE} has no project/ folder — it should be where "Artifact read paths=[…]" saved the live files`)
+  process.exit(2)
+}
 const kebab = (s) =>
   s
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
@@ -350,6 +384,64 @@ emit(
 }
 
 // ---------------------------------------------------------------------------
+// The page-side guard — nothing edited on the artifact is published over
+// ---------------------------------------------------------------------------
+//
+// For every path this build would publish: a live copy equal to what this build
+// wrote is a no-op; one equal to what the last build staged is the ordinary
+// case — the repo moved, the page did not; anything else was changed on the page
+// since the last publish and is not ours to overwrite. The Artifact tool's own
+// refusal covers the narrower race of a path changing between the read and the
+// publish; this covers the weeks in between.
+
+/** Where a page-side edit has to go to survive the next re-sync. */
+function sourceOf(rel) {
+  if (rel === 'project/components/Cover/preview.html') return 'verbatim: copy the live copy over .design-sync/artifact/cover.html'
+  if (rel === 'project/README.md') return 'verbatim: copy the live copy over .design-sync/artifact/README.md'
+  const c = /^project\/components\/([A-Za-z0-9]+)\/(preview\.html|README\.md|[A-Za-z0-9]+\.d\.ts)$/.exec(rel)
+  if (c) return `generated from .design-sync/previews/${c[1]}.tsx and design-mirror/src — re-express the change there, ${c[2]} is not a source`
+  if (rel.startsWith('project/components/bundle.')) return 'generated from design-mirror/src — re-express the change there'
+  if (rel.startsWith('project/fonts/')) return 'generated by design-mirror/fetch-fonts.mjs'
+  if (rel.startsWith('project/tokens.')) return 'generated from :core:designsystem through tokens.json and token-usage.json — change the Kotlin'
+  return 'no repo source — see NOTES.md'
+}
+
+const sha256 = (p) => createHash('sha256').update(readFileSync(p)).digest('hex')
+const previous = existsSync(MANIFEST) ? JSON.parse(read(MANIFEST)) : {}
+const staged = {}
+const unfetched = []
+const conflicts = []
+for (const rel of [...written].sort()) {
+  staged[rel] = sha256(join(OUT, rel))
+  const livePath = join(LIVE, rel)
+  if (!existsSync(livePath)) {
+    // Published before, so it exists on the artifact: the read left it out.
+    // Never published: there is nothing on the page to protect.
+    if (previous[rel]) unfetched.push(rel)
+    continue
+  }
+  const live = sha256(livePath)
+  if (live !== staged[rel] && live !== previous[rel]) conflicts.push(rel)
+}
+for (const rel of DISCARD_LIVE) {
+  if (!conflicts.includes(rel)) throw new Error(`--discard-live ${rel}: that path is not in conflict — drop the flag`)
+}
+if (unfetched.length) {
+  throw new Error(
+    `no live copy under --live for paths the last publish wrote — read them all first (build.mjs --live-paths):\n  ${unfetched.join('\n  ')}`,
+  )
+}
+const kept = conflicts.filter((rel) => !DISCARD_LIVE.has(rel))
+if (kept.length) {
+  throw new Error(
+    `edited on the artifact since the last publish — not publishing over:\n` +
+      kept.map((rel) => `  ${rel}\n    live copy: ${posix(join(LIVE, rel))}\n    ${sourceOf(rel)}`).join('\n') +
+      `\n\nBring each into its source and rebuild, or --discard-live <path> to lose it on purpose.`,
+  )
+}
+writeFileSync(MANIFEST, JSON.stringify(staged, null, 2) + '\n')
+
+// ---------------------------------------------------------------------------
 // The index — read live right before, sent last, every other key kept
 // ---------------------------------------------------------------------------
 
@@ -404,5 +496,7 @@ writeFileSync(join(OUT, 'publish.json'), JSON.stringify({ calls }, null, 2) + '\
 console.log(
   `artifact: ${components.length} components, ${color.length} colours, ${radius.length} radii, ${motion.length} motion, ` +
     `${groups.length * 3} type styles, ${fontFiles.length} fonts → ${posix(OUT)}\n` +
-    `publish: ${written.length} files in call 1, index + ${deletes.length} deletions in call 2`,
+    `publish: ${written.length} files in call 1, index + ${deletes.length} deletions in call 2\n` +
+    `page-side guard: ${Object.keys(previous).length ? 'checked against' : 'no'} published.json, ${conflicts.length} conflict(s)` +
+    (DISCARD_LIVE.size ? ` — discarding the page's version of: ${[...DISCARD_LIVE].join(', ')}` : ''),
 )

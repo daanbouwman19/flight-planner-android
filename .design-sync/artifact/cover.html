@@ -5,36 +5,34 @@
   html,body{margin:0;background:var(--fp-background)}
   .cover{position:relative;width:960px;height:320px;overflow:hidden;background:var(--fp-background)}
   .cover svg{position:absolute;inset:0;width:960px;height:320px}
-  .slab{fill:var(--fp-primary)}
-  .amber{fill:var(--fp-tertiary-fixed-dim)}
+  .tick{fill:none;stroke:var(--fp-outline);stroke-width:2;stroke-linecap:square}
+  .brand{fill:var(--fp-primary)}
   .ink{fill:var(--fp-inverse-surface)}
+  .accent{fill:var(--fp-tertiary-fixed-dim)}
   .tint{fill:var(--fp-primary-container)}
-  .card{rx:var(--fp-shape-large-increased);ry:var(--fp-shape-large-increased)}
-  .leg{fill:none;stroke:var(--fp-sky-sock-band);stroke-width:var(--fp-shape-extra-small);stroke-linecap:round}
+  .band{rx:var(--fp-shape-large-increased);ry:var(--fp-shape-large-increased)}
   .text{position:absolute;left:40px;bottom:40px;max-width:440px}
-  .name{margin:0;font-family:var(--font-sans,Roboto,system-ui,sans-serif);font-weight:400;font-size:104px;line-height:.95;letter-spacing:-0.2px;color:var(--fp-on-background)}
-  .tagline{margin:16px 0 0;font-family:var(--font-sans,Roboto,system-ui,sans-serif);font-size:14px;line-height:20px;color:var(--fp-on-surface-variant)}
+  .name{margin:0;font-family:var(--font-sans,Roboto,system-ui,-apple-system,'Segoe UI',sans-serif);font-weight:400;font-size:96px;line-height:.95;letter-spacing:-0.2px;color:var(--fp-on-background)}
+  .tagline{margin:16px 0 0;font-family:var(--font-sans,Roboto,system-ui,-apple-system,'Segoe UI',sans-serif);font-size:14px;line-height:20px;color:var(--fp-on-surface-variant)}
 </style>
 </head><body>
 <div class="cover">
   <!--
-    blocks: fp-primary 200x240 slab; fp-tertiary-fixed-dim 128x128; fp-inverse-surface 128x176; fp-primary-container 280x64 (sides are fp-shape-extra-extra-large 48px multiples + 16/32 steps), corners fp-shape-large-increased (the card corner)
-    arrangement: one tall slab bleeding off the top with satellites stacked flush against the right edge and a low tint band bleeding off the bottom, all right of x=480
-    pattern: literal motif, three route legs as concentric arcs; "the route on the sphere: the arc bending over the curve" is this brand's own figure
-    steps/radii: arc radii 96/160/224 (48px pitch plus shape-large), stroke fp-shape-extra-small 4px in fp-sky-sock-band, block gap fp-shape-large 16px
+    blocks: fp-primary 400x96, fp-inverse-surface 304x64, fp-tertiary-fixed-dim 208x96, fp-primary-container 112x64 for relief; corners fp-shape-large-increased, the card corner; 28% of the cover
+    arrangement: a descending staircase - each band starts 96px further right than the one above and bleeds off the right edge, the way SkyProfile steps a profile down; the tint block sits off the stair, in the open field
+    pattern: a plus grid at one pitch. This system draws weather as a chart and sets every figure tabular, so a chart sheet's graticule crosses are its own mark, and the stair is laid over the sheet; 18 crosses, only where the sheet shows
+    steps/radii: 48px pitch and 96px stair tread (fp-shape-extra-extra-large 48, and twice it), arms 8px (fp-shape-small), 2px hairline in fp-outline, band heights 96 and 64 off the same scale
   -->
   <svg viewBox="0 0 960 320" aria-hidden="true">
-    <rect class="slab card" x="552" y="-24" width="200" height="264"/>
-    <rect class="amber card" x="768" y="-24" width="216" height="152"/>
-    <rect class="ink card" x="768" y="144" width="216" height="200"/>
-    <rect class="tint card" x="504" y="256" width="248" height="88"/>
-    <path class="leg" d="M 864 320 A 96 96 0 0 0 768 224"/>
-    <path class="leg" d="M 928 320 A 160 160 0 0 0 768 160"/>
-    <path class="leg" d="M 992 320 A 224 224 0 0 0 768 96"/>
+    <path class="tick" d="M488 40h16M496 32v16M488 88h16M496 80v16M488 136h16M496 128v16M488 184h16M496 176v16M536 40h16M544 32v16M536 88h16M544 80v16M536 136h16M544 128v16M536 184h16M544 176v16M584 136h16M592 128v16M584 184h16M592 176v16M632 136h16M640 128v16M632 184h16M640 176v16M632 232h16M640 224v16M632 280h16M640 272v16M680 232h16M688 224v16M680 280h16M688 272v16M728 232h16M736 224v16M728 280h16M736 272v16"/>
+    <rect class="brand band" x="560" y="16" width="400" height="96"/>
+    <rect class="ink band" x="656" y="136" width="304" height="64"/>
+    <rect class="accent band" x="752" y="224" width="208" height="96"/>
+    <rect class="tint band" x="496" y="240" width="112" height="64"/>
   </svg>
   <div class="text">
     <h1 class="name">Flight<br>Planner</h1>
-    <p class="tagline">Real airports, flyable routes, weather as a chart.</p>
+    <p class="tagline">Flyable legs between real airports, weather as a chart.</p>
   </div>
 </div>
 </body></html>

@@ -106,6 +106,15 @@ export type {
   ChallengeWidgetUnavailable,
 } from './components/ChallengeWidget'
 
+export { AircraftWidgetCard } from './components/AircraftWidget'
+export type {
+  AircraftWidgetCardProps,
+  AircraftWidgetState,
+  AircraftWidgetReady,
+  AircraftWidgetFleetEmpty,
+  AircraftWidgetUnavailable,
+} from './components/AircraftWidget'
+
 export { MapFrame, sampleGeoArc, distanceNm, MIN_SPAN_DEGREES, PADDING_FRACTION } from './geo/mapFrame'
 export type { GeoArc, ProjectedRings, ProjectedLand, WorldOutline } from './geo/mapFrame'
 export { worldOutline } from './geo/worldOutline.gen'

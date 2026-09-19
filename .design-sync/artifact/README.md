@@ -154,7 +154,7 @@ Two spring families, each with a duration token and an easing variable (`--fp-mo
   - Statistics: `HeroDistanceCard`, `MetricGrid`, `StatSummaryStrip`, `VisitedNetworkCard`, `MonthlyActivityCard`, `RankedListCard`.
   - Globe: `GlobeView`, `GlobeRouteScene`, `GlobeHero`, `GlobeNetwork`, `GlobeCameraControls`, `GlobeAttribution`.
   - States: `EmptyState`, `ErrorState`, `MorphingLoadingIndicator`, `SkeletonBox`, `SkeletonCard`.
-  - Outside the app: `ChallengeWidgetCard`.
+  - Outside the app: `ChallengeWidgetCard`, `AircraftWidgetCard`.
 
 Each component's guideline (props, examples and the reasoning behind its API) is its card. Library components for the controls; tokens and type classes for your own layout glue.
 
@@ -207,7 +207,8 @@ Compose a standalone globe from `GlobeHero` (deep hero with chrome), `GlobeRoute
 
 - `StatsScreen` is a composition of `HeroDistanceCard`, `MetricGrid`, `VisitedNetworkCard`, `MonthlyActivityCard` and `RankedListCard`, so redesign a card and it lands in every arrangement at once.
 - **`EmptyState` and `ErrorState` are not interchangeable.** One is the app working and waiting; the other is the app having failed. Rendering them alike teaches people to ignore the message.
-- `ChallengeWidgetCard` is the home-screen widget, not a screen: it lives outside `PhoneFrame`/`TabletFrame` at its own cell sizes (`wide` for the 250 × 100 dp four-cell layout, omitted for the compact bucket that drops the airframe line). It reuses `RouteMap` at `topInset={36}`. It has no navigation, no scrolling, one tap. Its sibling in the app, "Aircraft of the day", is drawn in the same card grammar — the same corner, gutter, code line and figure chips — at four layouts: compact and wide by width, short (one row: two lines, the status on the top line) and tall (two rows: the challenge card's three bands, the airframe name wrapping into the band the challenge fills with its map) by height. See *Layout* for the grants those answer to. It is not mirrored; a concept for it starts from `ChallengeWidgetCard`'s parts.
+- `ChallengeWidgetCard` is the home-screen widget, not a screen: it lives outside `PhoneFrame`/`TabletFrame` at its own cell sizes (`wide` for the 250 × 100 dp four-cell layout, omitted for the compact bucket that drops the airframe line). It reuses `RouteMap` at `topInset={36}`. It has no navigation, no scrolling, one tap.
+- `AircraftWidgetCard` is its sibling, "Aircraft of the day", drawn in the same card grammar — the same corner, gutter, code line and figure chips — and no map, because one airframe has no geography to draw. Four layouts from two props: `wide` (four cells: the runway figure joins the range and the flown status is stated in words) and `tall` (two rows: the challenge card's three bands, the airframe name wrapping into the band the challenge fills with its map). Both omitted is the default two-by-one card: two lines, the status as a dot leading the name. Unlike `ChallengeWidgetCard` it is sized at the reference launcher's real grants (176 × 90, 376 × 90, 184 × 204, 376 × 204 dp) — see *Layout*.
 
 ## What the mirror does not carry
 

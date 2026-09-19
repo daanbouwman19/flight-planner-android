@@ -1,0 +1,123 @@
+/* AircraftWidget — "Aircraft of the day", ported from AircraftWidget.kt and
+   the grammar in WidgetCard.kt. Builds on ChallengeWidget.css: the card, the
+   content column, the code line, the date and the figure pill are the shared
+   .fp-widget-card / .fp-widget-figure rules; this file adds the four sizes
+   and what only this card has — the name that wraps, the flown badge, the
+   status dot. */
+
+/* The reference launcher's real grants (One UI, brand book "Layout"), not the
+   SizeMode.Responsive bucket floors of 140/250 x 40/150 dp. */
+.fp-aircraft-widget--compact.fp-aircraft-widget--short {
+  width: 176px;
+  height: 90px;
+}
+
+.fp-aircraft-widget--wide.fp-aircraft-widget--short {
+  width: 376px;
+  height: 90px;
+}
+
+.fp-aircraft-widget--compact.fp-aircraft-widget--tall {
+  width: 184px;
+  height: 204px;
+}
+
+.fp-aircraft-widget--wide.fp-aircraft-widget--tall {
+  width: 376px;
+  height: 204px;
+}
+
+/* The short card has two lines to fit in a one-row grant; the gutter gives
+   way vertically (SHORT_PADDING = 12 dp), not the lines. */
+.fp-aircraft-widget--short .fp-aircraft-widget__content {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+/* The status dot leads the name on the short compact card; the 6 dp gap is
+   the Kotlin's own, tighter than the row's 8 dp between name and date. */
+.fp-aircraft-widget--short.fp-aircraft-widget--compact .fp-aircraft-widget__top > .fp-aircraft-widget__dot {
+  margin-right: -2px;
+}
+
+/* On the tall card the name has the empty band to itself and wraps into it,
+   the date staying on its first line. */
+.fp-aircraft-widget--tall .fp-aircraft-widget__top {
+  align-items: flex-start;
+}
+
+.fp-aircraft-widget__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fp-on-surface);
+}
+
+.fp-aircraft-widget--wide .fp-aircraft-widget__name {
+  font-size: 13px;
+}
+
+.fp-aircraft-widget--tall .fp-aircraft-widget__name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3; /* TALL_NAME_LINES */
+  white-space: normal;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+/* The compact card's date is a point smaller than the wide card's (10 / 11 sp);
+   ChallengeWidget.css sets the wide size. */
+.fp-aircraft-widget--compact .fp-widget-card__date {
+  font-size: 10px;
+}
+
+/* Beside the type code on the short card. */
+.fp-aircraft-widget__figures {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The tall card's figures close it, centred, as the Kotlin's
+   horizontalAlignment = CenterHorizontally row does. */
+.fp-aircraft-widget__figures--centred {
+  justify-content: center;
+}
+
+/* The flown status in words. The quiet state is the figure chips' own
+   surface, not the mock's outlined pill — Glance has no themed stroke, and
+   this mirror reproduces what ships. */
+.fp-aircraft-widget__badge {
+  box-sizing: border-box;
+  padding: 5px 9px;
+  border-radius: var(--fp-shape-medium);
+  background: var(--fp-surface-container-high);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-aircraft-widget__badge--flown {
+  background: var(--fp-secondary-container);
+  color: var(--fp-on-secondary-container);
+}
+
+/* The flown status as a mark, 10 dp, tinted like the real widget's Image. */
+.fp-aircraft-widget__dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fp-on-surface-variant);
+}
+
+.fp-aircraft-widget__dot--flown {
+  background: var(--fp-secondary);
+}
