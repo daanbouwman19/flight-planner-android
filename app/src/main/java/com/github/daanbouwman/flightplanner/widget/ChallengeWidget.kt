@@ -104,15 +104,23 @@ class ChallengeWidget : GlanceAppWidget() {
         // `settings` is a StateFlow started eagerly in the application scope
         // and null only until the first read of a small file has landed.
         val settings = graph.settingsRepository().settings.filterNotNull().first()
-        val state = graph.challengeSource().load(
+        suspend fun load() = graph.challengeSource().load(
             date = LocalDate.now(),
             unit = settings.unitSystem,
             icaoOnly = settings.icaoOnly,
         )
+        val initial = load()
         val outline = graph.worldOutlineLoader().load()
         val palette = widgetPalette(settings, context)
 
-        provideContent { WidgetTheme(palette) { ChallengeSurface(state, outline, palette) } }
+        provideContent {
+            // Reloaded in place when the fleet changes under an open session —
+            // an airframe added or removed changes the day's route. See
+            // `FleetRevision`. The date is not re-read: a new day is a new
+            // session, by the midnight alarm.
+            val state = FleetRevision.reloadOnFleetChange(initial) { load() }
+            WidgetTheme(palette) { ChallengeSurface(state, outline, palette) }
+        }
     }
 
     /**
@@ -224,7 +232,7 @@ fun ChallengeContent(
 ) {
     val context = LocalContext.current
     val colors = GlanceTheme.colors
-    val wide = LocalSize.current.width >= WIDE_THRESHOLD
+    val wide = LocalSize.current.width >= WidgetWideThreshold
 
     Box(modifier = modifier.fillMaxSize()) {
         if (map != null) {
@@ -295,6 +303,3 @@ private fun MapLayer(mask: Bitmap, tint: ColorProvider) {
 
 /** The height of the airframe line the map keeps its route clear of. */
 private val TITLE_LINE: Dp = 20.dp
-
-/** Below this width the airframe line goes. */
-private val WIDE_THRESHOLD = 220.dp

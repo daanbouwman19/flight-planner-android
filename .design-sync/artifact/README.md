@@ -113,6 +113,7 @@ Buttons are pills (`fp-button`, 40px tall, 20px corner). A sheet meets the windo
   3. Content is width-capped, never stretched: `fp-content-cap` (640px), `fp-content-cap--wide` (840px, detail screens and the logbook). Extra width becomes margin. It is deliberately not a grid.
 - Screen padding in the idiom is `36px 16px 16px` with a 12px gap between blocks.
 - Design portrait phones and landscape tablets. Short windows (a phone on its side) collapse the app bar in the app but are not mirrored; say so if a concept depends on height.
+- **The reference device is a Samsung SM-S942B on One UI** (Android 15): 1080 × 2340 px at 480 dpi, so **360 × 780 dp** — the `PhoneFrame` width exactly, 20 dp shorter than its 800. Status bar 36 dp, gesture handle 24 dp, font scale 1.0. Its launcher is a **4 × 5 grid** whose cells measure about **92 dp wide and 102 dp tall**, so a home-screen widget is granted 176 × 90 dp at 2 × 1, 184 × 204 at 2 × 2, 276 × 204 at 3 × 2 and 376 × 204 at 4 × 2, all at a 24 dp corner the launcher itself applies (`semShapeRadius`). Design a widget at those grants, not at the 100 dp the mock convention uses: a card drawn 100 dp tall lands in a 204 dp cell with an empty band, and a card drawn 250 wide is compact in three cells and wide in four. Two One UI quirks to design around: the picker lists a widget by `minWidth`/`minHeight` through the classic `70n − 30` formula (one row means `minHeight ≤ 40dp`), and it draws every preview at 0.83 of the grid in dp without scaling the content, so a two-cell preview shows about 146 dp of a 176 dp card.
 
 ```tsx
 <PlanScreen layout="tablet" routes={routes} detail={<RouteDetailPane … />} />
@@ -206,7 +207,7 @@ Compose a standalone globe from `GlobeHero` (deep hero with chrome), `GlobeRoute
 
 - `StatsScreen` is a composition of `HeroDistanceCard`, `MetricGrid`, `VisitedNetworkCard`, `MonthlyActivityCard` and `RankedListCard`, so redesign a card and it lands in every arrangement at once.
 - **`EmptyState` and `ErrorState` are not interchangeable.** One is the app working and waiting; the other is the app having failed. Rendering them alike teaches people to ignore the message.
-- `ChallengeWidgetCard` is the home-screen widget, not a screen: it lives outside `PhoneFrame`/`TabletFrame` at its own cell sizes (`wide` for the 250 × 100 dp four-cell layout, omitted for the compact bucket that drops the airframe line). It reuses `RouteMap` at `topInset={36}`. It has no navigation, no scrolling, one tap.
+- `ChallengeWidgetCard` is the home-screen widget, not a screen: it lives outside `PhoneFrame`/`TabletFrame` at its own cell sizes (`wide` for the 250 × 100 dp four-cell layout, omitted for the compact bucket that drops the airframe line). It reuses `RouteMap` at `topInset={36}`. It has no navigation, no scrolling, one tap. Its sibling in the app, "Aircraft of the day", is drawn in the same card grammar — the same corner, gutter, code line and figure chips — at four layouts: compact and wide by width, short (one row: two lines, the status on the top line) and tall (two rows: the challenge card's three bands, the airframe name wrapping into the band the challenge fills with its map) by height. See *Layout* for the grants those answer to. It is not mirrored; a concept for it starts from `ChallengeWidgetCard`'s parts.
 
 ## What the mirror does not carry
 

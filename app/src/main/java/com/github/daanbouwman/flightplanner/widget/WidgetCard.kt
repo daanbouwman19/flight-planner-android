@@ -49,9 +49,12 @@ fun WidgetTheme(palette: WidgetPalette, content: @Composable () -> Unit) {
  * without taking the figure with it; the aircraft card has no map and keeps the
  * pill anyway, because the two cards sit on the same home screen and a figure
  * that changed shape between them would read as a different kind of fact.
+ *
+ * @param label the chart abbreviation, or null for a bare figure where its
+ *   unit already says which one it is and a label would not fit.
  */
 @Composable
-fun Figure(label: String, value: String, chip: WidgetSurface) {
+fun Figure(label: String?, value: String, chip: WidgetSurface) {
     val colors = GlanceTheme.colors
     Row(
         modifier = GlanceModifier
@@ -60,11 +63,13 @@ fun Figure(label: String, value: String, chip: WidgetSurface) {
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = label,
-            style = TextStyle(color = colors.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Medium),
-        )
-        Spacer(GlanceModifier.width(6.dp))
+        if (label != null) {
+            Text(
+                text = label,
+                style = TextStyle(color = colors.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.Medium),
+            )
+            Spacer(GlanceModifier.width(6.dp))
+        }
         Text(
             text = value,
             style = TextStyle(color = colors.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium),
@@ -100,3 +105,12 @@ val WidgetChipCorner: Dp = 12.dp
 
 /** Between two figure chips on one line. */
 val WidgetFigureGap: Dp = 8.dp
+
+/**
+ * The width from which a card is its wide layout — the challenge card gains
+ * its airframe line, the aircraft card its second figure and the status in
+ * words. One number for both, between the shared compact bucket (140 dp) and
+ * the shared wide one (250 dp), so a launcher grant is never wide for one card
+ * and compact for the other.
+ */
+val WidgetWideThreshold: Dp = 220.dp

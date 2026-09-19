@@ -3,6 +3,7 @@ package com.github.daanbouwman.flightplanner.widget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,15 +55,23 @@ import java.time.format.DateTimeFormatter
  * figure chips, the same big code on the base line, the same midnight alarm —
  * all of it from [WidgetCard]. What changes is what the card is *about*. A
  * challenge is a route, so it has geography and the card draws it; an airframe
- * is an envelope, so the band the challenge fills with a map this one leaves
- * empty and the figures carry the content: range, and the runway it needs.
- * **No map**, because a single aircraft has no geography to draw — a decorative
- * one would be the card claiming to say something it does not.
+ * is an envelope, so the figures carry the content: range, and the runway it
+ * needs. **No map**, because a single aircraft has no geography to draw — a
+ * decorative one would be the card claiming to say something it does not.
  *
- * Three bands, as on the challenge card: the airframe and the date along the
- * top, the type code and its flown status on the base line, the figures closing
- * it. Two layouts, chosen by width — the compact one keeps the range alone and
- * states the flown status as a dot rather than a word.
+ * Four layouts, chosen by width and by height independently:
+ *
+ * - **Short** (one launcher row, the default): two lines. The airframe and the
+ *   date along the top, the type code and the range on the base line. This is
+ *   the whole fact, and it is why the widget is one row by default — a route
+ *   needs a band for its map, an airframe does not.
+ * - **Tall** (two rows): the challenge card's three bands — the top line, an
+ *   empty band where the challenge draws its map so the two cards' base lines
+ *   meet, the code and its status, and the figures closing the card.
+ * - **Compact** (two cells) keeps the range alone and states the flown status
+ *   as a dot; **wide** (four cells) adds the runway and states the status in
+ *   words. On the short card the status moves up to the top line, because the
+ *   base line is where the figures are.
  *
  * The pick is [com.github.daanbouwman.flightplanner.routing.dailyAircraft], and
  * like the challenge's it depends on the date and the fleet and nothing else, so
@@ -77,20 +86,31 @@ import java.time.format.DateTimeFormatter
  */
 class AircraftWidget : GlanceAppWidget() {
 
-    override val sizeMode: SizeMode = SizeMode.Responsive(setOf(COMPACT, WIDE))
+    override val sizeMode: SizeMode = SizeMode.Responsive(setOf(COMPACT, WIDE, COMPACT_TALL, WIDE_TALL))
 
-    /** The wide layout, for the same reason [ChallengeWidget.previewSizeMode] names one: it is the widget being sold. */
-    override val previewSizeMode: PreviewSizeMode = SizeMode.Responsive(setOf(WIDE))
+    /**
+     * The compact short layout, for the reason [ChallengeWidget.previewSizeMode]
+     * names the wide one: the picker draws the preview at the widget's default
+     * cells, and this widget's default is two by one.
+     */
+    override val previewSizeMode: PreviewSizeMode = SizeMode.Responsive(setOf(COMPACT))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         MidnightRefresh.AIRCRAFT.scheduleNext(context)
 
         val graph = WidgetEntryPoint.from(context)
         val settings = graph.settingsRepository().settings.filterNotNull().first()
-        val state = graph.aircraftSource().load(date = LocalDate.now(), unit = settings.unitSystem)
         val palette = widgetPalette(settings, context)
+        suspend fun load() = graph.aircraftSource().load(date = LocalDate.now(), unit = settings.unitSystem)
+        val initial = load()
 
-        provideContent { WidgetTheme(palette) { AircraftSurface(state, palette) } }
+        provideContent {
+            // Reloaded in place when the fleet changes under an open session —
+            // see `FleetRevision`. The date is not re-read: a new day is a new
+            // session, by the midnight alarm.
+            val state = FleetRevision.reloadOnFleetChange(initial) { load() }
+            WidgetTheme(palette) { AircraftSurface(state, palette) }
+        }
     }
 
     /** The picker's preview: a plausible day, drawn by the same code, in the default settings' colours. */
@@ -100,18 +120,33 @@ class AircraftWidget : GlanceAppWidget() {
     }
 
     companion object {
-        /**
-         * The narrow bucket: the range alone, and the flown status as a dot.
-         *
-         * 180 dp rather than the challenge's 140 dp because this card's anchor
-         * line carries a *type* code beside a status mark rather than two
-         * airport codes at the corners, and 140 dp leaves the airframe name
-         * with nothing to say. The provider's `minResizeWidth` matches.
-         */
-        val COMPACT: DpSize = DpSize(180.dp, 100.dp)
+        /** `minHeight` in `widget_aircraft_info.xml`, which explains the number. */
+        private val SHORT_HEIGHT: Dp = 40.dp
 
-        /** Four cells wide: both figures, and the status in words. */
-        val WIDE: DpSize = DpSize(250.dp, 100.dp)
+        /**
+         * Two cells by one, the default: the range alone, and the flown status
+         * as a dot. The same width bucket as the challenge card's, so a launcher
+         * grant is never compact for one widget and wide for the other; the
+         * airframe name ellipsises to whatever the top line has room for.
+         *
+         * **The short buckets are as tall as the provider's height floor, not as
+         * the layout.** Glance composes the largest bucket that fits the grant
+         * in *both* dimensions and falls back to the smallest when none does —
+         * so a short bucket taller than a one-row grant (One UI: 90 dp) would
+         * have a four-cell row render the compact layout. Measured, on the
+         * phone, with these at 100 dp.
+         */
+        val COMPACT: DpSize = DpSize(140.dp, SHORT_HEIGHT)
+
+        /** Four cells by one: both figures, and the status in words. */
+        val WIDE: DpSize = DpSize(250.dp, SHORT_HEIGHT)
+
+        /**
+         * The two-row grants: the challenge card's three bands, from 150 dp —
+         * above any one-row grant and below a two-row one (One UI: 204 dp).
+         */
+        val COMPACT_TALL: DpSize = DpSize(COMPACT.width, 150.dp)
+        val WIDE_TALL: DpSize = DpSize(WIDE.width, 150.dp)
 
         internal val PREVIEW_STATE = AircraftState.Ready(
             date = LocalDate.of(2026, 9, 16),
@@ -152,10 +187,10 @@ private fun AircraftSurface(state: AircraftState, palette: WidgetPalette) {
 }
 
 /**
- * The card's face: the airframe and the date along the top, the type code and
- * its status on the base line, the figures closing it.
+ * The card's face, in the layout [LocalSize] selects — see [AircraftWidget]
+ * for the four.
  *
- * The airframe's full [AircraftState.Ready.name] on both layouts, ellipsised
+ * The airframe's full [AircraftState.Ready.name] on every layout, ellipsised
  * when it does not fit. **A divergence from the mock**, which shortens
  * "Cessna 172 Skyhawk" to "Cessna 172" on the compact card: the fleet stores a
  * manufacturer and a variant and no short form, and a rule for inventing one
@@ -170,23 +205,48 @@ fun AircraftContent(
 ) {
     val context = LocalContext.current
     val colors = GlanceTheme.colors
-    val wide = LocalSize.current.width >= WIDE_THRESHOLD
+    val size = LocalSize.current
+    val wide = size.width >= WidgetWideThreshold
+    val tall = size.height >= TALL_THRESHOLD
 
-    Column(modifier = modifier.fillMaxSize().padding(WidgetPadding)) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            // The short card has two lines to fit in a one-row grant (One UI:
+            // 90 dp); the gutter gives way vertically, not the lines.
+            .padding(horizontal = WidgetPadding, vertical = if (tall) WidgetPadding else SHORT_PADDING),
+    ) {
         when (state) {
             is AircraftState.Ready -> {
-                Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                // On the tall card the name has the empty band to itself and
+                // wraps into it, the date staying on its first line; on the
+                // short card it has one line and ellipsises.
+                Row(
+                    modifier = GlanceModifier.fillMaxWidth(),
+                    verticalAlignment = if (tall) Alignment.Top else Alignment.CenterVertically,
+                ) {
+                    // On the short compact card the status leads the name: the
+                    // base line is taken by the range, and a dot before a name
+                    // reads as that name's status.
+                    if (!tall && !wide) {
+                        FlownDot(state.flown)
+                        Spacer(GlanceModifier.width(6.dp))
+                    }
                     Text(
                         text = state.name,
                         style = TextStyle(
                             color = colors.onSurface,
-                            fontSize = if (wide) 13.sp else 12.sp,
+                            fontSize = if (tall) 14.sp else if (wide) 13.sp else 12.sp,
                             fontWeight = FontWeight.Medium,
                         ),
-                        maxLines = 1,
+                        maxLines = if (tall) TALL_NAME_LINES else 1,
                         modifier = GlanceModifier.defaultWeight(),
                     )
                     Spacer(GlanceModifier.width(WidgetFigureGap))
+                    if (!tall && wide) {
+                        FlownBadge(state.flown, palette)
+                        Spacer(GlanceModifier.width(WidgetFigureGap))
+                    }
                     // The locale from the widget's own configuration, as the
                     // challenge card reads it, and the weekday dropped: this
                     // card's top line has an airframe name to fit beside it.
@@ -197,27 +257,30 @@ fun AircraftContent(
                         maxLines = 1,
                     )
                 }
-                // The empty band the challenge card fills with its map. It takes
-                // whatever height the card has, so both cards' base lines meet.
+                // The band the challenge card fills with its map, on the tall
+                // card; on the short one, what little is left over.
                 Spacer(GlanceModifier.defaultWeight())
-                Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(state.typeCode, style = codeStyle(colors.onSurface))
-                    Spacer(GlanceModifier.defaultWeight())
-                    if (wide) FlownBadge(state.flown, palette) else FlownDot(state.flown)
-                }
-                Spacer(GlanceModifier.height(8.dp))
-                Row(
-                    modifier = GlanceModifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Figure(context.getString(R.string.widget_aircraft_chip_range), state.rangeText, palette.chip)
-                    // The runway is the figure that goes when there is no room
-                    // for it, and the one that is absent when the airframe names
-                    // no takeoff distance.
-                    if (wide && state.runwayText != null) {
-                        Spacer(GlanceModifier.width(WidgetFigureGap))
-                        Figure(context.getString(R.string.widget_aircraft_chip_runway), state.runwayText, palette.chip)
+                if (tall) {
+                    Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(state.typeCode, style = codeStyle(colors.onSurface))
+                        Spacer(GlanceModifier.defaultWeight())
+                        if (wide) FlownBadge(state.flown, palette) else FlownDot(state.flown)
+                    }
+                    Spacer(GlanceModifier.height(8.dp))
+                    Row(
+                        modifier = GlanceModifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Figures(state, wide, labelRange = true, palette)
+                    }
+                } else {
+                    Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(state.typeCode, style = codeStyle(colors.onSurface))
+                        Spacer(GlanceModifier.defaultWeight())
+                        // Beside the type code there is room for the range or
+                        // its label, not both; the unit says which figure it is.
+                        Figures(state, wide, labelRange = wide, palette)
                     }
                 }
             }
@@ -225,6 +288,26 @@ fun AircraftContent(
             AircraftState.FleetEmpty -> Message(context.getString(R.string.widget_aircraft_fleet_empty))
             AircraftState.Unavailable -> Message(context.getString(R.string.widget_aircraft_unavailable))
         }
+    }
+}
+
+/**
+ * The figure chips: the range, and on the wide card the runway too.
+ *
+ * The runway is the figure that goes when there is no room for it, and the
+ * one that is absent when the airframe names no takeoff distance.
+ */
+@Composable
+private fun Figures(state: AircraftState.Ready, wide: Boolean, labelRange: Boolean, palette: WidgetPalette) {
+    val context = LocalContext.current
+    Figure(
+        label = if (labelRange) context.getString(R.string.widget_aircraft_chip_range) else null,
+        value = state.rangeText,
+        chip = palette.chip,
+    )
+    if (wide && state.runwayText != null) {
+        Spacer(GlanceModifier.width(WidgetFigureGap))
+        Figure(context.getString(R.string.widget_aircraft_chip_runway), state.runwayText, palette.chip)
     }
 }
 
@@ -280,5 +363,19 @@ private fun FlownDot(flown: Boolean) {
 
 private val DOT = 10.dp
 
-/** Below this width the second figure and the status words go. */
-private val WIDE_THRESHOLD = 220.dp
+/**
+ * The lines a name may take on the tall card: the band above the base line
+ * holds three at 14 sp with room over, and no airframe in the seed fleet
+ * needs more than two at the compact width.
+ */
+private const val TALL_NAME_LINES = 3
+
+/** The short card's vertical gutter — see [AircraftContent]. */
+private val SHORT_PADDING: Dp = 12.dp
+
+/**
+ * From this height the card is the three-band layout. Between the short
+ * buckets (40 dp) and the tall ones (150 dp), as [WidgetWideThreshold] sits
+ * between the width buckets.
+ */
+private val TALL_THRESHOLD: Dp = 130.dp

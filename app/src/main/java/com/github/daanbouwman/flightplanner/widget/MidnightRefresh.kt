@@ -2,7 +2,6 @@ package com.github.daanbouwman.flightplanner.widget
 
 import android.app.AlarmManager
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import java.time.Instant
@@ -28,15 +27,15 @@ import java.time.ZoneId
  * Reboot needs nothing: the system re-sends an update to every provider with
  * instances when the user unlocks, which renders and therefore re-arms.
  *
- * One instance per receiver, rather than one alarm that fans out, so that each
- * widget owns its own schedule: `onDisabled` cancels the alarm of the widget
- * that just left the home screen and leaves the other one running. The two
- * `PendingIntent`s already differ by target component — `filterEquals` compares
- * it — and the distinct [requestCode]s make that independence explicit rather
- * than incidental.
+ * One instance per [DailyWidgetReceiver], rather than one alarm that fans out,
+ * so that each widget owns its own schedule: `onDisabled` cancels the alarm of
+ * the widget that just left the home screen and leaves the other one running.
+ * The two `PendingIntent`s already differ by target component — `filterEquals`
+ * compares it — and the distinct [requestCode]s make that independence explicit
+ * rather than incidental.
  */
 class MidnightRefresh private constructor(
-    private val receiver: Class<out BroadcastReceiver>,
+    private val receiver: Class<out DailyWidgetReceiver>,
     private val requestCode: Int,
 ) {
 

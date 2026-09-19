@@ -1,6 +1,7 @@
 package com.github.daanbouwman.flightplanner.widget
 
 import android.content.Context
+import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.launch.WidgetPreviewStamp
 import com.github.daanbouwman.flightplanner.settings.SettingsRepository
 import com.github.daanbouwman.flightplanner.world.WorldOutlineLoader
@@ -30,6 +31,9 @@ interface WidgetEntryPoint {
     fun aircraftSource(): DailyAircraftSource
 
     fun settingsRepository(): SettingsRepository
+
+    /** For [RefreshWidgetsOnFleetChange]; the sources above read the fleet through their own seams. */
+    fun fleetRepository(): FleetRepository
     fun widgetPreviewStamp(): WidgetPreviewStamp
 
     /** The coastline under the challenge's route — the same 19 kB asset the route cards draw. */

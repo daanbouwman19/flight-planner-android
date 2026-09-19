@@ -1,3 +1,5 @@
+| **H7** ✅ | Second widget | "Aircraft of the day", 2026-09-19, from the design canvas *Aircraft of the Day — widget concept*. One airframe from your fleet a day, beside H3's route and drawn in the same card: `routing.dailyAircraft` picks uniformly from the fleet sorted by id, seeded by the epoch day **mixed through the 64-bit golden-ratio constant** so the two widgets do not draw correlated sequences from the same date. The pick is deliberately *not* weighted towards airframes you have never flown — that would swap the day's aircraft the moment you marked it flown, the property H3 protects with `AllAircraft` mode — so `flown` is reported by the badge and nothing else. The card is `AircraftWidget`, **no map** — one aircraft carries no geography, and a decorative one would claim something the card does not say — in **four layouts, by width and by height independently**: compact (two cells: the range alone, the status as a tinted disc with a content description) or wide (four: the runway too, the status in words), and short (one row, the default 2 × 1: two lines, the status on the top line) or tall (two rows: H3's three bands, the airframe name wrapping into the band H3 fills with its map). The mock was drawn 100 dp tall and a One UI row is 90–102 dp, so the short layout *is* the mock; two rows are 204 dp, which is where the tall one comes from. The card grammar H3 had inline moved to `WidgetCard.kt`, the receiver to `DailyWidgetReceiver`, and both widgets draw from them. `DailyAircraftSource` reads the fleet and **nothing else** — no index, no outline, no generation. Tap lands on Fleet, at the airframe when there is one to name, through `LaunchRequest.OpenAircraft(airframeId: Int?)`. **A fleet change re-renders both widgets while the app is open** (`RefreshWidgetsOnFleetChange` → `FleetRevision`; see *What H7 found* for why `updateAll` alone did not). Tests: `DailyAircraftTest`, `DailyAircraftSourceTest`, `AircraftContentTest` (all four layouts), `LaunchIntentsTest` extended for the optional id. **Verified on the SM-S942B**: 2 × 1, 2 × 2, 4 × 1 and 3 × 2 grants, the picker preview, tap and back, and the badge following a flown toggle both ways. Not yet looked at on the phone: Cockpit and Chart, which reach the card through the same `widgetPalette` H3 verified |
+
 # Building the app: design and task breakdown
 
 The data and domain layers work. This document covers everything from there to a
@@ -2709,6 +2711,37 @@ for real under Robolectric's native graphics and pins that they are white, that
 land never exceeds the coast's 16 %, and that the route layer has ink.
 
 ---
+
+### What H7 found
+
+**A Glance `update` reaches an open session as a recomposition, not a new
+`provideGlance`.** Both widgets compute their state before `provideContent`, and
+Glance keeps a session open for some seconds after a render. An `update` in that
+window — the fleet observer firing on a flown toggle made straight from the
+widget's own tap — recomposed the same state and drew the old badge; the same toggle
+a minute later rendered fresh. Timing-dependent staleness, found only because the
+phone was tapped fast. What an open session *does* re-read on `update` is the
+widget's own Glance state, and `currentState()` readers recompose when it changes,
+so `FleetRevision` writes each change into that state as a counter and
+`reloadOnFleetChange` reloads when the counter it was composed under moves. The
+date is deliberately not part of this: a new day is a new session, by the alarm.
+
+**Widget provider info on One UI, measured.** The picker lists a widget by
+`minWidth`/`minHeight` through the classic `70n − 30` formula and ignores
+`targetCellWidth`/`Height`: `minHeight="80dp"` listed as two rows, and one row means
+`minHeight ≤ 40dp`. Its grid is about 92 × 102 dp a cell, so grants are 176 × 90 at
+2 × 1, 184 × 204 at 2 × 2, 276 × 204 at 3 × 2, 376 × 204 at 4 × 2 — and **a Glance
+size bucket taller than a grant is skipped**: with the short buckets at 100 dp a
+376 × 90 grant fell to the *compact* layout, because nothing fit and Glance takes the
+smallest. The short buckets are therefore the provider's height floor (40 dp), not the
+layout's height. The picker also draws every preview at `hsResizeRatio` 0.83 in dp
+without scaling the content, so the two-cell preview clips the range chip's last
+glyph; the widget at its real 176 dp does not. An instance placed under an older
+provider info keeps that info's resize constraints until it is removed and re-added,
+which is why the first resize attempt on the phone looked like a bug and was not.
+Recorded in the design system's brand book as *the reference device*, so widget
+concepts are drawn at real grants rather than the 100 dp mock convention.
+
 
 ## 11. Sequencing
 
