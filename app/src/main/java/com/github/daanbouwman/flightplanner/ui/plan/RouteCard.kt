@@ -18,9 +18,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -30,6 +32,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.ui.chrome.SharedRouteKeys
 import com.github.daanbouwman.flightplanner.ui.chrome.isCompactHeight
@@ -357,41 +360,49 @@ private fun AircraftLine(row: RouteRow) {
  * window — which is what a 1080 × 2340 phone at 480 dpi actually is — every one of
  * them truncated to "Stangland A...", which is worse than absent. The name
  * belongs to the detail screen, where there is room to read it.
+ *
+ * **Forced LTR.** The map beneath is geographic and never mirrors, so the
+ * departure marker is always the one nearer this row's start. Under RTL a
+ * mirroring `Row` would swap the codes to the far side from their own markers
+ * — the destination's code sitting over the departure's end of the arc. See
+ * *What Phase H found*, item 1 in `docs/UI-PLAN.md`.
  */
 @Composable
 private fun AirportLine(row: RouteRow, departureRules: FlightRules, destinationRules: FlightRules) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        AirportEnd(
-            icao = row.departure.icao,
-            rules = departureRules,
-            runwayFt = row.departureRunwayFt,
-            runwayTooShort = row.departureRunwayTooShort,
-            alignment = Alignment.Start,
-            textAlign = TextAlign.Start,
-            sharedKey = SharedRouteKeys.departure(
-                row.departure.icao,
-                row.destination.icao,
-                row.aircraft.id,
-            ),
-        )
-        Box(modifier = Modifier.weight(1f))
-        AirportEnd(
-            icao = row.destination.icao,
-            rules = destinationRules,
-            runwayFt = row.destinationRunwayFt,
-            runwayTooShort = row.destinationRunwayTooShort,
-            alignment = Alignment.End,
-            textAlign = TextAlign.End,
-            sharedKey = SharedRouteKeys.destination(
-                row.departure.icao,
-                row.destination.icao,
-                row.aircraft.id,
-            ),
-        )
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            AirportEnd(
+                icao = row.departure.icao,
+                rules = departureRules,
+                runwayFt = row.departureRunwayFt,
+                runwayTooShort = row.departureRunwayTooShort,
+                alignment = Alignment.Start,
+                textAlign = TextAlign.Start,
+                sharedKey = SharedRouteKeys.departure(
+                    row.departure.icao,
+                    row.destination.icao,
+                    row.aircraft.id,
+                ),
+            )
+            Box(modifier = Modifier.weight(1f))
+            AirportEnd(
+                icao = row.destination.icao,
+                rules = destinationRules,
+                runwayFt = row.destinationRunwayFt,
+                runwayTooShort = row.destinationRunwayTooShort,
+                alignment = Alignment.End,
+                textAlign = TextAlign.End,
+                sharedKey = SharedRouteKeys.destination(
+                    row.departure.icao,
+                    row.destination.icao,
+                    row.aircraft.id,
+                ),
+            )
+        }
     }
 }
 
@@ -486,6 +497,10 @@ private fun FlightRulesSlot(rules: FlightRules, alignment: Alignment.Horizontal)
  * spanning the full width would wall the map off along a straight horizontal
  * line, and the coast has to be able to run past them for the card to read as one
  * surface with a map on it rather than as a map with a panel over it.
+ *
+ * **Forced LTR**, for the same reason as [AirportLine]: these figures describe
+ * the same fixed, non-mirroring map, so DIST stays under the departure side of
+ * the arc rather than swapping under RTL.
  */
 @Composable
 private fun FactLine(row: RouteRow) {
@@ -498,30 +513,32 @@ private fun FactLine(row: RouteRow) {
     // has the whole width and reads normally. The threshold is where the wrap
     // starts on the narrowest window the app supports, not a round number.
     val stacked = LocalDensity.current.fontScale >= StackChipsAtFontScale
-    if (stacked) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ValueChip(distance.first, distance.second, Modifier.fillMaxWidth(), ChipContainerAlpha)
-            ValueChip(time.first, time.second, Modifier.fillMaxWidth(), ChipContainerAlpha)
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        if (stacked) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ValueChip(distance.first, distance.second, Modifier.fillMaxWidth(), ChipContainerAlpha)
+                ValueChip(time.first, time.second, Modifier.fillMaxWidth(), ChipContainerAlpha)
+            }
+            return@CompositionLocalProvider
         }
-        return
-    }
 
-    // Two equal columns across the full width. An earlier version left a third of
-    // the row empty so the map ran out from under the chips rather than ending on
-    // a straight edge; on a 360 dp phone at the *default* font scale that left
-    // 122 dp a chip, and "DIST 2,847 NM" wrapped to two lines inside it. The
-    // chips are translucent, so the coast passes behind them anyway — the gap was
-    // buying an effect the alpha already provides, and paying for it in the one
-    // thing on the card that must not wrap.
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        ValueChip(distance.first, distance.second, Modifier.weight(1f), ChipContainerAlpha)
-        ValueChip(time.first, time.second, Modifier.weight(1f), ChipContainerAlpha)
+        // Two equal columns across the full width. An earlier version left a third
+        // of the row empty so the map ran out from under the chips rather than
+        // ending on a straight edge; on a 360 dp phone at the *default* font scale
+        // that left 122 dp a chip, and "DIST 2,847 NM" wrapped to two lines inside
+        // it. The chips are translucent, so the coast passes behind them anyway —
+        // the gap was buying an effect the alpha already provides, and paying for
+        // it in the one thing on the card that must not wrap.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ValueChip(distance.first, distance.second, Modifier.weight(1f), ChipContainerAlpha)
+            ValueChip(time.first, time.second, Modifier.weight(1f), ChipContainerAlpha)
+        }
     }
 }
 
