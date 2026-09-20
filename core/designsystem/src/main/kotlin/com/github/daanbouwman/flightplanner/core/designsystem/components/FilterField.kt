@@ -131,6 +131,10 @@ fun FilterField(
                 style = MaterialTheme.typography.labelSmall.copy(letterSpacing = LabelTracking),
                 color = secondary,
                 maxLines = 1,
+                // At font scale 2.0 "DEPARTURE" clips to "DEPARTUR" with no
+                // ellipsis — silent truncation reads as a rendering bug rather
+                // than as a label that ran out of room.
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = value,
