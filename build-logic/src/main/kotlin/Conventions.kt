@@ -64,6 +64,10 @@ internal fun Project.configureUnitTestPlatform() {
     tasks.withType(Test::class.java).configureEach {
         useJUnitPlatform()
         failOnNoDiscoveredTests.set(hasTestSources)
+        // A forked test JVM does not inherit the Gradle process's own `-D` flags.
+        // DesignTokenExportTest's documented `-Dtokens.write=true` regen recipe
+        // needs this system property to actually reach it.
+        System.getProperty("tokens.write")?.let { systemProperty("tokens.write", it) }
         testLogging {
             events("failed")
             exceptionFormat = TestExceptionFormat.FULL

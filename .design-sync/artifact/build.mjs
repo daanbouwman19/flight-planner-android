@@ -117,8 +117,28 @@ for (const group of readdirSync(join(BUNDLE, 'components')).sort()) {
 }
 if (components.length === 0) throw new Error(`no components under ${BUNDLE}/components — run the .ds-sync build first`)
 
+// ds-bundle/ is gitignored build output, so it survives a branch switch: a
+// component built while another branch was checked out can silently sit here
+// after switching back. design-mirror/src/index.ts is the checked-out source's
+// own export list, so a name ds-bundle has that index.ts does not export means
+// ds-bundle is stale relative to what's actually on this branch.
+{
+  const currentExports = read(join(mirror, 'src/index.ts'))
+  const stale = components.filter((c) => !new RegExp(`\\b${c.name}\\b`).test(currentExports))
+  if (stale.length > 0) {
+    throw new Error(
+      `${BUNDLE} has component(s) design-mirror/src/index.ts does not export on this branch: ` +
+        `${stale.map((c) => c.name).join(', ')} — rebuild design-mirror and .ds-sync from the checked-out ref first.`,
+    )
+  }
+}
+
+// _preview/<Name>.css (a story-local .module.css import) and
+// _vendor/preview-decorators.js (Storybook decorators) are the other two tags
+// .ds-sync/lib/emit.mjs can put in a card's <head>; both must strip here too,
+// or the "a relative asset reference survived" guard below fails the build.
 const FRAME_TAGS =
-  /^\s*<(?:link rel="stylesheet" href="\.\.\/\.\.\/\.\.\/(?:styles|_ds_bundle)\.css"|script src="\.\.\/\.\.\/\.\.\/(?:_vendor\/react(?:-dom)?|_ds_bundle|_preview\/[A-Za-z0-9]+)\.js"><\/script)>\s*\n/gm
+  /^\s*<(?:link rel="stylesheet" href="\.\.\/\.\.\/\.\.\/(?:styles|_ds_bundle|_preview\/[A-Za-z0-9]+)\.css"|script src="\.\.\/\.\.\/\.\.\/(?:_vendor\/react(?:-dom)?|_vendor\/preview-decorators|_ds_bundle|_preview\/[A-Za-z0-9]+)\.js"><\/script)>\s*\n/gm
 
 function previewHtml({ group, name, dir }) {
   const src = read(join(dir, `${name}.html`))
@@ -172,9 +192,11 @@ function componentReadme({ name, dir }) {
 
   // The .ds-sync slicer attaches each story's JSDoc to the *previous* story's
   // fence. Cut those trailing comments and put every story's own doc above its
-  // fence, as prose, from the preview source.
+  // fence, as prose, from the preview source. A shape this doesn't recognize
+  // must fail loud: silently shipping the unrepaired markdown reintroduces the
+  // exact mispairing bug this function exists to fix, with nothing to catch it.
   const at = md.indexOf('\n## Examples\n')
-  if (at < 0) return md
+  if (at < 0) throw new Error(`${name}.prompt.md: no "## Examples" heading — story/doc re-pairing cannot run`)
   const docs = storyDocs(name)
   const head = md.slice(0, at)
   const examples = md
@@ -182,7 +204,7 @@ function componentReadme({ name, dir }) {
     .split(/\n(?=### )/)
     .map((block) => {
       const m = /^### ([A-Za-z0-9]+)\n\n```jsx\n([\s\S]*?)\n```\n?$/.exec(block.trim() + '\n')
-      if (!m) return block
+      if (!m) throw new Error(`${name}.prompt.md: an example block didn't match the expected "### Name\\n\\n\`\`\`jsx" shape: ${block.slice(0, 80)}...`)
       const [, story, code] = m
       const cleaned = code.replace(/\n\n\/\*\*[\s\S]*?\*\/\s*$/, '').trimEnd()
       const doc = docs.get(story)
@@ -264,7 +286,8 @@ if (Object.keys(tokens.schemes).sort().join() !== THEMES.map(([k]) => k).sort().
   throw new Error(`tokens.json schemes changed: ${Object.keys(tokens.schemes)}`)
 }
 const perTheme = (pick) => Object.fromEntries(THEMES.map(([scheme, id]) => [id, pick(scheme)]))
-const tone = (scheme) => (scheme === 'brandDark' || scheme === 'cockpit' ? 'dark' : 'light')
+// tokens.schemeTone comes from ThemeChoice.isDark() in Theme.kt, not a guess.
+const tone = (scheme) => tokens.schemeTone[scheme]
 
 const color = []
 const colorToken = (name, pick) => {
@@ -447,8 +470,8 @@ writeFileSync(MANIFEST, JSON.stringify(staged, null, 2) + '\n')
 
 const index = JSON.parse(read(INDEX))
 if (!index.createdOnFiles && !index.convertedFrom) throw new Error(`${INDEX} is not a design-system index`)
-index.groups = []
-index.assetGroups = {}
+index.groups ??= []
+index.assetGroups ??= {}
 index.lastChange = { by: BY, at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), via: 'design-mirror re-sync', note: NOTE }
 const indexRel = 'project/design-system.json'
 writeFileSync(join(OUT, indexRel), JSON.stringify(index, null, 2) + '\n')
@@ -480,12 +503,22 @@ if (has('purge-legacy')) {
 const source = (p) => (p.endsWith('.d.ts') ? { from: p, contentType: 'text/plain' } : p)
 const [first, ...others] = written
 const calls = [
-  { url: ARTIFACT_URL, root: posix(OUT), file_path: posix(join(OUT, first)), files: Object.fromEntries(others.map((p) => [p, source(p)])) },
+  // Nothing in this recipe reads or lists these paths first — the driving
+  // session only ever reads project/design-system.json — so every path this
+  // call touches must be declared here or the Artifact tool refuses the call.
+  {
+    url: ARTIFACT_URL,
+    root: posix(OUT),
+    file_path: posix(join(OUT, first)),
+    files: Object.fromEntries(others.map((p) => [p, source(p)])),
+    overwrite_unread: [first, ...others],
+  },
   {
     url: ARTIFACT_URL,
     root: posix(OUT),
     file_path: posix(join(OUT, indexRel)),
     files: Object.fromEntries(deletes.map((p) => [p, null])),
+    overwrite_unread: deletes,
   },
 ]
 for (const call of calls) {

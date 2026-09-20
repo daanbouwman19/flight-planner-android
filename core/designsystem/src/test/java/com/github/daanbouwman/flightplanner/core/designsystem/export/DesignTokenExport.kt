@@ -28,6 +28,8 @@ import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightRulesC
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightShapeScale
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightTypography
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.LightFlightRulesColors
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.ThemeChoice
+import com.github.daanbouwman.flightplanner.core.designsystem.theme.isDark
 
 /**
  * Serialises the design system's real values for the React mirror.
@@ -240,6 +242,23 @@ internal object DesignTokenExport {
                 sb.appendLine(if (j == roles.lastIndex) "" else ",")
             }
             sb.appendLine(if (i == schemes.lastIndex) "    }" else "    },")
+        }
+        sb.appendLine("  },")
+
+        // Which schemes are dark is a fact `ThemeChoice.isDark` already decides for the
+        // app (it picks the flight-rules colour pairing); export it so the mirror reads
+        // the same fact instead of re-guessing dark/light from a scheme's name.
+        val tones = listOf(
+            "brandLight" to ThemeChoice.LIGHT,
+            "brandDark" to ThemeChoice.DARK,
+            "cockpit" to ThemeChoice.COCKPIT,
+            "chart" to ThemeChoice.CHART,
+        )
+        sb.appendLine("  \"schemeTone\": {")
+        tones.forEachIndexed { i, (name, choice) ->
+            val tone = if (choice.isDark(systemDark = false)) "dark" else "light"
+            sb.append("    \"$name\": \"$tone\"")
+            sb.appendLine(if (i == tones.lastIndex) "" else ",")
         }
         sb.appendLine("  },")
 

@@ -17,7 +17,7 @@ tool, fed by a converter in this directory.
 (cd design-mirror && npm run build)                                                  # dist/, tokens.gen.ts
 node .ds-sync/resync.mjs --config .design-sync/config.json \
   --node-modules design-mirror/node_modules --entry design-mirror/dist/index.js \
-  --out ./ds-bundle --remote .design-sync/.cache/remote-sync.json                    # ds-bundle/, render check, grades
+  --out ./ds-bundle                                                                  # ds-bundle/, full render check, grades
 # Artifact read  url=<the artifact>  path=project/design-system.json   → the live index, saved locally
 # Artifact read  url=<the artifact>  (no path)  and  Artifact list scope=files url=<the artifact>
 #   — both required in the same session before a publish: the tool refuses to replace a path it has
@@ -31,6 +31,19 @@ node .design-sync/artifact/build.mjs --index <the index> --live <that folder> --
 #   call 1 = every content file; call 2 = the index (+ deletions). The index goes last, always.
 git add .design-sync/artifact/published.json                                        # commit with the re-sync
 ```
+
+**No `--remote` flag.** `resync.mjs` still accepts one (it's `.ds-sync`'s own
+incremental-verification anchor, meant to skip re-checking a component whose
+source hasn't changed since the last upload), but the Design System Artifact
+type this now publishes to has no `_ds_sync.json`-shaped sidecar anywhere in its
+`project/` tree to anchor against — nothing has been able to refresh
+`.design-sync/.cache/remote-sync.json` since the 2026-09-16 migration off
+`claude.ai/design`, so it can only ever be a frozen pre-migration snapshot.
+Passing it doesn't break anything (a shape/scheme mismatch is handled), but it
+also can't skip anything real, so every re-sync above is a full one: full
+render check, full re-grade, full convert, across every component. That's the
+actual current cost of a re-sync, not an optimization opportunity being missed
+by forgetting a flag.
 
 `--entry` is needed because the mirror is its own source repo: `.ds-sync` otherwise
 looks for the package under `node_modules/@flightplanner/design-mirror`. `.ds-sync/`
