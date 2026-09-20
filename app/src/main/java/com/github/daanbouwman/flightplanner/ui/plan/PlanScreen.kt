@@ -335,6 +335,7 @@ fun PlanScreen(
                 onReplace = viewModel::replace,
                 hasEntered = viewModel::hasEntered,
                 markEntered = viewModel::markEntered,
+                listAgeMillis = viewModel::listAgeMillis,
                 onGenerate = viewModel::generate,
                 onPickAircraft = {
                     query = ""
@@ -596,6 +597,7 @@ private fun PlanContent(
     onReplace: (RouteRow) -> Unit,
     hasEntered: (Long) -> Boolean,
     markEntered: (Long) -> Unit,
+    listAgeMillis: () -> Long,
     onGenerate: () -> Unit,
     onPickAircraft: () -> Unit,
 ) {
@@ -656,6 +658,7 @@ private fun PlanContent(
             onReplace = onReplace,
             hasEntered = hasEntered,
             markEntered = markEntered,
+            listAgeMillis = listAgeMillis,
         )
     }
 }
@@ -733,9 +736,11 @@ private fun RouteList(
     onReplace: (RouteRow) -> Unit,
     hasEntered: (Long) -> Boolean,
     markEntered: (Long) -> Unit,
+    listAgeMillis: () -> Long,
 ) {
     // Which rows have already played their entrance is the ViewModel's to
-    // remember, and the two callbacks are how the rows ask.
+    // remember — along with when the list was first shown — and the callbacks are
+    // how the rows ask.
     //
     // A `LaunchedEffect` inside a lazy item runs again every time that item is
     // recomposed, and scrolling an item off screen and back destroys and rebuilds
@@ -791,7 +796,13 @@ private fun RouteList(
                         fadeOutSpec = null,
                         placementSpec = FlightMotion.spatial(),
                     )
-                    .rowEntrance(index = index, row = row, hasEntered = hasEntered, markEntered = markEntered),
+                    .rowEntrance(
+                        index = index,
+                        row = row,
+                        hasEntered = hasEntered,
+                        markEntered = markEntered,
+                        listAgeMillis = listAgeMillis,
+                    ),
             )
         }
 
@@ -834,12 +845,12 @@ private fun RouteList(
  *
  * ### A batch: staggered, fading and rising
  *
- * The stagger flattens after [com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion.EnterStaggerCap]
- * items, which is what keeps a fifty-row batch from becoming a one-and-a-half
- * second performance — past the cap every row shares the last delay and arrives
- * together. That also makes an *appended* batch, whose indices are all well past
- * the cap, land as one block rather than cascading below the fold where nobody
- * is looking.
+ * Each row's slot is [FlightMotion.EnterStaggerMillis] after the one before it,
+ * measured from the list's first frame. Only the first screenful takes part:
+ * past [FlightMotion.EnterStaggerCap] a row is simply there, and so is a row
+ * under the cap whose slot has already passed by the time it is first composed.
+ * Both are rows the user scrolled to rather than rows that arrived, and the
+ * reasoning for each is with the code below.
  *
  * ### A replacement: dealt in from the trailing edge, at once
  *
@@ -875,6 +886,7 @@ private fun Modifier.rowEntrance(
     row: RouteRow,
     hasEntered: (Long) -> Boolean,
     markEntered: (Long) -> Unit,
+    listAgeMillis: () -> Long,
 ): Modifier {
     val rowId = row.id
     val replacing = row.arrivedAsReplacement
@@ -898,8 +910,27 @@ private fun Modifier.rowEntrance(
     // list, not how far it is from the user's attention.
     val animates = replacing || index < FlightMotion.EnterStaggerCap
 
+    // The row's slot in the cascade, measured from the list's first frame rather
+    // than from this row's own first composition.
+    //
+    // Those are the same moment for the rows on screen when a batch lands, and
+    // can be seconds apart for the rows just under them: the cap is eight and a
+    // phone shows three, so rows three to seven are first composed when the user
+    // scrolls them in — on a fling, at speed. Measured from *that*, row seven's
+    // 210 ms delay held it at alpha zero for longer than the fling took to carry
+    // it across the screen, and the list showed a two-card hole where rows six
+    // and seven should have been, for exactly as long as the delay. A slot that
+    // has already passed when the row is first composed means the row did not
+    // arrive with the list; it is simply there, like a row past the cap. A
+    // replacement has no slot: it is dealt in the moment it is composed.
+    val delayMillis = remember(rowId) {
+        if (replacing) 0L else FlightMotion.enterDelayMillis(index) - listAgeMillis()
+    }
+
     // Decided once, on the row's first composition, like the entrance itself.
-    val skipsEntrance = remember(rowId) { alreadyEntered || reduceMotion || !animates }
+    val skipsEntrance = remember(rowId) {
+        alreadyEntered || reduceMotion || !animates || delayMillis < 0L
+    }
     LaunchedEffect(rowId) { markEntered(rowId) }
 
     // **A row with nothing to animate gets no layer.** `graphicsLayer` is a
@@ -913,7 +944,7 @@ private fun Modifier.rowEntrance(
 
     var visible by remember(rowId) { mutableStateOf(false) }
     LaunchedEffect(rowId) {
-        if (!replacing) delay(FlightMotion.enterDelayMillis(index).toLong())
+        delay(delayMillis)
         visible = true
     }
 
@@ -1341,6 +1372,7 @@ internal fun PlanPreviewContent(state: PlanUiState) {
             // rather than at the first frame of a fade.
             hasEntered = { true },
             markEntered = {},
+            listAgeMillis = { 0L },
             onGenerate = {},
             onPickAircraft = {},
         )

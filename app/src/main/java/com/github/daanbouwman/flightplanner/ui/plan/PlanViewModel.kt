@@ -256,6 +256,19 @@ class PlanViewModel @Inject constructor(
     private val enteredRows = HashSet<Long>()
 
     /**
+     * When the current list's first row entered, on [System.nanoTime]'s clock,
+     * or `null` until one has.
+     *
+     * The list's clock, which [listAgeMillis] reads and which a row measures its
+     * entrance slot against. Started by [markEntered], not by [runSelection]
+     * publishing the rows: the gap between the two is the composition of the
+     * first screenful of cards, and on a cold debug build that alone can outlast
+     * the whole cascade the age is measured against. Cleared with [enteredRows],
+     * so a new list starts a new clock.
+     */
+    private var listShownAtNanos: Long? = null
+
+    /**
      * One-shot events, as a channel rather than as state.
      *
      * A snackbar is not a property of the screen — replaying "flight logged" on
@@ -456,10 +469,29 @@ class PlanViewModel @Inject constructor(
     /** Whether the row with this id has already played its entrance. See [enteredRows]. */
     fun hasEntered(rowId: Long): Boolean = rowId in enteredRows
 
-    /** Records that the row with this id has been shown, so it never animates in again. */
-    fun markEntered(rowId: Long) {
+    /**
+     * Records that the row with this id has been shown, so it never animates in again.
+     *
+     * The first row to enter also starts the list's clock — see [listShownAtNanos].
+     * [nowNanos] is a parameter so a test can hand the clock in, as `now` is on
+     * `splashShouldHold`; the screen leaves it at its default.
+     */
+    fun markEntered(rowId: Long, nowNanos: Long = System.nanoTime()) {
+        if (listShownAtNanos == null) listShownAtNanos = nowNanos
         enteredRows += rowId
     }
+
+    /**
+     * Milliseconds since the current list's first row entered; zero until one has.
+     *
+     * What a row asks on its first composition to find out whether it is arriving
+     * *with* the list or being scrolled to long after it — see `rowEntrance` in
+     * `PlanScreen`. Held here for the reason [enteredRows] is: a clock the screen
+     * kept for itself would restart every time the screen was rebuilt, and rows
+     * that had never been composed would then arrive as if the list had.
+     */
+    fun listAgeMillis(nowNanos: Long = System.nanoTime()): Long =
+        listShownAtNanos?.let { (nowNanos - it) / NANOS_PER_MILLI } ?: 0L
 
     /**
      * Arms the one retry, if none is pending.
@@ -745,6 +777,7 @@ class PlanViewModel @Inject constructor(
         // belonged to a list that no longer exists.
         listGeneration.update { it + 1 }
         enteredRows.clear()
+        listShownAtNanos = null
         if (selected.generation == 0L) {
             routes.value = emptyList()
             status.value = PlanStatus.Idle
@@ -1016,5 +1049,7 @@ class PlanViewModel @Inject constructor(
          * reading resolves while they are reading it.
          */
         const val WEATHER_RETRY_DELAY_MILLIS = 30_000L
+
+        const val NANOS_PER_MILLI = 1_000_000L
     }
 }

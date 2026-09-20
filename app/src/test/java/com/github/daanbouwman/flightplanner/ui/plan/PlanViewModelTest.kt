@@ -510,6 +510,35 @@ class PlanViewModelTest {
         model.hasEntered(row.id) shouldBe false
     }
 
+    /**
+     * The list's clock starts with its first entered row — the screen's first
+     * frame of the list, not the batch being published — and restarts with a
+     * new list. A row measures its entrance slot against it, which is how a row
+     * scrolled to seconds later can tell it did not arrive with the list.
+     */
+    @Test
+    fun `the list's age counts from its first entered row and restarts with a new list`() = planTest { model ->
+        val (first, second) = model.uiState.value.routes
+        model.listAgeMillis(nowNanos = 5_000_000_000L) shouldBe 0L
+
+        model.markEntered(first.id, nowNanos = 1_000_000_000L)
+        model.listAgeMillis(nowNanos = 1_250_000_000L) shouldBe 250L
+
+        // A second row entering joins the same list; it does not restart the clock.
+        model.markEntered(second.id, nowNanos = 1_300_000_000L)
+        model.listAgeMillis(nowNanos = 1_400_000_000L) shouldBe 400L
+
+        // An append is the same list, on the same clock.
+        model.loadMore()
+        advanceUntilIdle()
+        model.listAgeMillis(nowNanos = 3_000_000_000L) shouldBe 2_000L
+
+        // A new list is a new clock, and it does not start until a row of it enters.
+        model.generate()
+        advanceUntilIdle()
+        model.listAgeMillis(nowNanos = 9_000_000_000L) shouldBe 0L
+    }
+
     @Test
     fun `the list stops growing at the cap and says so, until a refresh`() = planTest { model ->
         val batch = model.uiState.value.routes.size

@@ -265,7 +265,7 @@ rule paying for itself. See [API-GROUND-TRUTH.md](API-GROUND-TRUTH.md).
 60 dp each, below what Material specifies. It is also not the same *kind* of
 thing as the other five, so it moved to the app bar.
 
-### Four defects worth remembering
+### Five defects worth remembering
 
 Each of these was found on a device and none would have been caught by a unit
 test or a preview.
@@ -283,6 +283,15 @@ test or a preview.
 - **Edge-triggered prefetch cannot recover from a dropped request.** "Fire once
   when the end comes into view" asks once, is refused because a batch is running,
   and then waits at the bottom of the list for a scroll that never comes.
+- **An entrance delay must run from the list's first frame, not the row's.** The
+  stagger cap is eight and a phone shows three, so rows three to seven are first
+  composed when the user scrolls them in. Their delay ran from *that*, so on a
+  fling row seven sat at alpha zero for 210 ms while the fling carried it across
+  the screen: a two-card hole in the list, for a split second, on the first fast
+  scroll of every batch. It took a screen recording at 30 fps to see what it
+  was; on the device it read as the navigation bar taking something with it.
+  The ViewModel now keeps the moment the list was first shown alongside which
+  rows have entered, and a row whose slot has already passed is simply there.
 
 ### Previews
 
