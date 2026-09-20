@@ -134,7 +134,8 @@ function schemeVars(scheme, indent) {
   // Cockpit is a dark theme and Chart a light one, so each takes the flight-rules
   // mapping for its own tone — never one of its own. Those colours are safety
   // data: a night theme may restyle the app, it may not restate the weather.
-  const tone = scheme === 'brandDark' || scheme === 'cockpit' ? 'dark' : 'light'
+  // tokens.schemeTone comes from ThemeChoice.isDark() in Theme.kt, not a guess.
+  const tone = tokens.schemeTone[scheme]
   for (const [cat, pair] of Object.entries(tokens.flightRules[tone])) {
     out.push(`${indent}--fp-${cat}-container: ${pair.container};`)
     out.push(`${indent}--fp-${cat}-on-container: ${pair.onContainer};`)
