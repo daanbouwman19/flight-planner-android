@@ -1,4 +1,4 @@
-# Builds the debug APK and hands it back as an artifact.
+# Builds the phone and watch debug APKs and hands them back as an artifact.
 #
 # It exists because a Compose change is not verified until it has been looked at
 # on a device, and the step before looking at it is knowing it compiles. This is
@@ -80,8 +80,12 @@ jobs:
       # Deliberately no `--no-daemon`: the action needs the daemon to stop
       # cleanly at the end of the job to flush what it is about to cache, and a
       # single-use CI daemon costs nothing anyway.
+      #
+      # Both apps are assembled. The watch APK is the only way onto a watch — `:app`'s does
+      # not contain it, since they are separate artifacts for separate devices
+      # that happen to share an application id.
       - name: Assemble
-        run: ./gradlew :app:assembleDebug
+        run: ./gradlew :app:assembleDebug :wear:assembleDebug
 
       - uses: actions/upload-artifact@v7
         with:
@@ -89,7 +93,11 @@ jobs:
           # latter is the ephemeral merge commit GitHub built, which names a
           # thing nobody can check out; the head SHA is the commit you pushed.
           name: debug-apk-${{ github.event.pull_request.head.sha || github.sha }}
-          path: app/build/outputs/apk/debug/*.apk
+          # Two paths, so the artifact keeps the module directories and it is
+          # obvious which APK goes on which device.
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            wear/build/outputs/apk/debug/*.apk
           # A green build that uploaded nothing is worse than a red one.
           if-no-files-found: error
           retention-days: 14
