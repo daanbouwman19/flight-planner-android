@@ -309,7 +309,8 @@ export function projectedChord(projected: number[], width: number, height: numbe
   return Math.sqrt(dx * dx + dy * dy)
 }
 
-function ringsToPath(
+/** Rings of interleaved fractions as one SVG path, scaled to the viewBox. Shared with `WatchRouteMap`. */
+export function ringsToPath(
   rings: ProjectedRings,
   width: number,
   height: number,
@@ -330,7 +331,8 @@ function ringsToPath(
   return parts.join('')
 }
 
-function polylineToPath(projected: number[], width: number, height: number): string {
+/** A projected polyline as one SVG path. Shared with `WatchRouteMap`. */
+export function polylineToPath(projected: number[], width: number, height: number): string {
   const parts: string[] = []
   for (let i = 0; i < projected.length / 2; i++) {
     const x = (projected[i * 2] * width).toFixed(2)

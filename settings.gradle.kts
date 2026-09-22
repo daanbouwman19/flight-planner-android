@@ -37,10 +37,12 @@ rootProject.name = "flight-planner-android"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 include(":app")
+include(":wear")
 include(":core:model")
 include(":core:routing")
 include(":core:database")
 include(":core:network")
+include(":core:handoff")
 include(":core:designsystem")
 include(":feature:globe")
 include(":macrobenchmark")

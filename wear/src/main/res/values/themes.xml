@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The activity theme only has to survive until Compose takes over, so it is
+        deliberately minimal — the same posture as `:app`'s. `DeviceDefault` is
+        the Wear platform theme; its window background is what shows in the
+        moment between the window opening and the first frame, and on a watch
+        that moment is against black.
+    -->
+    <style name="Theme.FlightPlannerWear" parent="@android:style/Theme.DeviceDefault">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

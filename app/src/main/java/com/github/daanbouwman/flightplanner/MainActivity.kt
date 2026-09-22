@@ -25,6 +25,7 @@ import com.github.daanbouwman.flightplanner.settings.SettingsRepository
 import com.github.daanbouwman.flightplanner.startup.splashShouldHold
 import com.github.daanbouwman.flightplanner.ui.FlightPlannerApp
 import com.github.daanbouwman.flightplanner.ui.LocalUnitSystem
+import com.github.daanbouwman.flightplanner.watch.PublishThemeToWatch
 import com.github.daanbouwman.flightplanner.widget.PublishWidgetPreview
 import com.github.daanbouwman.flightplanner.widget.RefreshWidgetsOnFleetChange
 import dagger.hilt.android.AndroidEntryPoint
@@ -109,6 +110,10 @@ class MainActivity : ComponentActivity() {
                     // content and never ahead of it.
                     PublishWidgetPreview()
                     RefreshWidgetsOnFleetChange()
+                    // Likewise after the content: the watch app takes its look
+                    // from this setting, and a Data Layer write must not sit in
+                    // front of the first frame to do it.
+                    PublishThemeToWatch(resolved.themeChoice)
                 }
             }
         }

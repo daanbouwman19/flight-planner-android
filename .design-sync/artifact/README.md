@@ -155,6 +155,7 @@ Two spring families, each with a duration token and an easing variable (`--fp-mo
   - Globe: `GlobeView`, `GlobeRouteScene`, `GlobeHero`, `GlobeNetwork`, `GlobeCameraControls`, `GlobeAttribution`.
   - States: `EmptyState`, `ErrorState`, `MorphingLoadingIndicator`, `SkeletonBox`, `SkeletonCard`.
   - Outside the app: `ChallengeWidgetCard`, `AircraftWidgetCard`.
+  - The watch: `WatchRouteFace`, `WatchRouteMap`, `WatchFrame`.
 
 Each component's guideline (props, examples and the reasoning behind its API) is its card. Library components for the controls; tokens and type classes for your own layout glue.
 
@@ -209,6 +210,13 @@ Compose a standalone globe from `GlobeHero` (deep hero with chrome), `GlobeRoute
 - **`EmptyState` and `ErrorState` are not interchangeable.** One is the app working and waiting; the other is the app having failed. Rendering them alike teaches people to ignore the message.
 - `ChallengeWidgetCard` is the home-screen widget, not a screen: it lives outside `PhoneFrame`/`TabletFrame` at its own cell sizes (`wide` for the 250 × 100 dp four-cell layout, omitted for the compact bucket that drops the airframe line). It reuses `RouteMap` at `topInset={36}`. It has no navigation, no scrolling, one tap.
 - `AircraftWidgetCard` is its sibling, "Aircraft of the day", drawn in the same card grammar — the same corner, gutter, code line and figure chips — and no map, because one airframe has no geography to draw. Four layouts from two props: `wide` (four cells: the runway figure joins the range and the flown status is stated in words) and `tall` (two rows: the challenge card's three bands, the airframe name wrapping into the band the challenge fills with its map). Both omitted is the default two-by-one card: two lines, the status as a dot leading the name. Unlike `ChallengeWidgetCard` it is sized at the reference launcher's real grants (176 × 90, 376 × 90, 184 × 204, 376 × 204 dp) — see *Layout*.
+
+### The watch is one screen on a round face
+
+- `WatchRouteFace` is the whole Wear OS app (`:wear`): one route filling the circle, the two codes across the top, `DIST` and `TIME` on translucent plates and the airframe across the bottom, the great circle behind. A swipe or a turn of the bezel pages to the next route; a tap anywhere opens it on the phone and the result comes back as a centred flash. It also has `loading` and `unavailable` states. `WatchFrame` is the bare round display and `WatchRouteMap` the map alone, for concepts of other watch screens.
+- **The reference watch is a Galaxy Watch, SM-L350: 480 × 480 px at 340 dpi, so 226 dp across** (`WATCH_FACE_DP`). Everything on the face is placed in fractions of the diameter, not in dp, so the text keeps its place relative to the circle. **Lay a watch concept out against the chord at its own height, not against the width.** Near the top and bottom a circle is far narrower than its diameter, and every layout defect the device found was text that fitted the width and ran under the glass.
+- The watch is not built on the phone's Material. Wear Compose Material 3 is a different library, so none of the phone's components carry over, and the face is set in its own four styles: code 30 sp (steps down to 22, never wraps), plate label 10 sp, plate figure 15 sp, caption 13 sp. What does carry across is the **colour roles**, because the watch follows the phone's theme. The two dark looks go to **true black** for the OLED display, Chart stays paper, and dynamic colour falls back to the brand scheme of the matching tone.
+- Deliberately absent from the watch: flight-rules badges (it has no internet permission, so a badge could only be stale), kilometres, a clock, a page indicator, and marking a route as flown.
 
 ## What the mirror does not carry
 

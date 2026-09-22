@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Flight Planner</string>
+
+    <!-- Spoken by TalkBack for the whole face; the visible text is the route itself. -->
+    <string name="route_face_description">Route %1$s to %2$s, %3$s, in a %4$s. Double tap to open it on your phone.</string>
+    <string name="route_loading">Finding routes…</string>
+    <string name="route_unavailable">No routes right now</string>
+    <string name="route_unavailable_detail">The airport data could not be read. Open Flight Planner on your phone.</string>
+    <string name="handoff_sent">Opened on your phone</string>
+    <string name="handoff_failed">Could not reach your phone</string>
+    <string name="label_distance">DIST</string>
+    <string name="label_time">TIME</string>
+</resources>

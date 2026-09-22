@@ -196,12 +196,19 @@ function componentReadme({ name, dir }) {
   // must fail loud: silently shipping the unrepaired markdown reintroduces the
   // exact mispairing bug this function exists to fix, with nothing to catch it.
   const at = md.indexOf('\n## Examples\n')
+  // A floor card has no authored preview, so the slicer writes no examples and
+  // there is nothing to re-pair. Only that case passes; a preview with no
+  // Examples heading still fails.
+  if (at < 0 && !existsSync(join(repo, '.design-sync/previews', `${name}.tsx`))) return md
   if (at < 0) throw new Error(`${name}.prompt.md: no "## Examples" heading — story/doc re-pairing cannot run`)
   const docs = storyDocs(name)
   const head = md.slice(0, at)
   const examples = md
     .slice(at + '\n## Examples\n'.length)
     .split(/\n(?=### )/)
+    // The heading is followed by a blank line, so the split's first piece is
+    // whitespace. Skipped rather than matched: it is the gap, not an example.
+    .filter((block) => block.trim() !== '')
     .map((block) => {
       const m = /^### ([A-Za-z0-9]+)\n\n```jsx\n([\s\S]*?)\n```\n?$/.exec(block.trim() + '\n')
       if (!m) throw new Error(`${name}.prompt.md: an example block didn't match the expected "### Name\\n\\n\`\`\`jsx" shape: ${block.slice(0, 80)}...`)
@@ -210,7 +217,7 @@ function componentReadme({ name, dir }) {
       const doc = docs.get(story)
       return `### ${story}\n\n${doc ? doc + '\n\n' : ''}\`\`\`jsx\n${cleaned}\n\`\`\`\n`
     })
-  return `${head}\n## Examples\n${examples.join('\n')}`
+  return `${head}\n## Examples\n\n${examples.join('\n')}`
 }
 
 for (const c of components) {

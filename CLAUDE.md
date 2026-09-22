@@ -17,6 +17,7 @@ deliberately diverges, say so in a KDoc.
 | [docs/PLAN.md](docs/PLAN.md) | Architecture, module layout, the data pipeline, the parity matrix |
 | [docs/UI-PLAN.md](docs/UI-PLAN.md) | The task breakdown (stable IDs — "do B4"), design and motion direction, phase status |
 | [docs/WEATHER-PLAN.md](docs/WEATHER-PLAN.md) | Phase F′ (weather / Sky Profile): what shipped, the known defects, and what is left. **Resumable — read its Known defects first** |
+| [docs/WEAR-PLAN.md](docs/WEAR-PLAN.md) | The watch app: what shipped, the defaults picked for the open design questions, and what is deliberately not there yet |
 | [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md) | The `:core:designsystem` API every screen builds on |
 | [docs/API-GROUND-TRUTH.md](docs/API-GROUND-TRUTH.md) | What actually compiles in the pinned dependency versions |
 
@@ -219,5 +220,29 @@ unusable. Both are compile errors and only the message distinguishes them.
 | `:core:model` | Pure JVM. No Android imports, ever |
 | `:core:routing` | Pure JVM. No Android, no Compose. The algorithms live here so they stay unit-testable in milliseconds |
 | `:core:database` | Room + repositories. Knows nothing about UI |
+| `:core:handoff` | Pure JVM. What the two apps agree on: the URI grammar the watch writes and the phone reads, and the theme the phone publishes and the watch follows. Depends on nothing, so both APKs can |
 | `:core:designsystem` | Knows `:core:model` (for `FlightRules`) and `:core:routing` (for the geometry `RouteMap` projects). Must never know the database or the network |
-| `:app` | Screens. Reaches Expressive and motion only through `:core:designsystem` |
+| `:app` | Phone screens. Reaches Expressive and motion only through `:core:designsystem` |
+| `:wear` | Watch screens. See below — it may not touch `:core:designsystem` at all |
+
+### The watch never imports the phone's Material
+
+`:wear` is a second application module for Wear OS. Its Material surface is
+`androidx.wear.compose:compose-material3`, which is a **different library** from
+the `androidx.compose.material3` the rest of the app is built on, not a subset of
+it — so none of `:core:designsystem` comes across, and `:wear` does not depend on
+it. That is also why `:wear` does not apply the `flightplanner.android.compose`
+convention plugin: that plugin adds the phone's `material3`, pinned to an alpha
+for the Expressive surface, to whatever module applies it, and a watch APK has no
+business carrying it. `:wear` enables Compose itself and names the Wear artifacts.
+
+What it shares instead is everything below the UI: `:core:model`,
+`:core:routing` and `:core:handoff`, all pure JVM. Route generation, the
+great-circle maths and the map projection are the same code on both devices; only
+the drawing is written twice, which is documented on `WatchRouteMap`.
+
+`checkInvariants` does not yet enforce this — its rules are written against
+`androidx.compose.material3` imports, which is the right test for `:app` and the
+wrong one for a module that must import *none* of it. Adding that rule needs a
+planted violation to verify against, per [Verifying a change](#verifying-a-change),
+so for now it is the module's build file and this paragraph.

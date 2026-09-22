@@ -388,6 +388,20 @@ private fun LaunchRequestConsumer(
                 launchRequests.consume(request)
             }
 
+            is LaunchRequest.OpenWatchRoute -> {
+                // The same landing as OpenRoute, over Plan, because it is the
+                // same arrival: a route from outside the app, with nothing on
+                // the stack under it. The resolve is what differs — the watch
+                // names an airframe rather than identifying one, see
+                // `LaunchRequests.resolveWatchRoute` — and an airframe this
+                // phone does not have lands on Plan rather than on a detail
+                // screen for an id that means nothing here.
+                val route = launchRequests.resolveWatchRoute(request.route)
+                navController.navigateToTopLevel(TopLevelDestination.PLAN)
+                if (route != null) navController.navigateToDetail(route)
+                launchRequests.consume(request)
+            }
+
             is LaunchRequest.OpenAircraft -> {
                 // Over Fleet, for the same reason OpenRoute lands over Plan:
                 // back from the aircraft widget's airframe then lands on the
