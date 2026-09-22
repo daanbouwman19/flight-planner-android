@@ -1,6 +1,8 @@
 package com.github.daanbouwman.flightplanner.launch
 
 import android.content.Intent
+import android.net.Uri
+import com.github.daanbouwman.flightplanner.handoff.WatchRouteLink
 import com.github.daanbouwman.flightplanner.navigation.Destination
 
 /**
@@ -11,6 +13,11 @@ import com.github.daanbouwman.flightplanner.navigation.Destination
  * it by hand with the same action strings; `MainActivity` reads it with [parse].
  * `LaunchIntentsTest` round-trips every request and parses the shortcut XML, so
  * a typo in either place fails a unit test rather than a tap on a device.
+ *
+ * One front door does not use these actions at all: the watch, which reaches
+ * the app as a plain `ACTION_VIEW` on a `flightplanner://route/…` URI because
+ * that is what the Wear companion app can carry across. [parse] reads that too,
+ * through `WatchRouteLink`, which is the grammar both APKs compile against.
  *
  * Actions are namespaced under the application id so that no other app's
  * broadcast or shortcut can collide with them, and the extras are plain
@@ -40,9 +47,19 @@ object LaunchIntents {
      * never a crash on the way into the app. `OPEN_AIRCRAFT` is the one action
      * with an optional field rather than required ones; see
      * [LaunchRequest.OpenAircraft].
+     *
+     * `ACTION_VIEW` is the watch's, and is read off the Intent's *data* rather
+     * than its extras: it arrives from another device through the companion
+     * app, which carries a URI and nothing else. A link that is not one of ours
+     * is null on the same terms as everything else here — the intent filter is
+     * narrow, but a filter is not a guarantee about what an arriving Intent
+     * actually contains.
      */
     fun parse(intent: Intent?): LaunchRequest? {
         when (intent?.action) {
+            Intent.ACTION_VIEW -> return WatchRouteLink.parse(intent.dataString)
+                ?.let { LaunchRequest.OpenWatchRoute(it) }
+
             ACTION_GENERATE_ROUTES -> return LaunchRequest.GenerateRoutes
             ACTION_LOG_FLIGHT -> return LaunchRequest.LogFlight
             ACTION_LAST_ROUTE -> return LaunchRequest.LastRoute
@@ -77,6 +94,13 @@ object LaunchIntents {
      * Only the action and extras are set; which component the Intent targets is
      * the caller's decision, so the same encoding serves an explicit Intent
      * from the widget and a `<shortcut>` in XML.
+     *
+     * [LaunchRequest.OpenWatchRoute] is written here for symmetry rather than
+     * because anything in this app writes one: the watch builds that Intent, in
+     * its own process, from the same `WatchRouteLink`. Encoding it anyway is
+     * what lets `LaunchIntentsTest` round-trip *every* request through one
+     * assertion instead of leaving a hole where the newest front door is, and
+     * it costs three lines.
      */
     fun Intent.putLaunchRequest(request: LaunchRequest): Intent = when (request) {
         LaunchRequest.GenerateRoutes -> setAction(ACTION_GENERATE_ROUTES)
@@ -87,6 +111,9 @@ object LaunchIntents {
         is LaunchRequest.OpenAircraft -> setAction(ACTION_OPEN_AIRCRAFT).also { intent ->
             request.airframeId?.let { id -> intent.putExtra(EXTRA_AIRCRAFT_ID, id) }
         }
+        is LaunchRequest.OpenWatchRoute -> setAction(Intent.ACTION_VIEW)
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .setData(Uri.parse(WatchRouteLink.build(request.route)))
         is LaunchRequest.OpenRoute -> setAction(ACTION_OPEN_ROUTE)
             .putExtra(EXTRA_DEPARTURE_ICAO, request.route.departureIcao)
             .putExtra(EXTRA_DESTINATION_ICAO, request.route.destinationIcao)

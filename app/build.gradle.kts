@@ -104,6 +104,7 @@ dependencies {
     implementation(projects.core.routing)
     implementation(projects.core.database)
     implementation(projects.core.network)
+    implementation(projects.core.handoff)
     implementation(projects.core.designsystem)
     implementation(projects.feature.globe)
 

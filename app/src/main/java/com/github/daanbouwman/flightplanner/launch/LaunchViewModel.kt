@@ -1,7 +1,10 @@
 package com.github.daanbouwman.flightplanner.launch
 
 import androidx.lifecycle.ViewModel
+import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.core.database.repository.LogbookRepository
+import com.github.daanbouwman.flightplanner.handoff.WatchRoute
+import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.FlightRecord
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import com.github.daanbouwman.flightplanner.ui.runCatchingCancellable
@@ -34,15 +37,18 @@ import javax.inject.Inject
 class LaunchViewModel internal constructor(
     private val readLastRoute: suspend () -> Destination.RouteDetail?,
     private val latestFlight: suspend () -> FlightRecord?,
+    private val fleet: suspend () -> List<AircraftSpec>,
 ) : ViewModel(), LaunchRequests {
 
     @Inject
     constructor(
         lastRouteStore: LastRouteStore,
         logbookRepository: LogbookRepository,
+        fleetRepository: FleetRepository,
     ) : this(
         readLastRoute = lastRouteStore::read,
         latestFlight = { logbookRepository.page(limit = 1, offset = 0).firstOrNull() },
+        fleet = fleetRepository::fleet,
     )
 
     private val _pending = MutableStateFlow<LaunchRequest?>(null)
@@ -78,6 +84,44 @@ class LaunchViewModel internal constructor(
             aircraftId = flight.aircraftId,
             distanceNm = flight.distanceNm ?: 0,
             alreadyFlown = true,
+        )
+    }
+
+    /**
+     * Matches the watch's airframe against this phone's fleet.
+     *
+     * Display name first, then type code, then nothing.
+     *
+     * Display name is the strong match: it is `manufacturer + variant`, it is
+     * what the watch showed the wearer, and both sides derive it from the same
+     * `aircrafts.csv`. Type code is the fallback because it is *not* unique —
+     * the seed fleet has four airframes at `AT46` and two at `PC6P` — so
+     * matching on it alone would open a route in a variant the wearer did not
+     * see; as a second pass it only runs when the exact airframe is gone, where
+     * "an A320, but not that one" beats refusing to open the route at all.
+     *
+     * Null means the wearer has an airframe this phone does not, which is a
+     * real case: a fleet the user has edited, or two builds out of step. The
+     * caller lands on Plan rather than inventing an id — see
+     * `FlightPlannerNavHost`.
+     *
+     * The distance is the watch's own figure and is carried across rather than
+     * recomputed. It came from the same `GreatCircle` over the same index, so
+     * recomputing it here would produce the identical number from a second copy
+     * of the data — and the route detail screen recomputes everything it draws
+     * from the two codes anyway.
+     */
+    override suspend fun resolveWatchRoute(route: WatchRoute): Destination.RouteDetail? {
+        val airframes = runCatchingCancellable { fleet() }.getOrNull() ?: return null
+        val match = airframes.firstOrNull { it.displayName.equals(route.aircraftName, ignoreCase = true) }
+            ?: airframes.firstOrNull { it.icaoCode.equals(route.aircraftTypeCode, ignoreCase = true) }
+            ?: return null
+
+        return Destination.RouteDetail(
+            departureIcao = route.departureIcao,
+            destinationIcao = route.destinationIcao,
+            aircraftId = match.id,
+            distanceNm = route.distanceNm,
         )
     }
 }

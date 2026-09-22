@@ -51,6 +51,28 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!--
+                The watch's front door. `:wear` builds a
+                `flightplanner://route/EHAM/EGLL?...` link and asks the phone to
+                open it through `RemoteActivityHelper`; the Wear companion app
+                delivers it here as an ordinary VIEW Intent, which is why this
+                needs BROWSABLE and why nothing Play-services-shaped appears in
+                this module at all. `WatchRouteLink` in `:core:handoff` is the
+                grammar both sides compile against, and `LaunchIntents.parse`
+                is what reads it.
+
+                Not `autoVerify`: this is a private scheme rather than an https
+                App Link, so there is no domain to verify against and no
+                assetlinks.json to host.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="route"
+                    android:scheme="flightplanner" />
+            </intent-filter>
             <!-- The static shortcut list. See res/xml/shortcuts.xml. -->
             <meta-data
                 android:name="android.app.shortcuts"

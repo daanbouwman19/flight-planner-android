@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.launch
 
+import com.github.daanbouwman.flightplanner.handoff.WatchRoute
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,18 @@ interface LaunchRequests {
      * none" — in which case the caller lands on Plan.
      */
     suspend fun resolveLastRoute(): Destination.RouteDetail?
+
+    /**
+     * [route] as a destination this app can navigate to, or null when its
+     * airframe matches nothing in the fleet.
+     *
+     * Resolved here rather than in the Intent for the same reason
+     * [resolveLastRoute] is: the sender cannot know the answer. A watch names
+     * an airframe by display name and type code because its own ids are
+     * positions in a CSV — see [LaunchRequest.OpenWatchRoute] — and only this
+     * side knows what Room made of the fleet.
+     */
+    suspend fun resolveWatchRoute(route: WatchRoute): Destination.RouteDetail?
 }
 
 /** Nothing ever arrives. For previews, tests and any host without an Activity. */
@@ -38,4 +51,5 @@ object NoLaunchRequests : LaunchRequests {
     override val pending: StateFlow<LaunchRequest?> = MutableStateFlow(null)
     override fun consume(request: LaunchRequest) = Unit
     override suspend fun resolveLastRoute(): Destination.RouteDetail? = null
+    override suspend fun resolveWatchRoute(route: WatchRoute): Destination.RouteDetail? = null
 }

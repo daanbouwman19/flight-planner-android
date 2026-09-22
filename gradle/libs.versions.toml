@@ -2,8 +2,9 @@
 # Version catalog.
 #
 # Every version here was resolved from live Maven metadata (Google Maven
-# / Maven Central) rather than copied from documentation. Two pairings
-# are load-bearing and must be changed together:
+# / Maven Central) rather than copied from documentation, with one
+# marked exception: the `wear os` block, which is annotated where it
+# sits. Two pairings are load-bearing and must be changed together:
 #
 #   kotlin <-> ksp        Room and Hilt both run through KSP, so a Kotlin
 #                         bump that KSP does not yet support strands both.
@@ -78,6 +79,24 @@ work = "2.11.2"
 # Glance renders every widget session inside a WorkManager worker, so this pulls
 # `work-runtime` in transitively -- see the WorkManager note in app's manifest.
 glance = "1.2.0"
+# --- wear os ---
+# The four versions below are the ONLY ones in this file that were not resolved
+# from live Maven metadata: the session that added the watch module had no route
+# to Google Maven, so `dl.google.com` could not be read. They are conservative
+# rather than current — known-released versions rather than guessed-at newer
+# ones — and CI's dependency resolution is what actually checks them. Re-resolve
+# all four against Google Maven the next time this file is touched from a machine
+# that can reach it, and delete this paragraph when they have been.
+#
+# Wear Compose versions its Material 3 artifact separately from its foundation
+# and material artifacts, so the first two numbers are unrelated to each other
+# and to `material3` above, which is the *phone* library and never ships in
+# `:wear`.
+wearComposeMaterial3 = "1.0.0"
+wearCompose = "1.5.0"
+wearToolingPreview = "1.0.0"
+# `RemoteActivityHelper`, which is how a watch asks the phone to open a link.
+wearRemoteInteractions = "1.1.0"
 # --- persistence ---
 room = "2.8.4"
 sqlite = "2.7.0"
@@ -171,6 +190,17 @@ androidx-work-ktx = { group = "androidx.work", name = "work-runtime-ktx", versio
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
 androidx-glance-appwidget-testing = { group = "androidx.glance", name = "glance-appwidget-testing", version.ref = "glance" }
+
+# --- wear os ---
+# `androidx.wear.compose:compose-material3` is a DIFFERENT library from
+# `androidx.compose.material3` above. It is the watch's Material surface; the
+# phone's never ships to a watch, which is why `:wear` does not apply the
+# `flightplanner.android.compose` convention plugin (that one adds the phone
+# material3 to whatever module applies it).
+wear-compose-material3 = { group = "androidx.wear.compose", name = "compose-material3", version.ref = "wearComposeMaterial3" }
+wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-foundation", version.ref = "wearCompose" }
+wear-tooling-preview = { group = "androidx.wear", name = "wear-tooling-preview", version.ref = "wearToolingPreview" }
+wear-remote-interactions = { group = "androidx.wear", name = "wear-remote-interactions", version.ref = "wearRemoteInteractions" }
 
 # --- room / sqlite ---
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }

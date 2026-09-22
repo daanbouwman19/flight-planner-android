@@ -1,5 +1,7 @@
 package com.github.daanbouwman.flightplanner.launch
 
+import com.github.daanbouwman.flightplanner.handoff.WatchRoute
+import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.FlightRecord
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import io.kotest.matchers.nulls.shouldBeNull
@@ -9,9 +11,9 @@ import java.io.IOException
 import kotlin.test.Test
 
 /**
- * The hand-off between the Activity and the NavHost, and the "Last route"
- * resolution order. Composed against the internal seam constructor, so no
- * DataStore and no Room.
+ * The hand-off between the Activity and the NavHost, the "Last route"
+ * resolution order, and the watch's airframe matching. Composed against the
+ * internal seam constructor, so no DataStore and no Room.
  */
 class LaunchViewModelTest {
 
@@ -25,10 +27,39 @@ class LaunchViewModelTest {
         distanceNm = null,
     )
 
+    private fun airframe(id: Int, manufacturer: String, variant: String, typeCode: String) = AircraftSpec(
+        id = id,
+        manufacturer = manufacturer,
+        variant = variant,
+        icaoCode = typeCode,
+        flown = false,
+        rangeNm = 3_000,
+        category = "Narrow-body",
+        cruiseSpeedKt = 450,
+        dateFlown = null,
+        takeoffDistanceMeters = 2_000,
+    )
+
+    /** Two airframes sharing a type code, plus one that does not — as the seed fleet has. */
+    private val seedFleet = listOf(
+        airframe(1, "ATR", "42-600", "AT46"),
+        airframe(2, "ATR", "42-600 Highline", "AT46"),
+        airframe(3, "Boeing", "737-800", "B738"),
+    )
+
+    private val fromTheWatch = WatchRoute(
+        departureIcao = "EHAM",
+        destinationIcao = "KJFK",
+        distanceNm = 3_162,
+        aircraftTypeCode = "B738",
+        aircraftName = "Boeing 737-800",
+    )
+
     private fun viewModel(
         lastRoute: suspend () -> Destination.RouteDetail? = { null },
         latestFlight: suspend () -> FlightRecord? = { null },
-    ) = LaunchViewModel(readLastRoute = lastRoute, latestFlight = latestFlight)
+        fleet: suspend () -> List<AircraftSpec> = { seedFleet },
+    ) = LaunchViewModel(readLastRoute = lastRoute, latestFlight = latestFlight, fleet = fleet)
 
     @Test
     fun `an offered request is pending until consumed, and consuming it once clears it`() {
@@ -91,5 +122,45 @@ class LaunchViewModelTest {
             lastRoute = { throw IOException("preferences unreadable") },
             latestFlight = { throw IllegalStateException("database closed") },
         ).resolveLastRoute().shouldBeNull()
+    }
+
+    @Test
+    fun `a watch route resolves its airframe by name`() = runTest {
+        viewModel().resolveWatchRoute(fromTheWatch) shouldBe Destination.RouteDetail(
+            departureIcao = "EHAM",
+            destinationIcao = "KJFK",
+            aircraftId = 3,
+            distanceNm = 3_162,
+        )
+    }
+
+    /**
+     * The fallback, and why it is a fallback: `AT46` names two airframes in the
+     * seed fleet alone. Matching the type code first would open a route in
+     * whichever of them came out of Room first, which is not the one the wearer
+     * was looking at — so the name wins whenever it matches at all.
+     */
+    @Test
+    fun `an exact name beats a shared type code`() = runTest {
+        val highline = fromTheWatch.copy(aircraftTypeCode = "AT46", aircraftName = "ATR 42-600 Highline")
+        viewModel().resolveWatchRoute(highline)?.aircraftId shouldBe 2
+    }
+
+    @Test
+    fun `an airframe this phone no longer has falls back to the type code`() = runTest {
+        val renamed = fromTheWatch.copy(aircraftName = "Boeing 737-800 (retired)")
+        viewModel().resolveWatchRoute(renamed)?.aircraftId shouldBe 3
+    }
+
+    @Test
+    fun `an airframe matching nothing at all is no route`() = runTest {
+        val unknown = fromTheWatch.copy(aircraftTypeCode = "SF50", aircraftName = "Cirrus Vision Jet")
+        viewModel().resolveWatchRoute(unknown).shouldBeNull()
+    }
+
+    @Test
+    fun `an unreadable fleet is no route rather than a crash on arrival`() = runTest {
+        val model = viewModel(fleet = { throw IllegalStateException("database closed") })
+        model.resolveWatchRoute(fromTheWatch).shouldBeNull()
     }
 }

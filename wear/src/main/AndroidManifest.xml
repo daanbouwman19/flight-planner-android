@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        This APK is for watches and nothing else: `required="true"` is what keeps
+        Play from offering it to a phone, and what tells the installer which of
+        the two artifacts sharing this application id belongs on this device.
+    -->
+    <uses-feature
+        android:name="android.hardware.type.watch"
+        android:required="true" />
+
+    <!--
+        Route generation is entirely offline — the index ships in the APK — so
+        there is no INTERNET permission here, unlike `:app`, which fetches METAR
+        and satellite tiles. Adding one is a deliberate decision to make, not a
+        line to copy across.
+
+        The vibration is the tap's confirmation that the phone was asked.
+    -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:name=".FlightPlannerWearApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.FlightPlannerWear">
+
+        <!--
+            Standalone: the watch app generates its own routes from its own copy
+            of the index and is useful with the phone out of range. The phone is
+            needed for exactly one thing — opening a route in the full app — and
+            that path says so when it fails rather than the whole app refusing to
+            start without a companion.
+        -->
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="true" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.FlightPlannerWear">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

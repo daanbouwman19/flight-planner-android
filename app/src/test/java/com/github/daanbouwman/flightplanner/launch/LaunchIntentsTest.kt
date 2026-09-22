@@ -2,8 +2,10 @@ package com.github.daanbouwman.flightplanner.launch
 
 import android.content.Context
 import android.content.Intent
+import androidx.core.net.toUri
 import androidx.test.core.app.ApplicationProvider
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.handoff.WatchRoute
 import com.github.daanbouwman.flightplanner.launch.LaunchIntents.putLaunchRequest
 import com.github.daanbouwman.flightplanner.navigation.Destination
 import io.kotest.matchers.collections.shouldContainExactly
@@ -38,6 +40,14 @@ class LaunchIntentsTest {
         alreadyFlown = true,
     )
 
+    private val watchRoute = WatchRoute(
+        departureIcao = "EHAM",
+        destinationIcao = "KJFK",
+        distanceNm = 3_162,
+        aircraftTypeCode = "B738",
+        aircraftName = "Boeing 737-800",
+    )
+
     @Test
     fun `every request survives the round trip through an Intent`() {
         val requests = listOf(
@@ -47,8 +57,36 @@ class LaunchIntentsTest {
             LaunchRequest.LastRoute,
             LaunchRequest.OpenAircraft(7),
             LaunchRequest.OpenAircraft(null),
+            LaunchRequest.OpenWatchRoute(watchRoute),
         )
         requests.map { LaunchIntents.parse(Intent().putLaunchRequest(it)) } shouldBe requests
+    }
+
+    /**
+     * The watch's front door. Unlike every other request this one arrives as a
+     * URI rather than as extras, because it crosses from another device through
+     * the Wear companion app — so the Intent is built by hand here, the way the
+     * companion app builds it, rather than only through `putLaunchRequest`.
+     */
+    @Test
+    fun `a watch link arrives as a VIEW intent`() {
+        val fromTheWatch = Intent(Intent.ACTION_VIEW)
+            .addCategory(Intent.CATEGORY_BROWSABLE)
+            .setData("flightplanner://route/EHAM/KJFK?nm=3162&ac=B738&name=Boeing+737-800".toUri())
+
+        LaunchIntents.parse(fromTheWatch) shouldBe LaunchRequest.OpenWatchRoute(watchRoute)
+    }
+
+    /**
+     * The intent filter is narrow, but a filter is not a promise about what an
+     * arriving Intent actually holds: `VIEW` with no data, or with someone
+     * else's link, has to be "do nothing" rather than a crash on the way in.
+     */
+    @Test
+    fun `a VIEW intent that is not ours is nothing`() {
+        LaunchIntents.parse(Intent(Intent.ACTION_VIEW)).shouldBeNull()
+        LaunchIntents.parse(Intent(Intent.ACTION_VIEW).setData("https://example.com/route".toUri())).shouldBeNull()
+        LaunchIntents.parse(Intent(Intent.ACTION_VIEW).setData("flightplanner://aircraft/7".toUri())).shouldBeNull()
     }
 
     @Test

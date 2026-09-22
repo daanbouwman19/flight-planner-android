@@ -1,13 +1,15 @@
 package com.github.daanbouwman.flightplanner.launch
 
+import com.github.daanbouwman.flightplanner.handoff.WatchRoute
 import com.github.daanbouwman.flightplanner.navigation.Destination
 
 /**
  * Something the outside world asked the app to do on arrival.
  *
- * The app has three front doors besides the launcher icon: the "Today's
- * challenge" widget, the "Aircraft of the day" widget and the three static
- * shortcuts. Each of them starts `MainActivity` with an Intent, and this is
+ * The app has four front doors besides the launcher icon: the "Today's
+ * challenge" widget, the "Aircraft of the day" widget, the three static
+ * shortcuts, and the watch. Each of them starts `MainActivity` with an Intent,
+ * and this is
  * that Intent's meaning once [LaunchIntents.parse] has read it. It is a value
  * rather than a navigation call because the thing that receives the Intent (the
  * Activity) and the thing that can act on it (the NavHost, once it exists) are
@@ -18,6 +20,23 @@ sealed interface LaunchRequest {
 
     /** Open one route's detail — the challenge widget's tap. */
     data class OpenRoute(val route: Destination.RouteDetail) : LaunchRequest
+
+    /**
+     * Open a route the watch sent — a tap on the Wear app's route face.
+     *
+     * Carries a [WatchRoute] rather than a [Destination.RouteDetail] because
+     * the watch cannot name an airframe the way the rest of the app does. A
+     * `RouteDetail` identifies one by Room row id, and the watch has no Room:
+     * its fleet is the bundled seed CSV, parsed in its own process, where the
+     * ids are positions in a file and mean nothing here. So the link names the
+     * airframe by what it *is* — display name, then type code — and the id is
+     * looked up on arrival against whatever fleet this phone is carrying, the
+     * same way [LastRoute] resolves a route the Intent could not carry.
+     *
+     * See [LaunchRequests.resolveWatchRoute], and `WatchRouteLink` in
+     * `:core:handoff` for the wire format.
+     */
+    data class OpenWatchRoute(val route: WatchRoute) : LaunchRequest
 
     /**
      * Land on Fleet — the aircraft widget's tap — at [airframeId]'s detail.
