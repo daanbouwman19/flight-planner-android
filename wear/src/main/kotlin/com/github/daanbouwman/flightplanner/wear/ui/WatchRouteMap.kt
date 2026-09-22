@@ -61,9 +61,6 @@ internal fun WatchRouteMap(
     Canvas(modifier = modifier) {
         if (arc.size < 2 || size.minDimension <= 0f) return@Canvas
 
-        // The map is drawn larger than the face and centred, so it runs off
-        // every edge of the circle rather than stopping at a visible square.
-        // The design canvas calls this the map zoom and sets it at 1.3.
         val extent = size.minDimension * MAP_ZOOM
         val inset = (size.minDimension - extent) / 2f
 
@@ -71,6 +68,13 @@ internal fun WatchRouteMap(
             lats = arc.lats,
             lons = arc.lons,
             aspect = 1.0,
+            // [MapFrame] fits a route to a rectangle, and this face is a circle.
+            // The default 0.12 leaves the route spanning 9.7% to 90.3% of the
+            // frame, which is inside the square and outside the *inscribed
+            // circle* on any diagonal route — so the destination dot was drawn
+            // off the glass and simply could not be seen. Solving for the worst
+            // corner, the bottom one, lands at 0.284.
+            paddingFraction = ROUTE_PADDING_FRACTION,
             // The airport codes sit across the top of the face, so the route is
             // framed below them rather than behind them.
             topInsetFraction = TOP_INSET_FRACTION,
@@ -182,7 +186,23 @@ internal fun rememberWatchMapPalette(): WatchMapPalette {
 /** How far back the coastline sits. See [rememberWatchMapPalette]. */
 private const val COAST_ALPHA = 0.45f
 
-private const val MAP_ZOOM = 1.3f
+/**
+ * No longer a zoom, and the endpoints are why.
+ *
+ * It was 1.3 so the world outline's clip edge fell outside the face rather than
+ * showing as a straight seam across the map. But the route is projected through
+ * the same frame, so scaling the frame past the face scaled the route past it
+ * too: at 1.3 the route's own extremes mapped to -2.4% and 102.4% of the face,
+ * which put one or both endpoint dots off the screen.
+ *
+ * [OUTLINE_MARGIN] already carries the outline 8% beyond the frame, so at 1.0
+ * the clip edge is still off-screen and the seam stays hidden. The zoom was
+ * buying nothing the margin was not already paying for.
+ */
+private const val MAP_ZOOM = 1.0f
+
+/** See the note at [MapFrame.forRoute] above: what it takes to fit a circle. */
+private const val ROUTE_PADDING_FRACTION = 0.284
 private const val TOP_INSET_FRACTION = 0.22
 private const val OUTLINE_MARGIN = 0.08
 private const val COAST_STROKE_DP = 1.0f

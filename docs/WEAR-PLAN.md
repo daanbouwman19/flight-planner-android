@@ -3,24 +3,33 @@
 The Galaxy Watch 9 build of Flight Planner: one route filling the round face, a
 swipe up for the next, a tap to open that route in the phone app.
 
-**Status: first pass built, nothing verified on a device.** What follows is what
-shipped, what was decided and why, and what is deliberately not here yet.
+**Status: running on the watch, and corrected by what that showed.** The first
+pass was written without a device; a session over wireless `adb` on 2026-09-22
+installed it, drove it, and found four layout defects and one dead input that no
+build, test or preview had any way to report. All five are fixed — see *What the
+device found*. What follows is what shipped, what was decided and why, and what
+is deliberately not here yet.
 
 ## The target
 
-One device: Daan's Galaxy Watch 9, and nothing else for now. That settles more
+One device: Daan's Galaxy Watch, and nothing else for now. That settles more
 than it sounds like it does.
 
-- **Wear OS 6 is API 36**, comfortably above the repo's `minSdk 35`, so `:wear`
-  keeps the single floor every other module has and the no-`SDK_INT` invariant
-  is untouched. If the target ever widens to Wear OS 5 hardware (API 34) this
-  comes back: the floor is one version-catalog entry applied by the convention
-  plugins, so lowering it is either global or a per-module exception.
-- **One round screen.** The design was drawn against 454 × 454, and the face
-  places its text in fractions of the face rather than in dp for that reason —
-  see `RouteFace`'s KDoc. The exact display size has not been read off the
-  device (`adb shell wm size`); doing that is the first thing worth checking
-  when the APK is installed.
+- **The device reports `SM_L350`, Android 17, API 37** — above the API 36 this
+  document first assumed, and comfortably above the repo's `minSdk 35`, so
+  `:wear` keeps the single floor every other module has and the no-`SDK_INT`
+  invariant is untouched. If the target ever widens to Wear OS 5 hardware
+  (API 34) this comes back: the floor is one version-catalog entry applied by
+  the convention plugins, so lowering it is either global or a per-module
+  exception.
+- **One round screen, now measured: 480 × 480 at 340 dpi — 226 dp across.** The
+  design was drawn against 454 × 454, and the face places its text in fractions
+  of the face rather than in dp for that reason — see `RouteFace`'s KDoc. The
+  22 px difference is small; what it is not is free, and every one of the layout
+  defects below is a place where the design's fractions met a real circle and
+  lost. A round face is narrower than its width everywhere but the middle, and
+  text laid out near the top or the bottom has far less room than a fraction of
+  the *diameter* suggests.
 
 ## What it does
 
@@ -128,13 +137,73 @@ directory to `sourceSets` instead is refused outright by AGP 9. The database car
 names, municipalities, elevations and runway detail; route generation reads none
 of them and this app shows codes rather than names.
 
+## What the device found
+
+Five defects, none of which a green build could have reported. Four are the same
+mistake — laying text out against the face's *width* when the constraint is the
+*chord* at that text's own height — and the fifth is an input that was simply
+never wired.
+
+| What | Why it happened | Fix |
+| --- | --- | --- |
+| **The destination code wrapped, on essentially every route.** `ZYBA` drew as `ZYB` over `A`, `VYAN` as `VY`/`AN`, `KRKS` as `KR`/`KS` | A plain `Row` gives its first child the whole remaining width and the second whatever survives, so it was always the destination that ran out. The pair needs ~187 dp at 30 sp; `SIDE_INSET_TOP = 0.13` was allowing 167 dp | Both codes take `weight(1f, fill = false)`, so they share what the arrow leaves. `IcaoCode` is `BasicText` with `TextAutoSize` (30 sp down to 22 sp) and `maxLines = 1`, which makes wrapping structurally impossible rather than merely unlikely — a fixed smaller size only moves the cliff, since `SAVC` measures 74 dp where a letter-heavy `EDMM` is wider |
+| **The outer letters touched the bezel** once the codes fitted | The binding constraint is not the middle of the row but the *top corners* of the outer two letters, where the chord across the glyphs is narrowest. Measured at 1 px of clearance | `TOP_GROUP_FRACTION` 0.145 → 0.17 and `SIDE_INSET_TOP` 0.10 → 0.135. Near the top of a circle a little height buys a lot of chord, so the codes give up about 3 sp and gain 10 dp of glass |
+| **The airframe name ran under the bezel.** `McDonnell Douglas MD-11 GE` set one line 357 px wide across a 348 px chord | It shared `SIDE_INSET_BOTTOM` with the two plates, but it sits *below* them, where the circle is markedly narrower — 147 dp against the plates' 181 dp | Its own `AIRFRAME_SIDE_INSET = 0.20`. A longer name wraps instead, which it already did and which the bottom-anchored column has room for |
+| **The handoff flash had no width bound at all**, 20 dp from the top where the chord is only ~129 dp | Same error again, in the one piece that is not part of the face's own layout | Capped by `FLASH_SIDE_INSET` and moved to the middle. There is no third position along the top — a round face has no band above a full-width header, and lowering it into one put the opaque pill straight through the codes |
+| **The bezel did nothing.** Six synthetic rotary events left the screen identical pixel for pixel | `:wear` used `androidx.compose.foundation.pager.VerticalPager`, which has no rotary parameter. `grep` found no rotary support anywhere in the module | Wear's own `VerticalPager` with `rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(pager)`. See *Rotary* below |
+
+**And one that was not a layout defect at all: the destination dot was invisible.**
+`MapFrame` fits a route to a *rectangle*, and `MAP_ZOOM = 1.3` then scaled that
+rectangle past the face — the route's own extremes mapped to −2.4 % and 102.4 %
+of the face, so one or both endpoint dots were drawn off the glass. The zoom
+existed only to push the world outline's clip seam off-screen, which
+`OUTLINE_MARGIN`'s 8 % already does, so it is now 1.0. The padding that makes a
+route fit the *inscribed circle* rather than the square solves to 0.284 at the
+worst corner, against the 0.12 default — verified across six route geometries
+including a 2,944 NM diagonal, which is the case that clipped.
+
+**The lesson is the one CLAUDE.md already states**, and it cost a session to
+relearn: a preview cannot show a round display, window insets, or a system
+gesture. Every defect above survived a green `build`, a passing test suite and a
+correct `@Preview`.
+
+## Rotary
+
+The Galaxy Watch has no rotating bezel — the rim is capacitive, and swiping
+around it is what generates rotary events. This matters less than it sounds,
+because a crown, a rotating bezel and a touch rim all arrive as the same
+`RotaryScrollEvent`: wiring the one parameter covers all three, and there is no
+device-specific branch to write.
+
+Two things came with that switch to Wear's `VerticalPager`, and the second was
+unplanned:
+
+- **`CustomTouchSlopMultiplier` and a page-tuned fling.** A swipe no longer has
+  to beat the system's own edge gestures to register. This matters on a watch
+  where swipe-up from the bottom is the launcher and swipe-right is back — the
+  old pager lost that fight repeatedly while the feed was being driven from
+  `adb`.
+- **`AnimatedPage`** from `androidx.wear.compose.material3`, with
+  `PagerScaffoldDefaults.snapWithSpringFlingBehavior`, replacing a hard slide
+  with Wear's own cross-fade — roughly 180 ms, measured off a 60 fps capture.
+  Taking Wear's curve rather than writing one also keeps `:wear` clear of the
+  raw `spring()` the invariants forbid outside `:core:designsystem`, **a facade
+  this module deliberately cannot reach**. That is worth stating plainly: `:wear`
+  has no motion-token layer of its own, so every animation it wants must either
+  come from Wear's defaults or motivate one.
+
 ## Not yet done
 
-- **Nothing has run on a device.** The APK has not been installed, and per
-  CLAUDE.md a UI change is not verified until a screenshot of it has been looked
-  at. Everything below follows from that.
-- **Rotary input.** The bezel and crown do not drive the pager yet; only touch
-  does. Wear Compose's rotary modifiers are the answer.
+- **The release build has not been looked at.** `:wear:assembleRelease` passes —
+  R8 and resource shrinking both run — but the app has only ever been *watched*
+  as a debug build, which is largely interpreted. Whether the page turn is
+  smoother minified is an open question, and per CLAUDE.md a debug timing is not
+  evidence either way.
+- **The handoff was verified one way only.** A tap on the watch opened the right
+  route on the phone, codes, distance, ETE and airframe all matching. What has
+  still never been watched is the *theme* crossing — though the phone's light
+  theme did reach the face during the session, which is the same channel, so
+  this is now closer to unverified-in-detail than untested.
 - **A tile and a complication.** "Today's challenge" already exists as
   `DailyChallenge` in `:core:routing` and feeds the phone's two widgets; a tile
   is the single best-fit next feature and needs no new domain code.
@@ -143,12 +212,17 @@ of them and this app shows codes rather than names.
   rules are written against `androidx.compose.material3` *Expressive* imports,
   which is the right test for `:app` and the wrong one for a module that must
   import none of that library at all. Adding the rule needs a planted violation
-  to verify it fires, which needs a machine that can build.
+  to verify it fires — the machine that ran this session can build, so the
+  blocker named here is gone and only the work is left.
 - **The five Wear versions in `gradle/libs.versions.toml` are unverified.** They
   are the only entries in that file not resolved from live Maven metadata — the
   session that added them had no route to Google Maven. CI resolved all five, so
-  they exist; re-resolve them against Google Maven from a machine that can reach
-  it to find out whether they are *current*.
-- **The theme sync has never been watched crossing.** CI cannot pair two
-  devices. What a build proves is that it compiles; what it does not prove is
-  that flipping Cockpit on the phone recolours the face, or how long it takes.
+  they exist, and this session resolved `compose-foundation` and
+  `compose-material3` at 1.5.0 from the local Gradle cache while reading their
+  APIs — but *current* is still unchecked, and the blocker named here is gone.
+- **Flipping a theme on the phone has not been watched reaching the face.** The
+  watch did follow the phone into light, so the channel works; what has not been
+  observed is a *change* propagating, or how long it takes.
+- **The feed's behaviour at the end of a batch is unexamined.** The pager tops up
+  on `settledPage`, but nothing has driven it far enough to see a top-up happen,
+  and a rotary flick covers pages much faster than a swipe did.
