@@ -93,10 +93,13 @@ this one.
 
 ## What the watch ships
 
-1.5 MB of assets, not 7.7 MB. `copyWearAssets` in `wear/build.gradle.kts` takes
+1.5 MB of assets, not 7.7 MB. `CopyWearAssets` in `wear/build.gradle.kts` takes
 three files from `:app`'s assets at build time — the prebuilt airport index, the
 seed fleet CSV and the world outline — so one copy stays under version control
-and the watch skips the 6.5 MB SQLite database entirely. The database carries
+and the watch skips the 6.5 MB SQLite database entirely. It is registered once
+per variant and wired to that variant's asset sources through AGP's Variant API,
+which is what carries the task dependency into `mergeAssets`; adding the
+directory to `sourceSets` instead is refused outright by AGP 9. The database carries
 names, municipalities, elevations and runway detail; route generation reads none
 of them and this app shows codes rather than names.
 

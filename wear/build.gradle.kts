@@ -1,3 +1,5 @@
+import javax.inject.Inject
+
 plugins {
     alias(libs.plugins.flightplanner.android.application)
     alias(libs.plugins.flightplanner.android.hilt)
@@ -42,38 +44,76 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
-
-    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/wearAssets"))
 }
 
 /**
- * The watch's copy of the two assets it needs, taken from `:app`'s.
+ * The watch's copy of the three assets it needs, taken from `:app`'s.
  *
  * A Wear APK is installed separately and carries its own assets, so the watch
  * needs its own copy — but a second copy *in the repository* is a 1.5 MB binary
  * that would silently drift from the one the ETL regenerates. Copying at build
  * time keeps one file under version control and one source of truth.
  *
- * Only two of the four things in `:app/src/main/assets` come across. The 6.5 MB
- * airport database does not: it carries names, municipalities, elevations and
- * runway detail, none of which this app shows, and route generation needs only
- * the index. Nor does the seed fleet CSV's phone-side extraction — the watch
- * parses the CSV directly, see `WearFleet`.
+ * Only three of the four things in `:app/src/main/assets` come across. The
+ * 6.5 MB airport database does not: it carries names, municipalities,
+ * elevations and runway detail, none of which this app shows, and route
+ * generation needs only the index.
+ *
+ * This is a task type rather than a plain `Copy` because AGP's asset sources
+ * are wired through [com.android.build.api.variant.Sources], and
+ * `addGeneratedSourceDirectory` wires a task to its output by taking a
+ * [DirectoryProperty] off it — which `Copy`, whose destination is a plain
+ * `File`, does not have. Adding the directory to `sourceSets` instead is
+ * refused outright by AGP 9: a `Provider` there carries no task dependency, so
+ * the copy would race the merge.
  */
-val copyWearAssets = tasks.register<Copy>("copyWearAssets") {
-    description = "Copies the airport index, the seed fleet and the world outline from :app."
-    from(rootProject.file("app/src/main/assets")) {
-        include("databases/airports.index")
-        include("maps/land.outline")
-        include("seed/aircrafts.csv")
+abstract class CopyWearAssets : DefaultTask() {
+
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val phoneAssets: DirectoryProperty
+
+    /**
+     * Set by AGP, per variant, when this task is wired to the variant's asset
+     * sources — so it is deliberately never assigned here. Two variants would
+     * otherwise write over one another's output.
+     */
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @get:Inject
+    abstract val files: FileSystemOperations
+
+    @TaskAction
+    fun copy() {
+        files.sync {
+            from(phoneAssets) {
+                include(
+                    "databases/airports.index",
+                    "maps/land.outline",
+                    "seed/aircrafts.csv",
+                )
+            }
+            into(outputDirectory)
+        }
     }
-    into(layout.buildDirectory.dir("generated/wearAssets"))
 }
 
-// `mergeAssets` is per-variant and created late, so the dependency is wired by
-// name pattern rather than by looking one up at configuration time.
-tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }
-    .configureEach { dependsOn(copyWearAssets) }
+androidComponents {
+    onVariants { variant ->
+        val copyWearAssets = tasks.register<CopyWearAssets>(
+            "copy${variant.name.replaceFirstChar(Char::uppercase)}WearAssets",
+        ) {
+            description = "Copies the airport index, the seed fleet and the world outline from :app."
+            phoneAssets.set(rootProject.layout.projectDirectory.dir("app/src/main/assets"))
+        }
+
+        val assets = checkNotNull(variant.sources.assets) {
+            "The ${variant.name} variant has no asset sources, so the airport index cannot be bundled."
+        }
+        assets.addGeneratedSourceDirectory(copyWearAssets, CopyWearAssets::outputDirectory)
+    }
+}
 
 dependencies {
     implementation(projects.core.model)
