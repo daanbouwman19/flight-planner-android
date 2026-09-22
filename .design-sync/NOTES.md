@@ -554,6 +554,49 @@ the FLOWN badge and the status dot.
 - Verified from the resync's own `_screenshots/general__AircraftWidgetCard.png`,
   not the live page: the built-in browser is not signed in to claude.ai.
 
+## The watch — `WatchRouteFace`, 2026-09-22 re-sync
+
+Ported from `:wear`'s `RouteFeedScreen.kt`, `WatchRouteMap.kt` and
+`WearFlightPlannerTheme.kt`, the same day the watch build was first put on the
+SM-L350. Three components in `components/WatchFace.tsx`: `WatchFrame` (the round
+display, 226 dp — the measured 480 px at 340 dpi), `WatchRouteMap`, and
+`WatchRouteFace` (the app's one screen, with its `loading` / `unavailable` states
+and the handoff flash). Every fraction, dp and sp is the Kotlin's constant, named
+the same; `MapFrame` and `land.outline` are the ones `RouteMap` already uses, and
+`RouteMap.tsx` now exports `ringsToPath` / `polylineToPath` so the watch map does not
+re-write them.
+
+- **The watch's colours are the phone's roles, which is why no token was added.**
+  All eight roles `WearFlightPlannerTheme.kt` names are byte-identical to
+  `tokens.json`'s, except `background` on brand dark and Cockpit, which the watch
+  takes to `#000000` for the OLED display. `WatchFrame` sets `--fp-watch-ground`
+  from `useIsDark()` and everything else reads `--fp-*`. If the watch's schemes
+  ever stop being a subset of the phone's, they need an export of their own.
+- **`TextAutoSize` is a measured step-down.** Each code starts at 30 px and loses
+  1 px until `scrollWidth` fits, floored at 22, and fits again after
+  `document.fonts.ready`. Without the second pass the first card measured against the
+  fallback face and settled a step too large. The two codes size independently, as in
+  the app, so `KCSM` sets at 24 beside a 30 px `LTAT`. The device showed the same
+  mismatch on the same route, which is the check this port was held to.
+- **Verified against the device:** the SM-L350's own screenshot of KCSM → LTAT
+  (light theme) and the mirror's `Route` story agree on the framing, the plates, the
+  code sizes and the airframe line.
+- **Not reproduced:** the pager and `AnimatedPage`, the bezel input, the haptic, and
+  the two-second lifetime of the flash. A still frame has none of them, so the flash
+  is a prop.
+
+### A finding about the watch
+
+**`MMMX` does not fit at the 22 sp floor in Roboto.** Each code is capped at half of
+what the arrow leaves, 68.5 dp on a 226 dp face, and `MMMX` measures 74 dp at 22 sp,
+so the `LongNames` story clips its last letter. The app's `IcaoCode` has
+`maxLines = 1` and Compose's default overflow is `Clip`, so by the same metrics the
+watch clips it too. `RouteFace`'s KDoc says a miss is "impossible", which is true of
+*wrapping* and not of *clipping*. The watch draws in its system font, not bundled
+Roboto, so the real margin is unmeasured. Check on the device with an M-heavy code
+before changing anything. Possible fixes are a lower floor, a narrower arrow gap, or
+letting the pair share one size.
+
 ## Re-sync risks
 
 - **The airport database and the world outline are read at build time.** If

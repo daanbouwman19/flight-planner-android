@@ -207,3 +207,9 @@ export type { FleetDetailScreenProps } from './screens/FleetDetailScreen'
 
 export { MetarPanel } from './components/MetarPanel'
 export type { MetarPanelProps, MetarFigure } from './components/MetarPanel'
+
+// The watch — `:wear`, one screen. Wear Compose Material 3 is a different
+// library from the phone's; what carries across is the scheme roles (the dark
+// grounds go to true black) and the map geometry, not the phone's components.
+export { WatchFrame, WatchRouteMap, WatchRouteFace, WATCH_FACE_DP } from './components/WatchFace'
+export type { WatchFrameProps, WatchRouteMapProps, WatchRouteFaceProps, WatchFeedState, WatchRoute } from './components/WatchFace'

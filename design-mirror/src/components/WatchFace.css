@@ -1,0 +1,156 @@
+/*
+ * The watch — RouteFeedScreen.kt, WatchRouteMap.kt, WearFlightPlannerTheme.kt.
+ *
+ * Type is WearRouteType's explicit styles, not the phone's type scale: the face
+ * is one bespoke full-bleed composition, and the nearest named role would be a
+ * worse fit dressed up as a convention. `--fp-watch-ground` is set inline by
+ * WatchFrame from the resolved theme (true black on the two dark looks).
+ */
+
+.fp-watch-frame {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--fp-watch-ground);
+  /* The edge of the glass, so a light face still reads as a circle on a light
+     page. Presentation only: the device draws its own bezel. */
+  box-shadow: 0 0 0 1px var(--fp-outline-variant);
+  color: var(--fp-on-surface);
+  font-family: Roboto, system-ui, sans-serif;
+}
+
+.fp-watch-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.fp-watch-route {
+  position: absolute;
+  inset: 0;
+}
+
+.fp-watch-route__codes {
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* WearRouteType.code: 30 sp / 34, medium, 0.5 sp tracking. The size is set
+   inline — it steps down to fit, never wraps. */
+.fp-watch-route__code {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  line-height: 34px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-align: center;
+  color: var(--fp-on-surface);
+}
+
+.fp-watch-route__arrow {
+  flex: none;
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-watch-route__foot {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.fp-watch-route__plates {
+  display: flex;
+  gap: 8px;
+}
+
+.fp-watch-plate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--fp-surface-container) 72%, transparent);
+}
+
+/* WearRouteType.chipLabel: 10 sp / 12, medium, 1 sp tracking. */
+.fp-watch-plate__label {
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: var(--fp-on-surface-variant);
+}
+
+/* WearRouteType.chipValue: 15 sp / 17, medium. */
+.fp-watch-plate__value {
+  font-size: 15px;
+  line-height: 17px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--fp-on-surface);
+}
+
+/* WearRouteType.caption: 13 sp / 16, regular. Wraps rather than running under
+   the glass; the side inset is set inline, wider than the plates'. */
+.fp-watch-route__airframe {
+  box-sizing: border-box;
+  padding-top: 10px;
+  font-size: 13px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--fp-on-surface-variant);
+}
+
+.fp-watch-flash {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fp-watch-flash__pill {
+  box-sizing: border-box;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: var(--fp-surface-container);
+  font-size: 13px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--fp-on-surface);
+}
+
+.fp-watch-message {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 0 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.fp-watch-message__title {
+  font-size: 15px;
+  line-height: 17px;
+  font-weight: 500;
+  color: var(--fp-on-surface);
+}
+
+.fp-watch-message__detail {
+  font-size: 13px;
+  line-height: 16px;
+  color: var(--fp-on-surface-variant);
+}

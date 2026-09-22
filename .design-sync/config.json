@@ -192,6 +192,15 @@
     "ImmersiveGlobeScreen": {
       "cardMode": "column",
       "viewport": "420x900"
+    },
+    "WatchRouteFace": {
+      "cardMode": "column"
+    },
+    "WatchRouteMap": {
+      "cardMode": "column"
+    },
+    "WatchFrame": {
+      "cardMode": "column"
     }
   },
   "componentSrcMap": {
