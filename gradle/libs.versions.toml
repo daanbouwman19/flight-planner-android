@@ -80,12 +80,12 @@ work = "2.11.2"
 # `work-runtime` in transitively -- see the WorkManager note in app's manifest.
 glance = "1.2.0"
 # --- wear os ---
-# The four versions below are the ONLY ones in this file that were not resolved
+# The five versions below are the ONLY ones in this file that were not resolved
 # from live Maven metadata: the session that added the watch module had no route
 # to Google Maven, so `dl.google.com` could not be read. They are conservative
 # rather than current — known-released versions rather than guessed-at newer
 # ones — and CI's dependency resolution is what actually checks them. Re-resolve
-# all four against Google Maven the next time this file is touched from a machine
+# all five against Google Maven the next time this file is touched from a machine
 # that can reach it, and delete this paragraph when they have been.
 #
 # Wear Compose versions its Material 3 artifact separately from its foundation
@@ -97,6 +97,10 @@ wearCompose = "1.5.0"
 wearToolingPreview = "1.0.0"
 # `RemoteActivityHelper`, which is how a watch asks the phone to open a link.
 wearRemoteInteractions = "1.1.0"
+# The Wearable Data Layer, which carries the phone's theme to the watch. The one
+# entry in this block that `:app` also takes, so it is the one whose size lands
+# in the phone APK too.
+playServicesWearable = "19.0.0"
 # --- persistence ---
 room = "2.8.4"
 sqlite = "2.7.0"
@@ -201,6 +205,8 @@ wear-compose-material3 = { group = "androidx.wear.compose", name = "compose-mate
 wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-foundation", version.ref = "wearCompose" }
 wear-tooling-preview = { group = "androidx.wear", name = "wear-tooling-preview", version.ref = "wearToolingPreview" }
 wear-remote-interactions = { group = "androidx.wear", name = "wear-remote-interactions", version.ref = "wearRemoteInteractions" }
+# Used by BOTH apps: the phone writes the theme `DataItem`, the watch reads it.
+play-services-wearable = { group = "com.google.android.gms", name = "play-services-wearable", version.ref = "playServicesWearable" }
 
 # --- room / sqlite ---
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }

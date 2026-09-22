@@ -105,6 +105,11 @@ dependencies {
     implementation(projects.core.database)
     implementation(projects.core.network)
     implementation(projects.core.handoff)
+
+    // The Wearable Data Layer, for one write: the theme the watch app takes its
+    // look from. Nothing here runs before the first frame — see
+    // `PublishThemeToWatch` and the cold-start invariant in CLAUDE.md.
+    implementation(libs.play.services.wearable)
     implementation(projects.core.designsystem)
     implementation(projects.feature.globe)
 

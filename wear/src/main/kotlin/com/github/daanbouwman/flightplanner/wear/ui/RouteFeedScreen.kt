@@ -167,7 +167,12 @@ private fun RouteFace(
     ) {
         val face = maxHeight
 
-        WatchRouteMap(arc = route.arc, outline = outline, modifier = Modifier.fillMaxSize())
+        WatchRouteMap(
+            arc = route.arc,
+            outline = outline,
+            palette = rememberWatchMapPalette(),
+            modifier = Modifier.fillMaxSize(),
+        )
 
         Row(
             modifier = Modifier

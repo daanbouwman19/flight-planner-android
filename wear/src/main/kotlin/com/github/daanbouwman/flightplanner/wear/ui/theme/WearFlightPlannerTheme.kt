@@ -8,31 +8,40 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material3.ColorScheme
 import androidx.wear.compose.material3.MaterialTheme
+import com.github.daanbouwman.flightplanner.handoff.WatchThemeChoice
+import com.github.daanbouwman.flightplanner.handoff.WatchThemeState
 
 /**
- * The watch app's colours.
+ * The watch app's colours, taken from the phone.
  *
- * Ported from `:core:designsystem`'s `BrandDarkColorScheme` rather than
- * reinvented, so the two apps are recognisably one product — the same blue, the
- * same cool grey text — with **two deliberate divergences**, both of which are
- * about the device rather than about taste:
- *
- * - **The background is true black, not `#111319`.** The Galaxy Watch 9's
- *   display is OLED, where a black pixel is an unlit pixel; the phone's near-black
- *   costs battery on a screen that is on the wearer's wrist all day and spends
- *   much of it in ambient. It also makes the round bezel disappear, which the
- *   design's full-bleed map depends on.
- * - **There is no light scheme and no dynamic colour.** Wear OS has no wallpaper
- *   palette to derive one from, and a light watch face is a torch in a dark
- *   cockpit. The theme choice the phone offers (`system`, Cockpit, Chart) has no
- *   counterpart here yet; when it gets one it should be the phone's setting read
- *   over the Data Layer rather than a second setting to keep in sync.
- *
- * Only the roles this app actually paints are named. Everything else falls back
+ * Each scheme below is its `:core:designsystem` counterpart, ported role for
+ * role rather than reinvented, so the two apps are recognisably one product: the
+ * same avgas blue, the same runway amber, the same paper and ink. They are
+ * copied rather than depended on because `ColorScheme` here is
+ * `androidx.wear.compose.material3`'s, a **different class** from the phone's,
+ * in a module a watch APK must not carry — see CLAUDE.md on the watch's Material
+ * surface. Only the roles this app paints are named; everything else falls back
  * to Wear Compose's own defaults, so a component added later still lands
- * somewhere sensible instead of on an uninitialised colour.
+ * somewhere sensible rather than on an uninitialised colour.
+ *
+ * ### Two divergences from the phone, both about the device
+ *
+ * **The dark backgrounds are true black.** The phone's brand dark sits on
+ * `#111319` and Cockpit on `#110A02`; on this OLED display an unlit pixel costs
+ * nothing and a near-black one does, on a screen that is on the wearer's wrist
+ * all day. It also lets the round bezel disappear, which the full-bleed map
+ * wants. Chart is untouched: its identity is a specific paper, and a paper chart
+ * that went black would simply be a different theme.
+ *
+ * **Dynamic colour is not reproduced.** The phone can derive its scheme from the
+ * wallpaper; a watch has no wallpaper to derive the same one from, so a phone on
+ * dynamic colour lands on the brand scheme of the matching tone here. That is
+ * the one case where the two are deliberately not identical, and approximating a
+ * palette that exists to match a specific home screen would be worse than
+ * falling back cleanly. [WatchThemeState] carries no dynamic-colour flag for
+ * this reason.
  */
-internal val WearBrandColorScheme: ColorScheme = ColorScheme(
+internal val WearBrandDarkColorScheme: ColorScheme = ColorScheme(
     primary = Color(0xFFADC6FF),
     onPrimary = Color(0xFF00315D),
     background = Color(0xFF000000),
@@ -40,7 +49,60 @@ internal val WearBrandColorScheme: ColorScheme = ColorScheme(
     onSurface = Color(0xFFE0E2EA),
     onSurfaceVariant = Color(0xFFC0C6D9),
     surfaceContainer = Color(0xFF1D1F25),
+    outline = Color(0xFF8A91A2),
 )
+
+internal val WearBrandLightColorScheme: ColorScheme = ColorScheme(
+    primary = Color(0xFF1F5FA6),
+    onPrimary = Color(0xFFFFFFFF),
+    background = Color(0xFFF7F9FF),
+    onBackground = Color(0xFF191B21),
+    onSurface = Color(0xFF191B21),
+    onSurfaceVariant = Color(0xFF414756),
+    surfaceContainer = Color(0xFFEBEEF5),
+    outline = Color(0xFF717788),
+)
+
+/** The night panel: amber on black, the colours a backlit gauge is allowed to be. */
+internal val WearCockpitColorScheme: ColorScheme = ColorScheme(
+    primary = Color(0xFFFCBA5B),
+    onPrimary = Color(0xFF352200),
+    background = Color(0xFF000000),
+    onBackground = Color(0xFFE8E1DB),
+    onSurface = Color(0xFFE8E1DB),
+    onSurfaceVariant = Color(0xFFCABFB4),
+    surfaceContainer = Color(0xFF1B1712),
+    outline = Color(0xFF847B71),
+)
+
+/** The paper chart: the one theme here that stays light, because that is what it is. */
+internal val WearChartColorScheme: ColorScheme = ColorScheme(
+    primary = Color(0xFF123A5E),
+    onPrimary = Color(0xFFF4EFE4),
+    background = Color(0xFFF4EFE4),
+    onBackground = Color(0xFF1E1B12),
+    onSurface = Color(0xFF1E1B12),
+    onSurfaceVariant = Color(0xFF4B4438),
+    surfaceContainer = Color(0xFFE9E2D3),
+    outline = Color(0xFF7C7566),
+)
+
+/**
+ * The scheme a synced theme resolves to.
+ *
+ * The same shape as `:core:designsystem`'s `resolveColorScheme`, minus the
+ * dynamic-colour branch it has and this cannot. Cockpit and Chart ignore
+ * darkness for the same reason they do on the phone: they are a look, not a
+ * tone mapping.
+ */
+internal fun schemeFor(state: WatchThemeState): ColorScheme = when (state.choice) {
+    WatchThemeChoice.COCKPIT -> WearCockpitColorScheme
+    WatchThemeChoice.CHART -> WearChartColorScheme
+    WatchThemeChoice.SYSTEM,
+    WatchThemeChoice.LIGHT,
+    WatchThemeChoice.DARK,
+    -> if (state.isDark) WearBrandDarkColorScheme else WearBrandLightColorScheme
+}
 
 /**
  * The type the route face is set in.
@@ -89,6 +151,9 @@ internal object WearRouteType {
 }
 
 @Composable
-internal fun WearFlightPlannerTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = WearBrandColorScheme, content = content)
+internal fun WearFlightPlannerTheme(
+    state: WatchThemeState,
+    content: @Composable () -> Unit,
+) {
+    MaterialTheme(colorScheme = schemeFor(state), content = content)
 }

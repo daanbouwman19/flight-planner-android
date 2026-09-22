@@ -2,6 +2,7 @@ package com.github.daanbouwman.flightplanner.wear.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -13,6 +14,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.dp
+import androidx.wear.compose.material3.MaterialTheme
 import com.github.daanbouwman.flightplanner.routing.GeoArc
 import com.github.daanbouwman.flightplanner.routing.MapFrame
 import com.github.daanbouwman.flightplanner.routing.ProjectedRings
@@ -41,17 +43,19 @@ import com.github.daanbouwman.flightplanner.routing.WorldOutline
  *
  * ### The palette
  *
- * Every ink here is dark enough to carry the face's text on top of it without a
- * scrim. A scrim over a map is what the phone's Plan screen was corrected away
- * from (see CLAUDE.md on the system bars), and on a round face it would show as
- * a band across the middle of the circle. Choosing dark inks instead costs
- * nothing: this map is a ground for the route, not a chart to read place names
- * off.
+ * Taken from the theme the phone published, not fixed here — see
+ * [WatchMapPalette]. Whichever theme is on, every ink is quiet enough to carry
+ * the face's text on top of it without a scrim. A scrim over a map is what the
+ * phone's Plan screen was corrected away from (see CLAUDE.md on the system
+ * bars), and on a round face it would show as a band across the middle of the
+ * circle. Keeping the map a ground for the route rather than a chart to read
+ * place names off is what makes that affordable.
  */
 @Composable
 internal fun WatchRouteMap(
     arc: GeoArc,
     outline: WorldOutline,
+    palette: WatchMapPalette,
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier) {
@@ -78,20 +82,20 @@ internal fun WatchRouteMap(
             // Lakes — is a hole rather than more land.
             drawPath(
                 path = land.fill.toPath(extent, close = true).apply { fillType = PathFillType.EvenOdd },
-                color = LandFill,
+                color = palette.land,
             )
             drawPath(
                 path = land.coast.toPath(extent, close = false),
-                color = Coast,
+                color = palette.coast,
                 style = Stroke(width = COAST_STROKE_DP.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
-            drawRoute(frame.project(arc.lats, arc.lons), extent)
+            drawRoute(frame.project(arc.lats, arc.lons), extent, palette)
         }
     }
 }
 
 /** The great circle and its two ends, cased so they read over any coastline. */
-private fun DrawScope.drawRoute(projected: FloatArray, extent: Float) {
+private fun DrawScope.drawRoute(projected: FloatArray, extent: Float, palette: WatchMapPalette) {
     val path = Path().apply {
         moveTo(projected[0] * extent, projected[1] * extent)
         for (point in 1 until projected.size / 2) {
@@ -101,15 +105,15 @@ private fun DrawScope.drawRoute(projected: FloatArray, extent: Float) {
     val width = ROUTE_STROKE_DP.dp.toPx()
     val casing = CASING_DP.dp.toPx()
 
-    drawPath(path, Casing, style = Stroke(width + 2f * casing, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    drawPath(path, Route, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    drawPath(path, palette.casing, style = Stroke(width + 2f * casing, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    drawPath(path, palette.route, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
 
     val departure = Offset(projected[0] * extent, projected[1] * extent)
     val destination = Offset(projected[projected.size - 2] * extent, projected[projected.size - 1] * extent)
     val radius = ENDPOINT_RADIUS_DP.dp.toPx()
     for (end in listOf(departure, destination)) {
-        drawCircle(Casing, radius = radius + casing, center = end)
-        drawCircle(Route, radius = radius, center = end)
+        drawCircle(palette.casing, radius = radius + casing, center = end)
+        drawCircle(palette.route, radius = radius, center = end)
     }
 }
 
@@ -134,15 +138,49 @@ private fun ProjectedRings.toPath(extent: Float, close: Boolean): Path {
     return path
 }
 
-/** Land, barely lifted off black: a ground for the route, not a chart. */
-private val LandFill = Color(0xFF16202B)
-private val Coast = Color(0xFF32485E)
+/**
+ * The four inks the map is drawn in, resolved once and handed down.
+ *
+ * A `DrawScope` has no theme, so these are read in composition and passed in
+ * rather than looked up per frame. See [rememberWatchMapPalette] for where each
+ * comes from.
+ */
+internal data class WatchMapPalette(
+    val land: Color,
+    val coast: Color,
+    val route: Color,
+    val casing: Color,
+)
 
-/** `WearBrandColorScheme.primary`, named here because a `DrawScope` has no theme. */
-private val Route = Color(0xFFADC6FF)
+/**
+ * The map's inks, as roles rather than values, so the map follows the theme the
+ * phone published along with the rest of the face.
+ *
+ * - **Land** is `surfaceContainer`: the ground the plates on top of it also use,
+ *   which is what makes a plate over land read as a plate rather than a hole.
+ * - **The coastline** is `outline`, held well back. At full strength it competes
+ *   with the route for the eye on a face this size; the route is the subject and
+ *   the coast is there to say roughly where in the world it is.
+ * - **The route** is `primary`, the one saturated colour any of these themes has.
+ * - **The casing** is the face's own `background`, which is why a route crossing
+ *   a coastline still reads as one line: the casing is a gap in the map, not a
+ *   dark outline that would look wrong the moment the theme went light.
+ */
+@Composable
+internal fun rememberWatchMapPalette(): WatchMapPalette {
+    val scheme = MaterialTheme.colorScheme
+    return remember(scheme) {
+        WatchMapPalette(
+            land = scheme.surfaceContainer,
+            coast = scheme.outline.copy(alpha = COAST_ALPHA),
+            route = scheme.primary,
+            casing = scheme.background,
+        )
+    }
+}
 
-/** The face's own background, so a line crossing a coast stays one line. */
-private val Casing = Color(0xFF000000)
+/** How far back the coastline sits. See [rememberWatchMapPalette]. */
+private const val COAST_ALPHA = 0.45f
 
 private const val MAP_ZOOM = 1.3f
 private const val TOP_INSET_FRACTION = 0.22

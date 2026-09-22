@@ -138,6 +138,7 @@ dependencies {
     implementation(libs.wear.compose.foundation)
     implementation(libs.wear.tooling.preview)
     implementation(libs.wear.remote.interactions)
+    implementation(libs.play.services.wearable)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

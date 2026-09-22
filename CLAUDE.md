@@ -220,7 +220,7 @@ unusable. Both are compile errors and only the message distinguishes them.
 | `:core:model` | Pure JVM. No Android imports, ever |
 | `:core:routing` | Pure JVM. No Android, no Compose. The algorithms live here so they stay unit-testable in milliseconds |
 | `:core:database` | Room + repositories. Knows nothing about UI |
-| `:core:handoff` | Pure JVM. The one URI grammar the watch writes and the phone reads. Depends on nothing, so both APKs can |
+| `:core:handoff` | Pure JVM. What the two apps agree on: the URI grammar the watch writes and the phone reads, and the theme the phone publishes and the watch follows. Depends on nothing, so both APKs can |
 | `:core:designsystem` | Knows `:core:model` (for `FlightRules`) and `:core:routing` (for the geometry `RouteMap` projects). Must never know the database or the network |
 | `:app` | Phone screens. Reaches Expressive and motion only through `:core:designsystem` |
 | `:wear` | Watch screens. See below — it may not touch `:core:designsystem` at all |

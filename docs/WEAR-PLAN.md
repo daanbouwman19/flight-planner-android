@@ -26,8 +26,11 @@ than it sounds like it does.
 
 `:wear` is a standalone app. It generates its own routes from its own copy of
 the airport index and is useful with the phone out of range; the phone is needed
-for exactly one thing, opening a route in the full app, and that path says so
-when it fails rather than the app refusing to start without a companion.
+for exactly one thing the wearer can ask for, opening a route in the full app,
+and that path says so when it fails rather than the app refusing to start
+without a companion. The theme also comes from the phone, but never blocks:
+whatever it last published is already stored on the watch, and before it has
+published anything the face takes the default dark look.
 
 | Piece | Where |
 | --- | --- |
@@ -36,6 +39,9 @@ when it fails rather than the app refusing to start without a companion.
 | Assets — index, seed fleet, coastline | `wear/…/data/WearAirportData.kt` |
 | The tap to the phone | `wear/…/handoff/PhoneHandoff.kt` |
 | The link both APKs compile against | `:core:handoff`, `WatchRouteLink` |
+| The theme both APKs agree on | `:core:handoff`, `WatchThemeSync` |
+| The phone publishing its theme | `:app`, `PublishThemeToWatch` |
+| The watch following it | `wear/…/theme/` |
 | The phone's end of it | `:app`'s manifest, `LaunchIntents`, `LaunchRequest.OpenWatchRoute` |
 
 ## The handoff
@@ -74,12 +80,31 @@ permission at all and the badges are absent rather than wrong. The obvious next
 increment is to fetch for the *settled* route only, both ends, and show the badge
 when it lands.
 
-**Theming: the brand dark scheme, always.** Wear OS has no wallpaper palette, so
-"system" has no meaning here, and a light watch face is a torch in a dark
-cockpit. The background is pushed to true black rather than the phone's
-`#111319`, because the display is OLED and the design's full-bleed map wants the
-bezel to disappear. When the watch does get a theme choice it should be the
-phone's setting read across, not a second setting to keep in sync.
+**Theming: the phone's, read across.** ~~The brand dark scheme, always.~~ This
+one did not stay a default for long — Daan asked on 2026-09-22 for the watch to
+take its colours from the phone so the two stay in sync, and it now does. The
+phone writes its `ThemeChoice` to a Wearable `DataItem` whenever the setting
+changes (`PublishThemeToWatch`); the watch reads that item and follows it
+(`WatchThemeSource`). All four looks cross over — brand light, brand dark,
+Cockpit, Chart — and the map's inks are roles rather than values so it follows
+too.
+
+A `DataItem` rather than a message, because it is **replicated and then kept on
+the watch**: the last theme the phone published is there at launch with the
+phone off, out of range or unpaired. That is also why nothing is cached a second
+time on the watch. The grammar is `WatchThemeSync` in `:core:handoff`, which
+both APKs compile against, and it is the reason `:app` now carries
+`play-services-wearable` — the dependency the deep-link handoff was chosen to
+avoid, taken on here because this direction cannot be done with an
+`<intent-filter>`.
+
+Two things are deliberately not identical to the phone. **The dark backgrounds
+go to true black** (`#000000`) rather than the phone's `#111319` and `#110A02`,
+because the display is OLED and the design's full-bleed map wants the bezel to
+disappear; Chart is exempt, since a paper chart that went black would be a
+different theme. And **dynamic colour is not reproduced** — a watch has no
+wallpaper to derive the phone's scheme from, so a phone on dynamic colour lands
+on the brand scheme of the matching tone.
 
 **Units: nautical miles, fixed.** The phone reads a unit system from DataStore
 and can show kilometres. The watch has no settings screen to offer the choice
@@ -119,7 +144,11 @@ of them and this app shows codes rather than names.
   which is the right test for `:app` and the wrong one for a module that must
   import none of that library at all. Adding the rule needs a planted violation
   to verify it fires, which needs a machine that can build.
-- **The four Wear versions in `gradle/libs.versions.toml` are unverified.** They
+- **The five Wear versions in `gradle/libs.versions.toml` are unverified.** They
   are the only entries in that file not resolved from live Maven metadata — the
-  session that added them had no route to Google Maven. Re-resolve them from a
-  machine that can reach it.
+  session that added them had no route to Google Maven. CI resolved all five, so
+  they exist; re-resolve them against Google Maven from a machine that can reach
+  it to find out whether they are *current*.
+- **The theme sync has never been watched crossing.** CI cannot pair two
+  devices. What a build proves is that it compiles; what it does not prove is
+  that flipping Cockpit on the phone recolours the face, or how long it takes.
