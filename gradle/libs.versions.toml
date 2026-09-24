@@ -80,37 +80,33 @@ work = "2.11.2"
 # `work-runtime` in transitively -- see the WorkManager note in app's manifest.
 glance = "1.2.0"
 # --- wear os ---
-# The versions below are the ONLY ones in this file that were not resolved
-# from live Maven metadata: the session that added the watch module had no route
-# to Google Maven, so `dl.google.com` could not be read. They are conservative
-# rather than current — known-released versions rather than guessed-at newer
-# ones — and CI's dependency resolution is what actually checks them. Re-resolve
-# all of them against Google Maven the next time this file is touched from a
-# machine that can reach it, and delete this paragraph when they have been. The
-# session that added the tile (the last three) could not reach it either.
+# Resolved from live Google Maven metadata on 2026-09-24: the latest stable
+# release of each. (Until then these were the only unverified entries in this
+# file — the sessions that added them had no route to Google Maven.)
 #
 # Wear Compose versions its Material 3 artifact separately from its foundation
-# and material artifacts, so the first two numbers are unrelated to each other
-# and to `material3` above, which is the *phone* library and never ships in
+# and material artifacts, so the first two numbers are independent of each
+# other (equal today only because they were released together) and unrelated
+# to `material3` above, which is the *phone* library and never ships in
 # `:wear`.
-wearComposeMaterial3 = "1.0.0"
-wearCompose = "1.5.0"
+wearComposeMaterial3 = "1.7.0"
+wearCompose = "1.7.0"
 wearToolingPreview = "1.0.0"
 # `RemoteActivityHelper`, which is how a watch asks the phone to open a link.
-wearRemoteInteractions = "1.1.0"
+wearRemoteInteractions = "1.2.0"
 # The Wearable Data Layer, which carries the phone's theme to the watch. The one
 # entry in this block that `:app` also takes, so it is the one whose size lands
 # in the phone APK too.
-playServicesWearable = "19.0.0"
+playServicesWearable = "20.0.1"
 # The "Today's challenge" tile. `tiles` is the service and its request types;
 # `protolayout` is the layout vocabulary a tile is written in — a serialised
 # description the system renders, not Compose. A tile hands its answer back as
 # a `ListenableFuture`, and `concurrent-futures`' `CallbackToFutureAdapter` is
 # the smallest bridge from a coroutine to one: `kotlinx-coroutines-guava` would
 # do it in one call and bring all of Guava with it.
-wearTiles = "1.5.0"
-wearProtolayout = "1.3.0"
-concurrentFutures = "1.2.0"
+wearTiles = "1.6.2"
+wearProtolayout = "1.4.2"
+concurrentFutures = "1.3.0"
 # --- persistence ---
 room = "2.8.4"
 sqlite = "2.7.0"

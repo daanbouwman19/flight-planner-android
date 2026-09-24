@@ -277,13 +277,6 @@ compiled them. Nothing about it has been seen on a watch.
   import none of that library at all. Adding the rule needs a planted violation
   to verify it fires — the machine that ran this session can build, so the
   blocker named here is gone and only the work is left.
-- **The Wear versions in `gradle/libs.versions.toml` are unverified.** They
-  are the only entries in that file not resolved from live Maven metadata — the
-  session that added them had no route to Google Maven. CI resolved the first
-  five, so they exist; the tile's three (`tiles`, `protolayout`,
-  `concurrent-futures`) are resolved by nothing yet but CI's next run. And this session resolved `compose-foundation` and
-  `compose-material3` at 1.5.0 from the local Gradle cache while reading their
-  APIs — but *current* is still unchecked, and the blocker named here is gone.
 - **Flipping a theme on the phone has not been watched reaching the face.** The
   watch did follow the phone into light, so the channel works; what has not been
   observed is a *change* propagating, or how long it takes.
