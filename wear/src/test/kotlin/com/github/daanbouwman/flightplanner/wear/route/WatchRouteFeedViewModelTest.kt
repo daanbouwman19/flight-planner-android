@@ -184,7 +184,9 @@ class WatchRouteFeedViewModelTest {
 
         val routes = model.state.value.shouldBeInstanceOf<WatchRouteFeedState.Ready>().routes
         val challenge = WatchRouteFeed(testIndex, testFleet, dispatcher).challengeFor(challengeDay)
-        routes.first() shouldBe challenge
+        // Compared by key rather than whole card: `GeoArc` holds arrays and is not
+        // a data class, so two cards with identical arcs are never `equals`.
+        routes.first().key() shouldBe challenge?.key()
         // Keyed pages: the challenge must not appear a second time behind itself.
         routes.drop(1).map { it.key() } shouldNotContain challenge?.key()
     }

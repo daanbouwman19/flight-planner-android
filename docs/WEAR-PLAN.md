@@ -229,12 +229,15 @@ Decisions, each cheap to revisit:
 - **No complication.** A complication is a different service with a different
   budget — a few characters of text — and nothing about the tile needed it.
 
-**Built without a compiler.** The session that wrote it could reach neither
-Google Maven nor an Android SDK, so the three new versions in
-`libs.versions.toml` are conservative known releases, and the Tiles and
-ProtoLayout calls are written from their documented API rather than checked
-against a compile, as CLAUDE.md asks. CI's `check` is the first thing to have
-compiled them. Nothing about it has been seen on a watch.
+**Written without a compiler, then verified with one.** The session that
+wrote it first had no route to Google Maven or an Android SDK, so the code went
+out unchecked against the pinned APIs. Network access was widened later in the
+same session: every Wear dependency was then taken to its latest stable release,
+and `./gradlew check` passed on them — the tile's tests included. Two of those
+tests had to change on the way, and the reason is worth keeping: `GeoArc` holds
+arrays and is not a data class, so two `WatchRouteCard`s with identical arcs are
+never `equals`. Compare cards by `key()` and figures. Nothing about the tile has
+been seen on a watch.
 
 ## Not yet done
 

@@ -40,7 +40,11 @@ class WatchChallengeSourceTest {
     fun `is the feed's own challenge for the day`() = runTest(dispatcher) {
         val ready = source().forDate(day).shouldBeInstanceOf<TileChallenge.Ready>()
         ready.date shouldBe day
-        ready.card shouldBe WatchRouteFeed(testIndex, testFleet, dispatcher).challengeFor(day)
+        val expected = WatchRouteFeed(testIndex, testFleet, dispatcher).challengeFor(day)
+        // By key and figures rather than whole card: `GeoArc` holds arrays and is
+        // not a data class, so two cards with identical arcs are never `equals`.
+        ready.card.key() shouldBe expected?.key()
+        ready.card.distanceText shouldBe expected?.distanceText
     }
 
     @Test
