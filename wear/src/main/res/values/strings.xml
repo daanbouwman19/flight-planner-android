@@ -11,4 +11,11 @@
     <string name="handoff_failed">Could not reach your phone</string>
     <string name="label_distance">DIST</string>
     <string name="label_time">TIME</string>
+
+    <!-- The "Today's challenge" tile. -->
+    <string name="tile_challenge_label">Today\'s challenge</string>
+    <string name="tile_challenge_picker_description">One route a day, the same all day. Tap to open it.</string>
+    <string name="tile_challenge_unavailable">No challenge today. Tap to open Flight Planner.</string>
+    <!-- Spoken by TalkBack for the whole tile. -->
+    <string name="tile_challenge_description_route">Today\'s challenge: %1$s to %2$s, %3$s, in a %4$s. Double tap to open it.</string>
 </resources>

@@ -139,6 +139,9 @@ dependencies {
     implementation(libs.wear.tooling.preview)
     implementation(libs.wear.remote.interactions)
     implementation(libs.play.services.wearable)
+    implementation(libs.wear.tiles)
+    implementation(libs.wear.protolayout)
+    implementation(libs.androidx.concurrent.futures)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

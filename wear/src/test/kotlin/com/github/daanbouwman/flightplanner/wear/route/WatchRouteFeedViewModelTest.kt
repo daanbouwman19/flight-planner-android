@@ -8,6 +8,7 @@ import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.wear.handoff.HandoffResult
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +17,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import java.time.LocalDate
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -50,13 +52,18 @@ class WatchRouteFeedViewModelTest {
         fleet: suspend () -> List<AircraftSpec> = { testFleet },
         outline: suspend () -> WorldOutline = { WorldOutline.Empty },
         handoff: suspend (WatchRouteCard) -> HandoffResult = { HandoffResult.Sent },
+        leadWithChallenge: Boolean = false,
     ) = WatchRouteFeedViewModel(
         loadIndex = index,
         loadFleet = fleet,
         loadOutline = outline,
         handoff = handoff,
         generatorDispatcher = dispatcher,
+        leadWithChallenge = leadWithChallenge,
+        today = { challengeDay },
     )
+
+    private val challengeDay = LocalDate.of(2026, 9, 24)
 
     @Test
     fun `starts loading and settles on a first batch`() = runTest(dispatcher) {
@@ -164,5 +171,30 @@ class WatchRouteFeedViewModelTest {
             advanceUntilIdle()
             awaitItem() shouldBe HandoffResult.Failed
         }
+    }
+
+    /**
+     * The tile's tap: the route the tile showed is the page the face opens on,
+     * so the wearer lands on what they tapped rather than on a fresh batch.
+     */
+    @Test
+    fun `opened from the tile, the first page is the challenge`() = runTest(dispatcher) {
+        val model = viewModel(leadWithChallenge = true)
+        advanceUntilIdle()
+
+        val routes = model.state.value.shouldBeInstanceOf<WatchRouteFeedState.Ready>().routes
+        val challenge = WatchRouteFeed(testIndex, testFleet, dispatcher).challengeFor(challengeDay)
+        routes.first() shouldBe challenge
+        // Keyed pages: the challenge must not appear a second time behind itself.
+        routes.drop(1).map { it.key() } shouldNotContain challenge?.key()
+    }
+
+    @Test
+    fun `opened from the launcher, the challenge does not lead`() = runTest(dispatcher) {
+        val model = viewModel(leadWithChallenge = false)
+        advanceUntilIdle()
+
+        model.state.value.shouldBeInstanceOf<WatchRouteFeedState.Ready>()
+            .routes shouldHaveSize WatchRouteFeed.BATCH_SIZE
     }
 }

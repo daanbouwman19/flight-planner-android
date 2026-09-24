@@ -6,8 +6,10 @@ import com.github.daanbouwman.flightplanner.routing.RouteGenerator
 import com.github.daanbouwman.flightplanner.routing.RouteMode
 import com.github.daanbouwman.flightplanner.routing.RouteRequest
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
+import com.github.daanbouwman.flightplanner.routing.dailyChallenge
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import java.time.LocalDate
 
 /**
  * An endless supply of routes to swipe through.
@@ -57,6 +59,26 @@ class WatchRouteFeed(
                 icaoOnly = true,
             ),
         ).map { it.toCard(index) }
+
+    /**
+     * The day's challenge: the one route the tile shows for [date].
+     *
+     * The same `dailyChallenge` the phone's "Today's challenge" widget draws
+     * from, so the rules are the ones already written down there — seeded by
+     * the date alone, generated in `AllAircraft` mode. `icaoOnly` is on for the
+     * reason [nextBatch] gives, which the phone leaves to a setting.
+     *
+     * **Not necessarily the phone's route for the same day.** The watch's fleet
+     * is the seed CSV numbered in file order, the phone's is whatever the user
+     * has made of theirs, and the phone's `icaoOnly` is a setting; the two agree
+     * only when the fleets and that setting agree. Making them always agree
+     * needs the watch to read the phone's fleet, which is the Data Layer work
+     * WEAR-PLAN.md defers.
+     *
+     * Null when no route could be built, which the caller shows as such.
+     */
+    suspend fun challengeFor(date: LocalDate): WatchRouteCard? =
+        generator.dailyChallenge(fleet, date, icaoOnly = true)?.toCard(index)
 
     companion object {
         /** Routes per batch. See the class KDoc for why it is not 50. */

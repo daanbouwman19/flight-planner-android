@@ -50,6 +50,25 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            "Today's challenge", in the tile carousel. The permission is the
+            system's: only the tile host may bind this, which is what makes an
+            exported service safe here. No PREVIEW meta-data yet: the preview is
+            a picture of the tile, and it wants taking off a watch rather than
+            drawing by hand, so the picker shows the app icon until then.
+        -->
+        <service
+            android:name=".tile.ChallengeTileService"
+            android:description="@string/tile_challenge_picker_description"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/tile_challenge_label"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

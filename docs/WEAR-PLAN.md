@@ -52,6 +52,7 @@ published anything the face takes the default dark look.
 | The phone publishing its theme | `:app`, `PublishThemeToWatch` |
 | The watch following it | `wear/…/theme/` |
 | The phone's end of it | `:app`'s manifest, `LaunchIntents`, `LaunchRequest.OpenWatchRoute` |
+| The "Today's challenge" tile | `wear/…/tile/` — see *The tile* |
 
 ## The handoff
 
@@ -192,7 +193,69 @@ unplanned:
   has no motion-token layer of its own, so every animation it wants must either
   come from Wear's defaults or motivate one.
 
+## The tile
+
+"Today's challenge" in the tile carousel: the day's route in words — codes,
+distance and time, airframe — and a tap that opens the app with that route as
+its first page. Added 2026-09-24 as the next feature this document named.
+
+**It is the phone widget's route, computed on the watch.** `ChallengeTileService`
+asks `WatchChallengeSource`, which calls `WatchRouteFeed.challengeFor` — the same
+`dailyChallenge` in `:core:routing` that `:app`'s `ChallengeWidget` draws from,
+seeded by the date alone. The face opened from the tap calls the same function,
+so the tile and the page it opens on cannot disagree. What they need *not* agree
+with is the phone: the watch's fleet is the seed CSV and its `icaoOnly` is fixed
+on, so the two show the same route only while the phone's fleet is still the seed
+and its ICAO-only setting is on. Making them always agree means reading the
+phone's fleet over the Data Layer — the same work mark-as-flown needs.
+
+Decisions, each cheap to revisit:
+
+- **Words, not the map.** A tile cannot draw a path, so the face's map would be a
+  bitmap resource regenerated daily, for a picture one tap away. The layout is a
+  centred stack inset 14 % each side, which keeps every line near the middle of
+  the circle — the lesson of *What the device found* above.
+- **The phone's theme, read per request.** The tile takes its colours from the
+  face's own `schemeFor`, so Cockpit and Chart cross over too. It reads the
+  replicated `DataItem` when the system asks for the tile rather than listening
+  for changes, because nothing on the watch is alive to listen; a tile already
+  on screen keeps its colours until it is next requested.
+- **Fresh until local midnight**, and memoised per date in a `@Singleton`, since
+  the system asks for a tile every time it is scrolled to and each answer would
+  otherwise decode the index again. A failed read is not memoised.
+- **No preview image yet.** `androidx.wear.tiles.PREVIEW` wants a picture of the
+  real tile, which wants taking off a watch; the picker shows the app icon until
+  then.
+- **No complication.** A complication is a different service with a different
+  budget — a few characters of text — and nothing about the tile needed it.
+
+**Built without a compiler.** The session that wrote it could reach neither
+Google Maven nor an Android SDK, so the three new versions in
+`libs.versions.toml` are conservative known releases, and the Tiles and
+ProtoLayout calls are written from their documented API rather than checked
+against a compile, as CLAUDE.md asks. CI's `check` is the first thing to have
+compiled them. Nothing about it has been seen on a watch.
+
 ## Not yet done
+
+- **The tile has never been on a watch.** Everything *The tile* describes is
+  unverified on a device: that it appears in the carousel, how its text sits in
+  the circle (at font scale 1.0 and at the largest), and whether the tap lands on
+  the challenge when the app is already open in the background — the feed reads
+  the tap's extra only when its ViewModel is first created, so a tap that brings
+  an existing activity forward rather than starting one would land on whatever
+  page was showing. Its preview image is also still owed.
+- **A duplicate route in the feed crashes the pager.** Pre-existing, found while
+  adding the tile: the pager is keyed by `WatchRouteCard.key()`, and
+  `RouteGenerator` does not de-duplicate within or across batches, so the same
+  departure, destination and airframe type drawn twice gives two pages the same
+  key — which Compose's lazy layouts reject with an exception. Against 24,000
+  airports it is rare rather than impossible; the unit tests' five-airport world
+  draws duplicates in nearly every batch. The tile's first page drops a batch
+  route that repeats the challenge, and nothing else is filtered. The fix is to
+  filter each appended batch against the keys already loaded, and to change the
+  size assertions in `WatchRouteFeedViewModelTest` to match, since they currently
+  expect every batch to arrive whole.
 
 - **The release build has not been looked at.** `:wear:assembleRelease` passes —
   R8 and resource shrinking both run — but the app has only ever been *watched*
@@ -204,9 +267,9 @@ unplanned:
   still never been watched is the *theme* crossing — though the phone's light
   theme did reach the face during the session, which is the same channel, so
   this is now closer to unverified-in-detail than untested.
-- **A tile and a complication.** "Today's challenge" already exists as
-  `DailyChallenge` in `:core:routing` and feeds the phone's two widgets; a tile
-  is the single best-fit next feature and needs no new domain code.
+- **A complication.** The tile shipped (see *The tile*); a complication showing
+  the day's pair of codes is the obvious companion and would reuse
+  `WatchChallengeSource` unchanged.
 - **Screenshot goldens.** `:app` has 161 under Roborazzi; `:wear` has none.
 - **A `checkInvariants` rule for the watch's Material surface.** The existing
   rules are written against `androidx.compose.material3` *Expressive* imports,
@@ -214,10 +277,11 @@ unplanned:
   import none of that library at all. Adding the rule needs a planted violation
   to verify it fires — the machine that ran this session can build, so the
   blocker named here is gone and only the work is left.
-- **The five Wear versions in `gradle/libs.versions.toml` are unverified.** They
+- **The Wear versions in `gradle/libs.versions.toml` are unverified.** They
   are the only entries in that file not resolved from live Maven metadata — the
-  session that added them had no route to Google Maven. CI resolved all five, so
-  they exist, and this session resolved `compose-foundation` and
+  session that added them had no route to Google Maven. CI resolved the first
+  five, so they exist; the tile's three (`tiles`, `protolayout`,
+  `concurrent-futures`) are resolved by nothing yet but CI's next run. And this session resolved `compose-foundation` and
   `compose-material3` at 1.5.0 from the local Gradle cache while reading their
   APIs — but *current* is still unchecked, and the blocker named here is gone.
 - **Flipping a theme on the phone has not been watched reaching the face.** The

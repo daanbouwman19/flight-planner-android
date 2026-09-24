@@ -1,6 +1,7 @@
 package com.github.daanbouwman.flightplanner.wear.route
 
 import android.util.Log
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import javax.inject.Inject
 
 /**
@@ -33,6 +35,10 @@ import javax.inject.Inject
  * assets and no paired phone; the `@Inject` secondary maps the graph's types
  * onto them. That is the shape `:app`'s `DailyChallengeSource` and
  * `LaunchViewModel` both have.
+ *
+ * [leadWithChallenge] is how the tile's tap arrives: the activity's intent
+ * extras reach a Hilt ViewModel's [SavedStateHandle] as its default arguments,
+ * so [EXTRA_LEAD_WITH_CHALLENGE] needs no plumbing through `MainActivity`.
  */
 @HiltViewModel
 class WatchRouteFeedViewModel internal constructor(
@@ -41,18 +47,22 @@ class WatchRouteFeedViewModel internal constructor(
     private val loadOutline: suspend () -> WorldOutline,
     private val handoff: suspend (WatchRouteCard) -> HandoffResult,
     private val generatorDispatcher: CoroutineDispatcher,
+    private val leadWithChallenge: Boolean = false,
+    private val today: () -> LocalDate = LocalDate::now,
 ) : ViewModel() {
 
     @Inject
     constructor(
         data: WearAirportData,
         phone: PhoneHandoff,
+        savedState: SavedStateHandle,
     ) : this(
         loadIndex = data::index,
         loadFleet = data::fleet,
         loadOutline = data::outline,
         handoff = { card -> phone.open(card.asHandoff()) },
         generatorDispatcher = Dispatchers.Default,
+        leadWithChallenge = savedState.get<Boolean>(EXTRA_LEAD_WITH_CHALLENGE) ?: false,
     )
 
     private val _state = MutableStateFlow<WatchRouteFeedState>(WatchRouteFeedState.Loading)
@@ -91,7 +101,17 @@ class WatchRouteFeedViewModel internal constructor(
 
         val source = WatchRouteFeed(index, fleet, generatorDispatcher)
         feed = source
-        val first = read { source.nextBatch() } ?: return fail()
+        val batch = read { source.nextBatch() } ?: return fail()
+        // The tile promised this route, so it is the first page. A challenge
+        // that cannot be built leaves the ordinary feed rather than failing it:
+        // the tile has already said so on its own face. A batch route that is
+        // the challenge again is dropped, because the pager is keyed by route.
+        val challenge = if (leadWithChallenge) read { source.challengeFor(today()) } else null
+        val first = if (challenge == null) {
+            batch
+        } else {
+            listOf(challenge) + batch.filterNot { it.key() == challenge.key() }
+        }
         _state.value = if (first.isEmpty()) {
             WatchRouteFeedState.Unavailable
         } else {
@@ -165,7 +185,14 @@ class WatchRouteFeedViewModel internal constructor(
         null
     }
 
-    private companion object {
-        const val TAG = "WatchRouteFeed"
+    companion object {
+        /**
+         * Set by the tile's tap: open on today's challenge rather than on a
+         * fresh batch. Public because `ChallengeTileService` writes it.
+         */
+        const val EXTRA_LEAD_WITH_CHALLENGE: String =
+            "com.github.daanbouwman.flightplanner.wear.extra.LEAD_WITH_CHALLENGE"
+
+        private const val TAG = "WatchRouteFeed"
     }
 }

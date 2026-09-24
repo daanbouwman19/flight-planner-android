@@ -4,7 +4,8 @@ A native Android app for flight-simulator enthusiasts. It generates realistic, f
 between real-world airports — constrained by your aircraft's range and by runway length versus its
 takeoff distance — shows the great-circle route on a 3D globe, reports the weather at both ends,
 and keeps a logbook of what you have flown. There is a **Wear OS app** too: one route filling the
-round face, a turn of the bezel for the next, and a tap to open it on the phone.
+round face, a turn of the bezel for the next, and a tap to open it on the phone — plus a
+"Today's challenge" tile.
 
 Everything runs **on device**. No server, no account, no simulator install required: the airport
 database ships with the app.
