@@ -137,7 +137,7 @@ uiautomator = "2.4.0"
 kotest = "6.2.5"
 turbine = "1.2.1"
 robolectric = "4.17"
-roborazzi = "1.74.0"
+roborazzi = "1.75.0"
 # benchmark also versions the `androidx.baselineprofile` Gradle plugin, published
 # from the same release train, so the two move together or not at all.
 #
