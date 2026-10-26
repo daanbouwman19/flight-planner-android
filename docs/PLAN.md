@@ -79,7 +79,7 @@ it lives on Android.
 | Toggle flown status, stamping `date_flown` | Row toggle, same stamping |
 | **Mark all aircraft as not flown**, behind a confirmation | Overflow action + confirm dialog |
 | Add a new aircraft (`NewAircraft` / `add_aircraft`) | Add/edit airframe form |
-| Import fleet from `aircrafts.csv` (116 rows, 12 categories) | Bundled seed on first run only. **A deliberate gap**: `FleetCsv.parse`/`write` in `:core:model` still back the seed and "restore defaults", but a SAF import/export UI was decided against — see `docs/UI-PLAN.md` §6, D7 |
+| Import fleet from `aircrafts.csv` (119 rows, 12 categories) | Bundled seed on first run only. **A deliberate gap**: `FleetCsv.parse`/`write` in `:core:model` still back the seed and "restore defaults", but a SAF import/export UI was decided against — see `docs/UI-PLAN.md` §6, D7 |
 | Not-flown count (CLI header) | Badge on the Fleet tab and the Not-flown chip |
 
 ### History and statistics
@@ -287,8 +287,8 @@ worse than a typed Flow with atomic writes.
 
 ### 3.3 Seed fleet
 
-`aircrafts.csv` (116 rows; Light 23, Narrow-body 17, Military 17, Regional 12, Wide-body 10,
-Vintage 10, Business 8, Utility 6, Cargo 6, Sport 5, Amphibian 2, Supersonic 1; ranges 87–8900 NM)
+`aircrafts.csv` (119 rows; Light 23, Narrow-body 17, Military 17, Regional 12, Wide-body 10,
+Vintage 10, Business 8, Cargo 7, Utility 6, Sport 5, Amphibian 3, Supersonic 1; ranges 87–8900 NM)
 ships at `assets/seed/aircrafts.csv`. Seeded in one transaction when the table is empty or
 `seedVersion < BuildConfig.SEED_VERSION`. `takeoff_distance` stays in **metres**, converted at the
 ×3.28084 boundary exactly as in Rust. The same parser backs SAF import, so existing desktop CSVs
