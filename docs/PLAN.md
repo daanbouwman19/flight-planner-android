@@ -166,10 +166,13 @@ crash-prone part of this build (§3.1), and it is well-trodden on Room 2 and unv
 Ship v1 on 2.8.x with all DAOs suspend/Flow-only, so the `androidx.room` → `androidx.room3`
 migration is a package rename once the asset path is proven there.
 
-Use `androidx.sqlite:sqlite-bundled` (`BundledSQLiteDriver`): identical SQLite version, collation
-and query planner on every OEM, deterministic behaviour. ~1.5–2 MB native per ABI, absorbed by AAB
-ABI splits. The spatial design (§4.2) deliberately avoids depending on `SQLITE_ENABLE_RTREE`,
-which we cannot confirm is compiled in.
+Use the platform SQLite through `AndroidSQLiteDriver` (`androidx.sqlite:sqlite-framework`).
+This was `sqlite-bundled` until 2026-10-26: identical SQLite on every OEM, at ~1.2 MB of native
+library per ABI. That cost was meant to be absorbed by AAB ABI splits, but the app is sideloaded
+rather than installed from a store, and once the APK was split per ABI the bundled library was
+the largest thing left that bought nothing. `minSdk` 35 guarantees SQLite 3.44, and the queries
+use no math functions, no JSON and no virtual tables. The spatial design (§4.2) deliberately
+avoids depending on `SQLITE_ENABLE_RTREE`, which we cannot confirm is compiled in.
 
 **Navigation Compose 2.9.x with `@Serializable` type-safe routes**, not Navigation 3 (still
 alpha). Keep routes in a sealed hierarchy so a Nav3 move is mechanical.
@@ -271,7 +274,7 @@ nothing here.
 ### 3.2 Two databases, deliberately
 
 - **`AirportDatabase`** — read-only, `createFromAsset("databases/airports.db")`,
-  `BundledSQLiteDriver`, `fallbackToDestructiveMigration(dropAllTables = true)`. Destructive is
+  `AndroidSQLiteDriver`, `fallbackToDestructiveMigration(dropAllTables = true)`. Destructive is
   *correct*: it is derived data, wholly replaceable, and a refresh is `version++` plus a new asset.
 - **`UserDatabase`** — `aircraft`, `flight_log`, `metar_cache`. Real `Migration`s (and
   `@AutoMigration` where additive), `MigrationTestHelper` coverage for every step and the full

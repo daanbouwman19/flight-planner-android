@@ -3,7 +3,7 @@ package com.github.daanbouwman.flightplanner.core.database.user
 import android.content.Context
 import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.SQLiteConnection
-import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import androidx.sqlite.driver.AndroidSQLiteDriver
 import androidx.sqlite.execSQL
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,8 +30,8 @@ import org.junit.runner.RunWith
  * schemas as test assets and drives the same generated code the app ships.
  *
  * Driver-API form throughout (`SQLiteConnection`, not `SupportSQLiteDatabase`),
- * because the app opens this database through `BundledSQLiteDriver` and the
- * migration has to be proven on the SQLite build it will actually run on.
+ * because the app opens this database through `AndroidSQLiteDriver` and the
+ * migration has to be proven through the driver it will actually run on.
  */
 @RunWith(AndroidJUnit4::class)
 class UserDatabaseMigrationTest {
@@ -43,7 +43,7 @@ class UserDatabaseMigrationTest {
     val helper = MigrationTestHelper(
         instrumentation = InstrumentationRegistry.getInstrumentation(),
         file = databaseFile,
-        driver = BundledSQLiteDriver(),
+        driver = AndroidSQLiteDriver(),
         databaseClass = UserDatabase::class,
         databaseFactory = { UserDatabase_Impl() },
         autoMigrationSpecs = listOf(MetarCacheV3Migration()),

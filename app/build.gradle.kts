@@ -21,16 +21,34 @@ android {
         // fast, so store it uncompressed rather than paying an inflate each time.
         // The database is the opposite case: extracted once, so compression wins.
         noCompress += "index"
+
+        // AndroidX and Material carry their own strings in ~80 locales, which a
+        // user only ever sees beside this app's English. Keep the locales this
+        // app ships or is about to: adding a translation means adding it here,
+        // or its `values-xx` is stripped from the APK as silently as theirs.
+        localeFilters += listOf("en", "nl")
+    }
+
+    // One APK per ABI, for every build type. Filament's native library is ~3 MB
+    // per ABI and a device only ever loads one, so a fat APK was mostly dead
+    // weight: 27.7 MB for release against ~14 MB for any one device. Nothing here
+    // is installed through a store, which would split an AAB itself, so the split
+    // has to happen in the APK. `installDebug`, `installRelease` and
+    // `:macrobenchmark` pick the APK matching the device.
+    //
+    // arm64-v8a is every phone this app runs on and x86_64 every emulator. The
+    // 32-bit ABIs are not built at all: x86 has no real devices, and armeabi-v7a
+    // survives only on low-RAM Android Go hardware this app does not target.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "x86_64")
+            isUniversalApk = false
+        }
     }
 
     buildTypes {
-        debug {
-            // Filament and bundled SQLite ship native libraries for four ABIs,
-            // which is ~32 MB of the debug APK. Local builds only ever run on a
-            // real phone (arm64) or an emulator (x86_64), so drop the rest and
-            // make install-and-iterate noticeably faster. Release keeps them all.
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
-        }
         release {
             // Debug-signed so that `installRelease` reaches a phone. Everything
             // else about this build type is real — minified, shrunk, not
@@ -59,17 +77,6 @@ android {
         // generated against if its rules are to name real classes rather than
         // `a.b.c`. Keeping a third, near-identical build type alongside them only
         // multiplied the test module's variants. See macrobenchmark/README.md.
-    }
-}
-
-// The two build types above arrive from the plugin at `finalizeDsl`, which is
-// after this script runs, so their ABI filters cannot be set in `buildTypes`.
-// Without this they inherit `release`'s four ABIs — ~32 MB of Filament and
-// bundled SQLite that no measurement uses, installed and uninstalled around
-// every benchmark run.
-androidComponents.finalizeDsl { extension ->
-    listOf("benchmarkRelease", "nonMinifiedRelease").forEach { name ->
-        extension.buildTypes.getByName(name).ndk.abiFilters += listOf("arm64-v8a", "x86_64")
     }
 }
 

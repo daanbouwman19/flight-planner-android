@@ -23,7 +23,7 @@
 #   `UnitSystem` and `WeatherProvider` strings with `entries.firstOrNull { it.name == … }`.
 #   R8 never renames enum constants or breaks `name()`, so no rule is needed and
 #   none should be added.
-# - Hilt, Room, OkHttp, DataStore, Navigation, WorkManager, Glance, sqlite-bundled,
+# - Hilt, Room, OkHttp, DataStore, Navigation, WorkManager, Glance, sqlite-framework,
 #   coroutines: all bundled, or need nothing.
 
 # AGP's `proguard-android-optimize.txt` keeps annotations, Signature and
