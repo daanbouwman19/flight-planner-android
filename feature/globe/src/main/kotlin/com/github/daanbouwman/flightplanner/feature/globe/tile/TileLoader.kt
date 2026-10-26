@@ -45,9 +45,9 @@ internal enum class TileFailure {
 internal data class TileStats(
     /** Queued or in flight. */
     val pending: Int = 0,
-    /** Bodies that came over the wire, revalidations included. */
+    /** Tiles that took a round trip: full bodies, and revalidations a 304 answered. */
     val fromNetwork: Int = 0,
-    /** Bodies served from the disk cache without a round trip. */
+    /** Tiles served from the disk cache: fresh ones, and stale ones the network failed to replace. */
     val fromCache: Int = 0,
     val errors: Int = 0,
     val decoded: Int = 0,
@@ -127,13 +127,24 @@ internal data class TileStats(
  * ready queue plus one per worker; smaller than that, and every entry of a
  * backlog allocates a fresh 128 KB direct buffer.
  *
+ * ### The disk cache, and the network behind it
+ *
+ * [fetch] asks [cache] first. A fresh tile is used without a round trip. A
+ * stale one is revalidated — `If-None-Match` / `If-Modified-Since` from what was
+ * stored, and a 304 keeps the bytes already on disk — and is the fallback when
+ * the request fails: offline, refused, or timed out, a stale tile of the right
+ * place is better than a coarse ancestor of it. Only a tile with nothing on disk
+ * reaches `failed()` for want of a network.
+ *
  * [now] and [decoder] are injectable for the tests: `SystemClock` returns 0 on
  * the JVM and `BitmapFactory` returns null, so nothing here would ever expire
- * or decode without them.
+ * or decode without them. Freshness is wall-clock time instead, because it is
+ * compared with what the origin said and outlives the process.
  */
 internal class TileLoader(
     private val provider: TileProvider = NasaGibsBlueMarble,
     private val client: OkHttpClient,
+    private val cache: TileDiskCache,
     private val decoder: TileDecoder = BitmapTileDecoder(),
     private val workers: Int = DEFAULT_WORKERS,
     private val now: () -> Long = { SystemClock.uptimeMillis() },
@@ -445,6 +456,8 @@ internal class TileLoader(
             errors.incrementAndGet()
             lastFailure.set(TileFailure.Decode)
             recycleBuffer(buffer)
+            // Off the disk too, or every retry would be served the same bytes.
+            cache.remove(provider, key)
             failed(key)
             return
         }
@@ -480,24 +493,40 @@ internal class TileLoader(
         }
     }
 
+    /** The tile's bytes, from disk or the wire — see the class note — or null after recording why not. */
     private fun fetch(key: TileKey): ByteArray? {
+        val cached = cache.get(provider, key)
+        if (cached != null && cached.isFresh(System.currentTimeMillis())) {
+            fromCache.incrementAndGet()
+            return cached.body
+        }
         val request = Request.Builder()
             .url(provider.tileUrl(key.z, key.x, key.y))
-            // The provider decides the cache policy in `TileHttp`, and the
-            // loader is what `shutdown` cancels by.
-            .tag(TileProvider::class.java, provider)
+            .apply {
+                cached?.etag?.let { header("If-None-Match", it) }
+                cached?.lastModified?.let { header("If-Modified-Since", it) }
+            }
+            // What `shutdown` cancels by.
             .tag(TileLoader::class.java, this)
             .build()
         return try {
             client.newCall(request).execute().use { response ->
                 when {
+                    cached != null && response.code == HttpURLConnection.HTTP_NOT_MODIFIED -> {
+                        // The validators are the stored ones: a 304 renews the
+                        // tile's lifetime and nothing else.
+                        val expiresAt = TileHttp.expiresAt(response, provider) ?: 0L
+                        cache.put(provider, key, CachedTile(cached.body, expiresAt, cached.etag, cached.lastModified))
+                        fromNetwork.incrementAndGet()
+                        cached.body
+                    }
                     response.isSuccessful -> {
                         val body = response.body.bytes()
-                        if (response.networkResponse != null) {
-                            fromNetwork.incrementAndGet()
-                        } else {
-                            fromCache.incrementAndGet()
+                        TileHttp.expiresAt(response, provider)?.let { expiresAt ->
+                            val tile = CachedTile(body, expiresAt, response.header("ETag"), response.header("Last-Modified"))
+                            cache.put(provider, key, tile)
                         }
+                        fromNetwork.incrementAndGet()
                         body
                     }
                     response.code == HttpURLConnection.HTTP_BAD_REQUEST ||
@@ -516,6 +545,11 @@ internal class TileLoader(
                 }
             }
         } catch (e: IOException) {
+            if (cached != null) {
+                // The offline fallback: stale, but of the right place.
+                fromCache.incrementAndGet()
+                return cached.body
+            }
             // Offline is the ordinary case here, not an exceptional one: the
             // pinned base levels are already drawn and the globe simply stops
             // sharpening. Logged at debug so a real failure is still findable.

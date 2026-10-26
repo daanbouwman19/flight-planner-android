@@ -551,16 +551,26 @@ in-flight set, drained by **8** blocking workers on `Dispatchers.IO`, the deskto
 Decode with `BitmapFactory.Options { inPreferredConfig = RGB_565; inBitmap = pool.acquire() }` so
 decode allocates nothing, then hand the buffer to Filament on the render thread.
 
-**Disk cache: OkHttp's own `Cache`** (`96 MB` under `cacheDir/globe-tiles`), on **one
-process-scoped tile client** created on first use — never in `Application.onCreate`. OkHttp requires
-exclusive access to a cache directory, and the first build opened a fresh `Cache` over the same
-directory every time the globe session was rebuilt and never closed one. Conditional revalidation,
-LRU eviction, journal integrity and crash safety all come free; a hand-rolled `DiskLruCache`
-reimplements it worse. Two interceptors: a *network* interceptor rewriting `Cache-Control` to a
-year for providers that declare their tiles immutable (GIBS sends `max-age=259200` — three days —
-on a layer with no date in its path), and an *application* interceptor retrying with `FORCE_CACHE`
-on `IOException` so panning works offline, returning the cached response only on a genuine hit.
-Esri's tiles keep their own `Cache-Control` (a day); see §11. **Do not use Coil for tiles** — the
+**Disk cache: `TileDiskCache`**, one file per tile under `cacheDir/tiles`, capped at **48 MB of
+disk** (block-rounded, so the cap is what Settings shows), one per process beside **one
+process-scoped tile client**, both created on first use — never in `Application.onCreate`.
+
+This was OkHttp's own `Cache` (96 MB under `cacheDir/globe-tiles`) until 2026-10-26, chosen because
+revalidation, LRU and crash safety came free. Measured on the SM-S942B it cost 123 MB of disk for
+5,942 Esri tiles: every tile had a body file (11 KB average) *and* a metadata file averaging 5.4 KB,
+of which ~4.6 KB was the TLS certificate chain OkHttp records for every HTTPS response — the same
+three certificates, six thousand times — and both files rounded up to 4 KB blocks the cap never
+counted. A tile is now a ~70-byte header (expiry, `ETag`, `Last-Modified`) and the image in one
+file, roughly 40% less disk per tile. What OkHttp gave for free is reimplemented and tested:
+conditional revalidation (`If-None-Match`/`If-Modified-Since`, a 304 renews the stored bytes), LRU
+across restarts (an access-ordered map, seeded from file mtimes), and crash safety (temp file and
+rename; an unreadable file is a miss and is deleted). The first open deletes the old directory.
+
+Freshness is `TileHttp.expiresAt`: providers that declare their tiles immutable never go stale
+(GIBS sends `max-age=259200` — three days — on a layer with no date in its path); anything else
+keeps the origin's `Cache-Control`, and Esri's tiles keep their own (a day); see §11. When a request
+fails — offline, refused, or timed out — the loader draws the stale tile it has rather than a
+coarse ancestor. **Do not use Coil for tiles** — the
 pipeline is bytes → pooled RGB565 bitmap → atlas sub-image, not a Compose image loader.
 
 `TileProvider` mirrors `providers.rs`. `EsriWorldImagery` uses the same `{z}/{y}/{x}` pyramid to
@@ -570,7 +580,7 @@ value — label, on-glass credit, full notice, URL — rendered as an always-vis
 plate, because Esri's terms want both "Powered by Esri" and the data providers' names on the map.
 
 Offline: "Download tiles for this route" walks the quadtree along the great circle at z ≤ 8 and
-warms the OkHttp cache from a `CoroutineWorker`.
+warms the tile disk cache from a `CoroutineWorker`.
 
 ### 5.6 Camera — one consistency rule
 
@@ -876,7 +886,7 @@ every later milestone replaces a stub rather than adding a missing layer.
    is present, so a clone still builds and still shows a globe. GIBS was the shipped default until
    the z8 ceiling turned out to be the whole of "zooming does not sharpen": eleven doublings of
    camera travel below the point where its imagery stops carrying detail. **Still open:** whether the
-   96 MB HTTP disk cache is the "offline export" that clause forbids or the transient performance
+   48 MB tile disk cache is the "offline export" that clause forbids or the transient performance
    cache every browser keeps (Esri's own billing page says browser-cached tiles are not metered).
    Esri's tiles keep their own 24-hour `Cache-Control` until that is answered in writing.
 2. **Room prepackaged-asset identity hash** — highest-severity *technical* risk. Drift between the
