@@ -53,11 +53,18 @@ internal interface TileProvider {
     /**
      * True when a tile fetched once is correct forever.
      *
-     * This decides the cache policy in [TileHttp]: an immutable layer is stored
-     * for a year regardless of what the origin's `Cache-Control` says, a mutable
-     * one is stored for exactly as long as the origin allows.
+     * This decides the cache policy in [TileHttp.expiresAt]: an immutable layer
+     * is kept with no expiry regardless of what the origin's `Cache-Control`
+     * says, a mutable one is fresh for exactly as long as the origin allows.
      */
     val immutable: Boolean
+
+    /**
+     * What this source's tiles are filed under in [TileDiskCache]. Stable across
+     * releases, because changing it orphans every tile already on disk until the
+     * cache's eviction gets round to them.
+     */
+    val cacheName: String
 
     fun tileUrl(z: Int, x: Int, y: Int): String
 }
@@ -91,6 +98,8 @@ internal object NasaGibsBlueMarble : TileProvider {
     override val maxLevel: Int = 8
 
     override val immutable: Boolean = true
+
+    override val cacheName: String = "gibs-bluemarble"
 
     override val attribution: ImageryAttribution = ImageryAttribution(
         label = "Imagery: NASA GIBS",
@@ -144,6 +153,8 @@ internal class EsriWorldImagery(private val token: String) : TileProvider {
     override val maxLevel: Int = 18
 
     override val immutable: Boolean = false
+
+    override val cacheName: String = "esri-world-imagery"
 
     override val attribution: ImageryAttribution = ImageryAttribution(
         label = "Powered by Esri",

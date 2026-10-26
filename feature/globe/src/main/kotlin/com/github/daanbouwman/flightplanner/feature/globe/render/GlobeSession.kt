@@ -17,6 +17,7 @@ import com.github.daanbouwman.flightplanner.feature.globe.math.GlobeViewport
 import com.github.daanbouwman.flightplanner.feature.globe.math.MIN_ALTITUDE
 import com.github.daanbouwman.flightplanner.feature.globe.tile.ImageryAttribution
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileAtlas
+import com.github.daanbouwman.flightplanner.feature.globe.tile.TileDiskCache
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileHttp
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileKey
 import com.github.daanbouwman.flightplanner.feature.globe.tile.TileLoader
@@ -78,7 +79,7 @@ internal class GlobeSession private constructor(
 
     private val provider: TileProvider = TileProviders.active
 
-    val loader = TileLoader(provider = provider, client = tileClient(context))
+    val loader = TileLoader(provider = provider, client = tileClient(), cache = tileCache(context))
     val scene = GlobeScene(context.applicationContext, engine, loader)
 
     /**
@@ -210,22 +211,38 @@ internal class GlobeSession private constructor(
             if (embedded) LIST_TEARDOWN_DELAY_MS else TEARDOWN_DELAY_MS
 
         /** The tiles' own disk cache, apart from the app's METAR cache. */
-        private const val TILE_CACHE_DIR = "globe-tiles"
+        private const val TILE_CACHE_DIR = "tiles"
 
         /**
-         * The one tile HTTP client for the process.
-         *
-         * Built on the first [acquire] — never at application start, because
-         * opening a disk cache is a directory scan — and kept for the life of
-         * the process, because OkHttp requires exclusive access to a cache
-         * directory and the sessions come and go. See [TileHttp].
+         * Where OkHttp's `Cache` kept tiles until 2026-10-26. A different name from
+         * [TILE_CACHE_DIR] so the old files are never mistaken for the new
+         * format, and handed to [TileDiskCache] so the first open deletes them.
+         */
+        private const val OBSOLETE_TILE_CACHE_DIR = "globe-tiles"
+
+        /**
+         * The one tile HTTP client for the process, built on the first [acquire]
+         * and kept for the life of the process so every session shares one
+         * connection pool. See [TileHttp].
          */
         private var tileClient: OkHttpClient? = null
 
-        private fun tileClient(context: Context): OkHttpClient =
-            tileClient ?: TileHttp.build(File(context.cacheDir, TILE_CACHE_DIR)).also {
-                tileClient = it
-            }
+        private fun tileClient(): OkHttpClient =
+            tileClient ?: TileHttp.build().also { tileClient = it }
+
+        /**
+         * The one tile disk cache for the process. One because its index is in
+         * memory: two over the same directory would each trim against a total
+         * that leaves out the other's writes. Constructing it touches no disk;
+         * see [TileDiskCache].
+         */
+        private var tileCache: TileDiskCache? = null
+
+        private fun tileCache(context: Context): TileDiskCache =
+            tileCache ?: TileDiskCache(
+                directory = File(context.cacheDir, TILE_CACHE_DIR),
+                obsolete = File(context.cacheDir, OBSOLETE_TILE_CACHE_DIR),
+            ).also { tileCache = it }
 
         private val handler = Handler(Looper.getMainLooper())
 

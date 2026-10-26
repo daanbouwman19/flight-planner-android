@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -34,6 +35,7 @@ class TileLoaderTest {
     private var serverOpen = false
     private lateinit var cacheDir: File
     private lateinit var client: OkHttpClient
+    private lateinit var cache: TileDiskCache
     private val loaders = mutableListOf<TileLoader>()
 
     /** What the loaders' clock reads; the tests move it by hand. */
@@ -45,7 +47,8 @@ class TileLoaderTest {
         server.start()
         serverOpen = true
         cacheDir = createTempDirectory("globe-tiles-test").toFile()
-        client = TileHttp.build(cacheDir)
+        client = TileHttp.build()
+        cache = TileDiskCache(cacheDir)
         clock = 0L
     }
 
@@ -53,7 +56,6 @@ class TileLoaderTest {
     fun stop() {
         loaders.forEach { it.shutdown() }
         loaders.clear()
-        client.cache?.close()
         closeServer()
         cacheDir.deleteRecursively()
     }
@@ -69,6 +71,7 @@ class TileLoaderTest {
         TileLoader(
             provider = provider,
             client = client,
+            cache = cache,
             decoder = FakeDecoder,
             workers = 1,
             now = { clock },
@@ -133,6 +136,47 @@ class TileLoaderTest {
         awaitUntil("the second fetch") { second.stats().let { it.decoded == 1 && it.pending == 0 } }
         server.requestCount shouldBe 2
         second.stats().fromNetwork shouldBe 1
+    }
+
+    @Test
+    fun `a stale tile is revalidated, and a 304 keeps the bytes on disk and renews them`() {
+        // What OkHttp's cache used to do for nothing, and Esri's day-long
+        // lifetime makes the common case: after a day every tile is stale.
+        val revalidations = AtomicInteger()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                if (request.headers["If-None-Match"] == "\"v1\"") {
+                    revalidations.incrementAndGet()
+                    MockResponse.Builder().code(304).addHeader("Cache-Control", "max-age=3600").build()
+                } else {
+                    MockResponse.Builder().code(200).body("tile")
+                        .addHeader("ETag", "\"v1\"")
+                        .addHeader("Cache-Control", "max-age=0")
+                        .build()
+                }
+        }
+        val provider = ServerProvider(server, immutable = false)
+        val key = TileKey.of(3, 2, 1)
+
+        val first = loader(provider)
+        first.request(key)
+        awaitUntil("the first fetch") { first.stats().let { it.decoded == 1 && it.pending == 0 } }
+        server.requestCount shouldBe 1
+
+        val second = loader(provider)
+        second.request(key)
+        awaitUntil("the revalidation") { second.stats().let { it.decoded == 1 && it.pending == 0 } }
+        server.requestCount shouldBe 2
+        revalidations.get() shouldBe 1
+        second.stats().fromNetwork shouldBe 1
+        cache.get(provider, key).shouldNotBeNull().body.decodeToString() shouldBe "tile"
+
+        // The 304's hour now applies: the next loader does not ask at all.
+        val third = loader(provider)
+        third.request(key)
+        awaitUntil("the renewed hit") { third.stats().let { it.decoded == 1 && it.pending == 0 } }
+        server.requestCount shouldBe 2
+        third.stats().fromCache shouldBe 1
     }
 
     @Test
@@ -283,9 +327,8 @@ class TileLoaderTest {
         offline.stats().fromCache shouldBe 1
         offline.stats().errors shouldBe 0
 
-        // Nothing cached: the FORCE_CACHE retry is a miss, and a miss is a
-        // synthetic 504 that has to surface as the original failure — backed
-        // off and retried, never recorded as absent.
+        // Nothing cached: there is no fallback, and the failure has to surface
+        // as the network's — backed off and retried, never recorded as absent.
         val never = TileKey.of(3, 1, 1)
         offline.request(never)
         awaitUntil("the failure") { offline.stats().let { it.errors == 1 && it.pending == 0 } }
@@ -348,6 +391,7 @@ private class ServerProvider(
     override val immutable: Boolean,
 ) : TileProvider {
     override val maxLevel: Int = 8
+    override val cacheName: String = "test"
     override val attribution = ImageryAttribution("Test", null, "Test imagery", "https://example.test")
     override fun tileUrl(z: Int, x: Int, y: Int): String = server.url("/tile/$z/$y/$x").toString()
 }

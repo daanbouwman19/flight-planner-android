@@ -58,9 +58,8 @@ fun interface AssetOpener {
  *
  * Room has a `createFromAsset` helper that would do this, but it throws
  * `Pre-Package Database is not supported when an SQLiteDriver is configured`
- * when combined with `BundledSQLiteDriver`. Since the bundled driver is the
- * whole reason this app behaves identically across OEM SQLite builds, the copy
- * is done here instead and Room simply opens the resulting file.
+ * whenever a driver is set, and `DatabaseModule` sets one. So the copy is done
+ * here instead and Room simply opens the resulting file.
  *
  * Freshness is decided by a version sidecar written by the ETL, which holds
  * Room's schema identity hash. That single value changes whenever the entities
