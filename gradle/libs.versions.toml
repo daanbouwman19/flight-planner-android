@@ -100,7 +100,7 @@ wearRemoteInteractions = "1.1.0"
 # The Wearable Data Layer, which carries the phone's theme to the watch. The one
 # entry in this block that `:app` also takes, so it is the one whose size lands
 # in the phone APK too.
-playServicesWearable = "19.0.0"
+playServicesWearable = "20.0.1"
 # --- persistence ---
 room = "2.8.4"
 sqlite = "2.7.0"
