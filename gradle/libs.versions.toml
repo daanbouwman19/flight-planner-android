@@ -102,7 +102,7 @@ wearRemoteInteractions = "1.1.0"
 # in the phone APK too.
 playServicesWearable = "19.0.0"
 # --- persistence ---
-room = "2.8.4"
+room = "2.8.5"
 sqlite = "2.7.0"
 # --- di ---
 hilt = "2.60.1"
