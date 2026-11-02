@@ -1,5 +1,7 @@
 package com.github.daanbouwman.flightplanner.widget
 
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftShape
 import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.di.DefaultDispatcher
 import com.github.daanbouwman.flightplanner.index.AirportIndexProvider
@@ -45,6 +47,8 @@ sealed interface ChallengeState {
         val arc: GeoArc,
         /** Where a tap goes. */
         val route: Destination.RouteDetail,
+        /** Flown along the map's leg where it has room, as on the route card. */
+        val shape: AircraftShape? = null,
     ) : ChallengeState
 
     /** No airframes, even after seeding — nothing to fly a challenge in. */
@@ -117,6 +121,7 @@ class DailyChallengeSource internal constructor(
                 aircraftId = route.aircraft.id,
                 distanceNm = route.distanceNm,
             ),
+            shape = AircraftArt.shapeFor(route.aircraft),
         )
     }
 

@@ -1,5 +1,7 @@
 package com.github.daanbouwman.flightplanner.wear.route
 
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftShape
 import com.github.daanbouwman.flightplanner.handoff.WatchRoute
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
@@ -15,7 +17,12 @@ import com.github.daanbouwman.flightplanner.routing.RouteArc
  * and carries no text at all; this is the same route with its codes resolved,
  * its figures worded and its great circle sampled, so the composable draws
  * rather than computes. That split is what lets a whole batch be prepared on
- * the generator's dispatcher while the face stays a pure function of state.
+ * the generator's dispatcher — [WatchRouteFeed.nextBatch] calls [toCard] there,
+ * not on the main thread — while the face stays a pure function of state.
+ *
+ * The map drawn from [arc] is not held here: the list of cards grows for as long
+ * as the wearer keeps swiping, and a built map is a few hundred kilobytes of
+ * paths. The few that are needed live in the ViewModel's `WatchSceneCache`.
  *
  * Distances are nautical miles, without a unit setting. The phone reads one
  * from DataStore and can show kilometres; the watch has no settings screen to
@@ -35,6 +42,8 @@ data class WatchRouteCard(
     val aircraftTypeCode: String,
     /** The great circle between the ends, at the card's sampling, for the map. */
     val arc: GeoArc,
+    /** The airframe from above, flown along the map's leg where it has room. */
+    val shape: AircraftShape? = null,
 ) {
 
     /**
@@ -81,6 +90,7 @@ fun GeneratedRoute.toCard(index: AirportIndex): WatchRouteCard {
             index.lonDegOf(destinationSlot),
             samples = RouteArc.CARD_SAMPLES,
         ),
+        shape = AircraftArt.shapeFor(aircraft),
     )
 }
 

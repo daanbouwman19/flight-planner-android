@@ -1,0 +1,6 @@
+# Honda HA-420 HondaJet. Span 12.12 m, length 12.99 m.
+# Over-the-wing engine mounts: the nacelles sit above the wing on pylons and
+# run past the trailing edge. Tailplane about 5.10 m.
+# Right half, metres: x outboard of the centreline, y aft of the nose.
+mirror 0,0 0.35,0.80 0.55,1.80 0.70,3.00 0.75,4.50 0.75,5.00 6.06,5.70 6.06,6.70 0.75,6.90 0.70,8.50 0.50,10.50 0.40,10.90 2.55,11.90 2.55,12.50 0.30,12.60 0.15,12.99 0,12.99
+mirror 1.47,6.40 1.60,6.20 2.10,6.20 2.23,6.40 2.20,8.60 2.05,9.00 1.65,9.00 1.50,8.60

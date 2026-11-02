@@ -35,8 +35,8 @@ fun interface WorldOutlineLoader {
  * eager `@Singleton` work: the constructor takes a `Context` and does nothing
  * with it until a screen asks. The airport index is the cautionary tale —
  * rebuilding it on the startup path measured 646 ms against a 500 ms budget —
- * and this is a nineteen-kilobyte read that would still be nineteen kilobytes of
- * somebody's cold start.
+ * and this is a 240-kilobyte read that would be 240 kilobytes of somebody's
+ * cold start.
  *
  * ### A failure costs the coastline, not the screen
  *
@@ -57,8 +57,8 @@ class AssetWorldOutlineLoader @Inject constructor(
     private var cached: WorldOutline? = null
 
     /**
-     * Every visible card draws from the same instance — it is 122 rings of
-     * primitive arrays and none of them is ever mutated — so the read and the
+     * Every visible card draws from the same instance — it is some 1,900 rings —
+     * 60,000 points — of primitive arrays and none of them is ever mutated — so the read and the
      * decode happen once and concurrent callers wait on the same lock rather than
      * each producing a copy.
      */

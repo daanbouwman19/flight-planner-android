@@ -3,18 +3,24 @@ package com.github.daanbouwman.flightplanner.wear.route
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.daanbouwman.flightplanner.mapscene.RouteMapScene
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.wear.data.WearAirportData
 import com.github.daanbouwman.flightplanner.wear.handoff.HandoffResult
 import com.github.daanbouwman.flightplanner.wear.handoff.PhoneHandoff
+import com.github.daanbouwman.flightplanner.wear.map.WatchFace
+import com.github.daanbouwman.flightplanner.wear.map.WatchSceneCache
+import com.github.daanbouwman.flightplanner.wear.map.WatchSceneSource
+import com.github.daanbouwman.flightplanner.wear.map.watchRouteScene
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,17 +28,25 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
  * The route feed's state, and the two things the wearer can do to it: swipe to
  * the next route, and tap to open one on the phone.
  *
+ * It also owns the faces' map scenes ([scenes]), and builds them ahead of the
+ * wearer on [generatorDispatcher]: the first page's before the feed is shown,
+ * then the settled page, one behind and two ahead, every time the pager comes
+ * to rest. See [WatchSceneCache] for why, and for what happens when a flick
+ * outruns it.
+ *
  * The primary constructor takes its reads as functions and is `internal`, so
  * `WatchRouteFeedViewModelTest` drives it against an in-memory index with no
  * assets and no paired phone; the `@Inject` secondary maps the graph's types
  * onto them. That is the shape `:app`'s `DailyChallengeSource` and
- * `LaunchViewModel` both have.
+ * `LaunchViewModel` both have. [buildScene] is a seam of the same kind, so the
+ * test can count which faces get built without a renderer.
  */
 @HiltViewModel
 class WatchRouteFeedViewModel internal constructor(
@@ -41,6 +55,7 @@ class WatchRouteFeedViewModel internal constructor(
     private val loadOutline: suspend () -> WorldOutline,
     private val handoff: suspend (WatchRouteCard) -> HandoffResult,
     private val generatorDispatcher: CoroutineDispatcher,
+    buildScene: (WatchRouteCard, WorldOutline, WatchFace) -> RouteMapScene? = ::watchRouteScene,
 ) : ViewModel() {
 
     @Inject
@@ -79,6 +94,23 @@ class WatchRouteFeedViewModel internal constructor(
     /** The in-flight top-up, so that two settles in a row do not start two. */
     private var topUp: Job? = null
 
+    private val sceneCache = WatchSceneCache(build = buildScene)
+
+    /**
+     * Where each face's map comes from: built here ahead of time, or — on a
+     * miss — built by the draw that asked, with the same function.
+     */
+    internal val scenes: WatchSceneSource = WatchSceneSource(sceneCache::get)
+
+    // The face and the page the wearer last came to rest on. Both are written
+    // and read on the main thread only: by the composition's callbacks and by
+    // `load`, which resumes on the main thread between its suspensions.
+    private var face: WatchFace? = null
+    private var settledPage = 0
+
+    /** The in-flight scene prefetch; a newer settle replaces it. */
+    private var prefetch: Job? = null
+
     init {
         viewModelScope.launch { load() }
     }
@@ -92,11 +124,33 @@ class WatchRouteFeedViewModel internal constructor(
         val source = WatchRouteFeed(index, fleet, generatorDispatcher)
         feed = source
         val first = read { source.nextBatch() } ?: return fail()
-        _state.value = if (first.isEmpty()) {
-            WatchRouteFeedState.Unavailable
-        } else {
-            WatchRouteFeedState.Ready(first, outline)
+        if (first.isEmpty()) return fail()
+
+        // The first face's map, before the feed is shown: otherwise the first
+        // frame of the feed is also the frame that builds it. The face has
+        // normally been measured by now — the loading screen fills it while the
+        // assets are read — and if it has not, the first draw builds the map as
+        // any miss does. The two pages after it follow, below.
+        face?.let { measured ->
+            withContext(generatorDispatcher) { read { sceneCache.prefetch(first.first(), outline, measured) } }
         }
+        _state.value = WatchRouteFeedState.Ready(first, outline)
+        prefetchAround(settledPage)
+    }
+
+    /**
+     * Called once the face has been laid out, with its size and density — the
+     * two things a map scene is built for besides its route. Until then nothing
+     * can be prefetched.
+     *
+     * The same face reported again — a recreated activity, a re-laid-out root —
+     * simply prefetches again, with no guard against it: every page in the
+     * window is then a hit or already being built, which the cache skips, so a
+     * repeat costs four look-ups and builds nothing.
+     */
+    internal fun onFaceMeasured(face: WatchFace) {
+        this.face = face
+        prefetchAround(settledPage)
     }
 
     /**
@@ -105,9 +159,13 @@ class WatchRouteFeedViewModel internal constructor(
      * The pager reports the page it has come to rest on rather than every frame
      * of the swipe: a top-up started mid-flick would be racing the wearer's
      * thumb for no benefit, since a batch is sub-millisecond work and four pages
-     * of headroom is a long time at swiping speed.
+     * of headroom is a long time at swiping speed. The maps around the page are
+     * started on the same signal, for the same reason.
      */
     fun onPageSettled(page: Int) {
+        settledPage = page
+        prefetchAround(page)
+
         val ready = _state.value as? WatchRouteFeedState.Ready ?: return
         val source = feed ?: return
         if (page < ready.routes.size - WatchRouteFeed.PREFETCH_MARGIN) return
@@ -122,6 +180,33 @@ class WatchRouteFeedViewModel internal constructor(
             // true if something ever does.
             val current = _state.value as? WatchRouteFeedState.Ready ?: return@launch
             _state.value = current.copy(routes = current.routes + more)
+            // The window may now reach pages that did not exist at the settle.
+            prefetchAround(settledPage)
+        }
+    }
+
+    /**
+     * Builds the maps for [page] and the pages either side of it — the one on
+     * screen, the next, the previous, the one after next, in the order a wearer
+     * is likely to need them — on [generatorDispatcher].
+     *
+     * A newer call cancels this one between builds, so a rotary flick through
+     * ten pages does not leave a queue of maps for pages already passed. A build
+     * already running finishes and is kept; it may be the page swiped back to.
+     * The newer call skips that page rather than build it a second time beside
+     * it — see [WatchSceneCache.prefetch] — which is what makes relaunching on
+     * the same page, as start-up and every top-up do, cost nothing.
+     */
+    private fun prefetchAround(page: Int) {
+        val ready = _state.value as? WatchRouteFeedState.Ready ?: return
+        val face = face ?: return
+        prefetch?.cancel()
+        prefetch = viewModelScope.launch(generatorDispatcher) {
+            for (offset in PREFETCH_OFFSETS) {
+                val route = ready.routes.getOrNull(page + offset) ?: continue
+                ensureActive()
+                read { sceneCache.prefetch(route, ready.outline, face) }
+            }
         }
     }
 
@@ -167,5 +252,13 @@ class WatchRouteFeedViewModel internal constructor(
 
     private companion object {
         const val TAG = "WatchRouteFeed"
+
+        /**
+         * The pages whose maps are built around a settled one, nearest need
+         * first: itself (normally already built, by the draw that showed it),
+         * the next — a swipe up is the common gesture — the one before, and the
+         * one after next, for a quick double flick. Four, inside the cache's six.
+         */
+        val PREFETCH_OFFSETS = intArrayOf(0, 1, -1, 2)
     }
 }

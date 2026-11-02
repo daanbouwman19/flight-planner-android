@@ -1,6 +1,8 @@
 package com.github.daanbouwman.flightplanner.ui.plan
 
 import androidx.compose.runtime.Immutable
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftShape
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.Airport
 import com.github.daanbouwman.flightplanner.model.Metar
@@ -132,6 +134,14 @@ class RouteRow(
      * carries the fact with it.
      */
     val arrivedAsReplacement: Boolean = false,
+    /**
+     * The outline the card's map flies along the leg.
+     *
+     * Resolved where the row is built, which is the background dispatcher that
+     * samples [arc], so the card itself does nothing but draw it. A default
+     * rather than a required argument because it follows from [aircraft] alone.
+     */
+    val shape: AircraftShape = AircraftArt.shapeFor(aircraft),
 ) {
     /**
      * True when the airframe needs more runway than the departure offers.

@@ -56,6 +56,10 @@ class MainActivity : ComponentActivity() {
                     handoffs = feed.handoffs,
                     onPageSettled = feed::onPageSettled,
                     onOpenOnPhone = feed::openOnPhone,
+                    // The maps, built a few pages ahead of the wearer on a
+                    // background thread; see `WatchSceneCache`.
+                    scenes = feed.scenes,
+                    onFaceMeasured = feed::onFaceMeasured,
                     // The face is drawn edge to edge over the theme's own
                     // background, which every theme but Chart takes to true
                     // black on this OLED display — see `WearFlightPlannerTheme`.

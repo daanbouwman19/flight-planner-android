@@ -3,6 +3,8 @@ package com.github.daanbouwman.flightplanner.widget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -26,6 +28,7 @@ import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
@@ -39,6 +42,8 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.github.daanbouwman.flightplanner.MainActivity
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
+import com.github.daanbouwman.flightplanner.core.designsystem.components.renderSilhouetteMask
 import com.github.daanbouwman.flightplanner.launch.LaunchIntents.putLaunchRequest
 import com.github.daanbouwman.flightplanner.launch.LaunchRequest
 import com.github.daanbouwman.flightplanner.settings.AppSettings
@@ -46,6 +51,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 /**
  * "Aircraft of the day": one airframe from your fleet each day.
@@ -58,16 +64,22 @@ import java.time.format.DateTimeFormatter
  * is an envelope, so the figures carry the content: range, and the runway it
  * needs. **No map**, because a single aircraft has no geography to draw — a
  * decorative one would be the card claiming to say something it does not.
+ * What it can draw is the airframe itself, traced from the simulator's model:
+ * a measurement of the type, not an illustration of flying.
  *
  * Four layouts, chosen by width and by height independently:
  *
  * - **Short** (one launcher row, the default): two lines. The airframe and the
  *   date along the top, the type code and the range on the base line. This is
  *   the whole fact, and it is why the widget is one row by default — a route
- *   needs a band for its map, an airframe does not.
- * - **Tall** (two rows): the challenge card's three bands — the top line, an
- *   empty band where the challenge draws its map so the two cards' base lines
- *   meet, the code and its status, and the figures closing the card.
+ *   needs a band for its map, an airframe does not. **No outline here**: the
+ *   four-cell row's code, range and runway already fill its width, and an
+ *   outline would cost the runway figure.
+ * - **Tall** (two rows): the challenge card's three bands — the top line, the
+ *   band where the challenge draws its map, the code and its status, and the
+ *   figures closing the card. This card draws the airframe from above in that
+ *   band, so the two cards' base lines still meet; the name gives up its third
+ *   line to it.
  * - **Compact** (two cells) keeps the range alone and states the flown status
  *   as a dot; **wide** (four cells) adds the runway and states the status in
  *   words. On the short card the status moves up to the top line, because the
@@ -148,14 +160,19 @@ class AircraftWidget : GlanceAppWidget() {
         val COMPACT_TALL: DpSize = DpSize(COMPACT.width, 150.dp)
         val WIDE_TALL: DpSize = DpSize(WIDE.width, 150.dp)
 
+        /**
+         * The seed fleet's own 787 and its figures — the picker should show an
+         * airframe the fleet has, now that it draws that airframe's outline.
+         */
         internal val PREVIEW_STATE = AircraftState.Ready(
             date = LocalDate.of(2026, 9, 16),
-            name = "Boeing 787-9",
-            typeCode = "B789",
+            name = "Boeing 787-10 Dreamliner",
+            typeCode = "B78X",
             flown = true,
-            rangeText = "7,355 NM",
-            runwayText = "9,800 ft",
+            rangeText = "6,430 NM",
+            runwayText = "10,597 ft",
             airframeId = 0,
+            shape = AircraftArt.byId("b78x"),
         )
     }
 }
@@ -239,7 +256,11 @@ fun AircraftContent(
                             fontSize = if (tall) 14.sp else if (wide) 13.sp else 12.sp,
                             fontWeight = FontWeight.Medium,
                         ),
-                        maxLines = if (tall) TALL_NAME_LINES else 1,
+                        maxLines = when {
+                            !tall -> 1
+                            state.shape != null -> TALL_NAME_LINES_OVER_AIRFRAME
+                            else -> TALL_NAME_LINES
+                        },
                         modifier = GlanceModifier.defaultWeight(),
                     )
                     Spacer(GlanceModifier.width(WidgetFigureGap))
@@ -258,8 +279,44 @@ fun AircraftContent(
                     )
                 }
                 // The band the challenge card fills with its map, on the tall
-                // card; on the short one, what little is left over.
-                Spacer(GlanceModifier.defaultWeight())
+                // card, holds the airframe from above; on the short one it is
+                // what little is left over.
+                val shape = state.shape
+                if (tall && shape != null) {
+                    // A white mask tinted at display time, as the challenge
+                    // card's map layers are, so it follows the launcher's day
+                    // and night. Rendered at the largest the band is shown at,
+                    // so the launcher only ever scales it down.
+                    val density = context.resources.displayMetrics.density
+                    val mask = remember(shape, wide, density) {
+                        val box = if (wide) WIDE_BAND else COMPACT_BAND
+                        renderSilhouetteMask(
+                            shape = shape,
+                            maxWidthPx = (box.width.value * density).roundToInt(),
+                            maxHeightPx = (box.height.value * density).roundToInt(),
+                        )?.asAndroidBitmap()
+                    }
+                    Box(
+                        modifier = GlanceModifier.fillMaxWidth().defaultWeight().padding(vertical = BAND_GAP),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (mask != null) {
+                            // No description: the name above already says
+                            // which airframe this is.
+                            Image(
+                                provider = ImageProvider(mask),
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                // Primary once flown, the caption colour until
+                                // then — the Fleet list's rule.
+                                colorFilter = ColorFilter.tint(if (state.flown) colors.primary else colors.onSurfaceVariant),
+                                modifier = GlanceModifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                } else {
+                    Spacer(GlanceModifier.defaultWeight())
+                }
                 if (tall) {
                     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(state.typeCode, style = codeStyle(colors.onSurface))
@@ -369,6 +426,21 @@ private val DOT = 10.dp
  * needs more than two at the compact width.
  */
 private const val TALL_NAME_LINES = 3
+
+/** The same, with the airframe drawn in the band: the third line is its room. */
+private const val TALL_NAME_LINES_OVER_AIRFRAME = 2
+
+/**
+ * The most the band ever shows of the airframe, on the two-cell and four-cell
+ * cards. A little over the reference launcher's grants (184 and 376 dp wide,
+ * 204 tall, less the gutters and the other bands) so a launcher with a roomier
+ * grid still scales the mask down rather than up.
+ */
+private val COMPACT_BAND: DpSize = DpSize(176.dp, 96.dp)
+private val WIDE_BAND: DpSize = DpSize(360.dp, 96.dp)
+
+/** Clear space above and below the airframe, between the name and the code line. */
+private val BAND_GAP: Dp = 6.dp
 
 /** The short card's vertical gutter — see [AircraftContent]. */
 private val SHORT_PADDING: Dp = 12.dp

@@ -1,6 +1,7 @@
 package com.github.daanbouwman.flightplanner.ui.logbook
 
 import androidx.compose.runtime.Immutable
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftShape
 import com.github.daanbouwman.flightplanner.routing.FlightTime
 import java.time.LocalDate
 import java.time.YearMonth
@@ -30,6 +31,12 @@ data class LogbookRow(
     val aircraftDisplayName: String?,
     val distanceNm: Int?,
     val flightTime: FlightTime?,
+    /**
+     * The airframe's outline, resolved against the fleet like
+     * [aircraftDisplayName]. Null when the airframe has since been deleted: the
+     * row then names "Aircraft #n" and draws no outline rather than a guess.
+     */
+    val shape: AircraftShape? = null,
 )
 
 /** One month's rows. [LogbookRow.groupByMonth] is what produces these, newest month first. */

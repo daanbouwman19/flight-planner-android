@@ -1,36 +1,37 @@
-package com.github.daanbouwman.flightplanner.core.designsystem.components
+package com.github.daanbouwman.flightplanner.mapscene
 
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftShape
 import com.github.daanbouwman.flightplanner.routing.GeoArc
 import com.github.daanbouwman.flightplanner.routing.MapFrame
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 
 /**
- * Everything [RouteMap] draws, built once for one canvas size.
+ * Everything a route map draws, built once for one canvas size.
  *
- * The composable used to build this inside `drawWithCache` and draw it in the
- * same lambda. It is a class now because a second consumer needs the identical
- * picture with no composition to draw it in: the home-screen widget, which
- * Glance renders from bitmaps. Both go through [drawRouteMap], so the card on
- * the Plan screen and the card on the home screen are the same map to the
- * pixel — one set of widths, one arrowhead, one rule for a short hop.
+ * Three surfaces draw this one picture, and none of them can share a
+ * composition: the phone's `RouteMap` builds it inside `drawWithCache`, the
+ * home-screen widget renders it into bitmaps for Glance, and the watch face
+ * builds it on a background dispatcher a few pages ahead of the swipe that shows
+ * it. All three go through [routeMapScene] and [drawRouteMap], so they are one
+ * map to the pixel — one set of widths, one arrowhead, one rule for a short hop,
+ * one rule for when the aircraft fits — differing only in what [RouteMapStyle]
+ * says a surface's shape requires.
  *
  * Positions are in pixels of the canvas the scene was built for; build another
- * for another size.
+ * for another size. It holds no colour, so a theme change redraws a scene and
+ * never rebuilds one, and nothing in it is mutated after it is built, so it can
+ * be handed from the thread that built it to the one that draws it.
  */
 class RouteMapScene internal constructor(
     internal val landPath: Path,
@@ -38,11 +39,23 @@ class RouteMapScene internal constructor(
     internal val graticulePath: Path?,
     internal val routePath: Path,
     internal val arrow: Path?,
+    /** The aircraft's outline (shared, in centimetres); drawn at [plane] when both are set. */
+    internal val planePath: Path?,
+    /**
+     * Where the aircraft sits, or null when there is none or the leg has no room
+     * for it — see [MinPlaneChords]. When set, [arrow] is null.
+     */
+    val plane: PlanePlacement?,
     internal val departure: Offset,
     internal val destination: Offset,
     internal val hop: Offset,
-    /** True when the two ends are drawn as one ring; see [RouteMap]'s KDoc. */
-    val shortHop: Boolean,
+    /**
+     * True when the two ends are drawn as one ring: a [RouteMapEndpoints.Chart]
+     * leg whose ends land closer than [MinArrowChordDp]. Always false for
+     * [RouteMapEndpoints.Dots], which never draws the ring.
+     */
+    internal val shortHop: Boolean,
+    internal val endpoints: RouteMapEndpoints,
     internal val coastWidth: Float,
     internal val routeWidth: Float,
     internal val casingWidth: Float,
@@ -55,8 +68,17 @@ class RouteMapScene internal constructor(
  * Builds the scene for a canvas of [width] × [height] pixels, or null when
  * there is nothing to draw — fewer than two arc samples, or no canvas.
  *
+ * Pure apart from the `Path`s it allocates, and safe on any thread. On a long
+ * leg most of the time goes to [MapFrame.projectOutline] and to walking its
+ * output into two paths — tens of thousands of points over the 1:50m outline —
+ * which is why the watch calls this ahead of time rather than in a draw.
+ *
  * @param topInsetPx how much of the top of the map belongs to text printed
- *   over it; the route is framed below it. See [RouteMap].
+ *   over it; the route is framed below it. See `RouteMap` in `:core:designsystem`.
+ * @param aircraft drawn on the leg in place of the arrowhead when the leg has
+ *   room for it — at least [MinPlaneChords] plane lengths between its ends.
+ * @param style what this surface does differently; the default is the phone's
+ *   route card.
  */
 fun routeMapScene(
     arc: GeoArc,
@@ -65,6 +87,8 @@ fun routeMapScene(
     height: Float,
     density: Density,
     topInsetPx: Float = 0f,
+    aircraft: AircraftShape? = null,
+    style: RouteMapStyle = RouteMapStyle.Card,
 ): RouteMapScene? = with(density) {
     if (arc.size < 2 || width <= 0f || height <= 0f) return null
 
@@ -72,6 +96,7 @@ fun routeMapScene(
         lats = arc.lats,
         lons = arc.lons,
         aspect = (width / height).toDouble(),
+        paddingFraction = style.paddingFraction,
         // Clamped so a map shorter than its inset — a card squeezed by a huge
         // font scale — degrades to a symmetric frame rather than to no frame.
         topInsetFraction = (topInsetPx / height).toDouble().coerceIn(0.0, MaxTopInsetFraction),
@@ -79,7 +104,7 @@ fun routeMapScene(
 
     // A margin, so a coast just off the card still contributes the segment that
     // enters it, and a stroke's trimmed end falls outside the visible area.
-    val land = frame.projectOutline(outline, margin = OutlineMargin)
+    val land = frame.projectOutline(outline, margin = style.outlineMargin)
 
     // Two paths from the same clip, because they are drawn differently: the fill
     // is a polygon whose boundary runs along the window's edge, and stroking that
@@ -96,7 +121,11 @@ fun routeMapScene(
     // window the card is a flat wash, which reads as a failed load rather than
     // as a place. A graticule says "this is the world, and you are looking at
     // a part of it with no coastline in it".
-    val graticulePath = if (land.coast.isEmpty) frame.graticule().toPath(width, height, close = false) else null
+    val graticulePath = if (style.oceanGraticule && land.coast.isEmpty) {
+        frame.graticule().toPath(width, height, close = false)
+    } else {
+        null
+    }
 
     val projected = frame.project(arc.lats, arc.lons)
     val routePath = Path().apply {
@@ -109,8 +138,31 @@ fun routeMapScene(
     // The arrowhead sits at the middle sample and points along the two samples
     // either side of it, so it follows the curve rather than the chord.
     val midpoint = projected.size / 4
-    val shortHop = projectedChord(projected, width, height) < MinArrowChordDp.dp.toPx()
-    val arrow = if (shortHop) null else arrowPath(projected, midpoint, width, height, ArrowLengthDp.dp.toPx())
+    val chart = style.endpoints == RouteMapEndpoints.Chart
+    // Too short for two markers and a head: the geometry, whatever the style
+    // then does about it. Only the chart style collapses it to one ring.
+    val tooShort = projectedChord(projected, width, height) < MinArrowChordDp.dp.toPx()
+    val shortHop = chart && tooShort
+    // The aircraft takes the arrowhead's place where the leg has room for it;
+    // a nose says which way as plainly as a head does.
+    val plane = if (aircraft == null || tooShort) {
+        null
+    } else {
+        planePlacement(
+            projected = projected,
+            index = midpoint,
+            width = width,
+            height = height,
+            spanCm = aircraft.spanCm,
+            lengthCm = aircraft.lengthCm,
+            lengthPx = PlaneLengthDp.dp.toPx(),
+        )
+    }
+    val arrow = if (!chart || tooShort || plane != null) {
+        null
+    } else {
+        arrowPath(projected, midpoint, width, height, ArrowLengthDp.dp.toPx())
+    }
 
     val routeWidth = RouteStrokeDp.dp.toPx()
     val casing = CasingDp.dp.toPx()
@@ -120,15 +172,21 @@ fun routeMapScene(
         graticulePath = graticulePath,
         routePath = routePath,
         arrow = arrow,
+        planePath = if (plane != null && aircraft != null) silhouettePath(aircraft) else null,
+        plane = plane,
         departure = Offset(projected[0] * width, projected[1] * height),
         destination = Offset(projected[projected.size - 2] * width, projected[projected.size - 1] * height),
         hop = Offset(projected[midpoint * 2] * width, projected[midpoint * 2 + 1] * height),
         shortHop = shortHop,
+        endpoints = style.endpoints,
         coastWidth = CoastStrokeDp.dp.toPx(),
         routeWidth = routeWidth,
         casingWidth = routeWidth + 2f * casing,
         casing = casing,
-        endpointRadius = EndpointRadiusDp.dp.toPx(),
+        endpointRadius = when (val ends = style.endpoints) {
+            RouteMapEndpoints.Chart -> EndpointRadiusDp.dp.toPx()
+            is RouteMapEndpoints.Dots -> ends.radiusDp.dp.toPx()
+        },
         endpointStroke = EndpointStrokeDp.dp.toPx(),
     )
 }
@@ -136,7 +194,7 @@ fun routeMapScene(
 /**
  * The three inks a route map is made of.
  *
- * [RouteMap] draws all three interleaved — every line cased, then inked. A
+ * [drawRouteMap] draws all three interleaved — every line cased, then inked. A
  * consumer that has to colour them *after* drawing, as the widget does with
  * Glance's tint, asks for one at a time and stacks the results in this order.
  * Drawn one layer at a time the casing under the arrowhead sits under the
@@ -149,7 +207,7 @@ enum class RouteMapLayer {
     /** The wider stroke under every line and marker, in the surface's colour. */
     Casing,
 
-    /** The route, its arrowhead and its endpoint markers. */
+    /** The route, its arrowhead or aircraft, and its endpoint markers. */
     Route,
 }
 
@@ -157,10 +215,11 @@ enum class RouteMapLayer {
  * Draws [scene] into this scope. With every layer selected this is exactly
  * what the route card paints; with one, only that layer's primitives.
  *
- * The caller clips: the scene is projected with a margin and routinely paints
- * past the canvas, and where that clip has to live differs between a
- * composable (a `clipRect` in the draw call, to avoid a layer) and a bitmap
- * (the bitmap's own edge).
+ * The caller clips, if anything needs clipping: the scene is projected with a
+ * margin and routinely paints past the canvas, and where that clip has to live
+ * differs between a composable (a `clipRect` in the draw call, to avoid a
+ * layer), a bitmap (the bitmap's own edge) and a round watch face (the page's
+ * own circular clip).
  */
 fun DrawScope.drawRouteMap(
     scene: RouteMapScene,
@@ -222,7 +281,39 @@ fun DrawScope.drawRouteMap(
         if (route) drawPath(path = head, color = routeColor)
     }
 
-    if (scene.shortHop) {
+    // The aircraft, where the arrowhead would be and cased the same way. The
+    // canvas is moved, turned and scaled to it rather than the path transformed,
+    // because the path is the one parsed outline every map and list shares; the
+    // casing's width is divided by the scale for the same reason, so it comes
+    // out at the line's own casing on screen.
+    val planePath = scene.planePath
+    val plane = scene.plane
+    if (planePath != null && plane != null) {
+        withTransform({
+            translate(plane.x, plane.y)
+            rotate(plane.degrees, pivot = Offset.Zero)
+            scale(plane.scale, plane.scale, pivot = Offset.Zero)
+            translate(-plane.pivotX, -plane.pivotY)
+        }) {
+            if (casing) {
+                drawPath(
+                    path = planePath,
+                    color = casingColor,
+                    style = Stroke(width = 2f * scene.casing / plane.scale, join = StrokeJoin.Round),
+                )
+            }
+            if (route) drawPath(path = planePath, color = routeColor)
+        }
+    }
+
+    if (scene.endpoints is RouteMapEndpoints.Dots) {
+        // Two identical cased dots, each finished before the next is started —
+        // casing, ink, then the other end. Where the two overlap, the
+        // destination's casing cuts into the departure's dot, which is how the
+        // watch face has always drawn them.
+        drawCasedDot(scene, scene.departure, casingColor, routeColor, casing, route)
+        drawCasedDot(scene, scene.destination, casingColor, routeColor, casing, route)
+    } else if (scene.shortHop) {
         // One ring for both ends. The cased line under it is the hop; the ring
         // says "here" for a leg too short for "from here to there" to have room.
         if (casing) {
@@ -265,57 +356,17 @@ fun DrawScope.drawRouteMap(
     }
 }
 
-/**
- * A route map as three alpha masks, one per [RouteMapLayer].
- *
- * Every pixel is white; only the alpha carries information — the land at
- * [WorldMapLandAlpha], the coast at [WorldMapCoastAlpha], the casing and the
- * route opaque. Whoever displays them supplies the colour, which is the whole
- * point: Glance tints a bitmap with a colour *provider* that resolves to the
- * light or dark palette at display time, so a widget drawn this way follows a
- * night-mode switch and a wallpaper change that a pre-coloured bitmap would
- * miss until its next update.
- */
-class RouteMapLayers(
-    val land: ImageBitmap,
-    val casing: ImageBitmap,
-    val route: ImageBitmap,
-)
-
-/**
- * Renders [RouteMapLayers] for a canvas of [widthPx] × [heightPx], or null
- * when the scene is empty. Off-screen, on whatever thread calls it; the cost is
- * three fills of a small bitmap and belongs off the main thread.
- */
-fun renderRouteMapLayers(
-    arc: GeoArc,
-    outline: WorldOutline,
-    widthPx: Int,
-    heightPx: Int,
-    density: Density,
-    topInsetPx: Float = 0f,
-): RouteMapLayers? {
-    if (widthPx <= 0 || heightPx <= 0) return null
-    val scene = routeMapScene(arc, outline, widthPx.toFloat(), heightPx.toFloat(), density, topInsetPx) ?: return null
-    fun mask(layer: RouteMapLayer): ImageBitmap {
-        val bitmap = ImageBitmap(widthPx, heightPx)
-        CanvasDrawScope().draw(density, LayoutDirection.Ltr, Canvas(bitmap), Size(widthPx.toFloat(), heightPx.toFloat())) {
-            drawRouteMap(
-                scene = scene,
-                landColor = Color.White.copy(alpha = WorldMapLandAlpha),
-                coastColor = Color.White.copy(alpha = WorldMapCoastAlpha),
-                routeColor = Color.White,
-                casingColor = Color.White,
-                layers = setOf(layer),
-            )
-        }
-        return bitmap
-    }
-    return RouteMapLayers(
-        land = mask(RouteMapLayer.Land),
-        casing = mask(RouteMapLayer.Casing),
-        route = mask(RouteMapLayer.Route),
-    )
+/** One [RouteMapEndpoints.Dots] marker: a filled disc of casing, then the dot on it. */
+private fun DrawScope.drawCasedDot(
+    scene: RouteMapScene,
+    centre: Offset,
+    casingColor: Color,
+    routeColor: Color,
+    casing: Boolean,
+    route: Boolean,
+) {
+    if (casing) drawCircle(color = casingColor, radius = scene.endpointRadius + scene.casing, center = centre)
+    if (route) drawCircle(color = routeColor, radius = scene.endpointRadius, center = centre)
 }
 
 /**

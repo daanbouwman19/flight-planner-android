@@ -1,0 +1,6 @@
+# Grumman F-14 Tomcat, wings fully forward (20 degrees). Span 19.54 m, length 19.10 m.
+# Fixed glove swept about 67 degrees from the cockpit to the pivot; outer panels at 20 degrees;
+# widely spaced nacelles with the flat "pancake" between them; stabilator span estimated
+# from three-view drawings (no published figure found).
+# Right half, metres: x outboard of the centreline, y aft of the nose.
+mirror 0,0 0.45,1.00 0.65,2.00 0.75,3.00 0.80,4.50 0.90,5.50 2.90,9.60 9.77,12.06 9.77,13.46 3.20,13.20 2.60,13.60 2.60,15.60 4.98,17.70 4.98,18.50 2.30,19.00 2.00,19.10 1.30,19.10 1.10,18.40 0.60,18.20 0,18.80

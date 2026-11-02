@@ -1,0 +1,5 @@
+# Aermacchi MB-339A. Span 10.86 m over the tip tanks, length 10.97 m.
+# Straight tapered wing with tip tanks; tailplane 4.10 m.
+# Right half, metres: x outboard of the centreline, y aft of the nose.
+mirror 0,0 0.30,0.60 0.45,1.50 0.55,2.60 0.60,3.60 0.90,4.00 0.95,4.60 4.95,5.00 4.95,6.20 0.95,6.90 0.75,7.50 0.55,8.80 0.45,9.30 2.05,9.90 2.05,10.40 0.35,10.60 0.25,10.97 0,10.97
+mirror 4.93,4.30 5.18,3.60 5.43,4.30 5.43,6.60 5.18,7.10 4.93,6.60

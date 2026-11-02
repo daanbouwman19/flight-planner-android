@@ -1,5 +1,7 @@
 package com.github.daanbouwman.flightplanner.widget
 
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftShape
 import com.github.daanbouwman.flightplanner.core.database.repository.FleetRepository
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.routing.dailyAircraft
@@ -42,6 +44,8 @@ sealed interface AircraftState {
         val runwayText: String?,
         /** Where a tap goes. */
         val airframeId: Int,
+        /** The airframe from above, for the two-row card's band. Null draws the band empty. */
+        val shape: AircraftShape? = null,
     ) : AircraftState
 
     /** No airframes, even after seeding — nothing to show. */
@@ -97,6 +101,7 @@ class DailyAircraftSource internal constructor(
                 .takeIf { it > 0 }
                 ?.let { "${ftToDisplayLength(it, unit).asFigure()} ${lengthUnitSuffix(unit)}" },
             airframeId = airframe.id,
+            shape = AircraftArt.shapeFor(airframe),
         )
     }
 

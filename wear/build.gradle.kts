@@ -119,6 +119,15 @@ dependencies {
     implementation(projects.core.model)
     implementation(projects.core.routing)
     implementation(projects.core.handoff)
+    // The aircraft outlines and the rule that picks one, pure JVM like the three
+    // above: the watch draws the same traced airframes the phone does, from the
+    // same table, without the phone's design system.
+    implementation(projects.core.aircraftart)
+    // The route map itself — the scene builder, its draw order and the ink both
+    // devices draw with. Compose graphics and no Material, which is the whole
+    // reason it is a module of its own: this is the phone's map without
+    // `:core:designsystem` and the phone's alpha-pinned material3 behind it.
+    implementation(projects.core.mapscene)
 
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)

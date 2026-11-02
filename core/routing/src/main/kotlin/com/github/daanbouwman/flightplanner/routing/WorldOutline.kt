@@ -60,11 +60,22 @@ class WorldOutline(
     val ringMinLat: FloatArray = FloatArray(ringCount)
     val ringMaxLat: FloatArray = FloatArray(ringCount)
 
+    /**
+     * Points in the longest ring, 0 for an empty outline.
+     *
+     * The most one ring's projection ever has to hold, so [MapFrame.projectOutline]
+     * can size its scratch once per call rather than grow it ring by ring. Taken
+     * on the same walk as the bounding boxes.
+     */
+    val maxRingPoints: Int
+
     init {
+        var longest = 0
         for (ring in 0 until ringCount) {
             val from = ringStart[ring]
             val to = ringStart[ring + 1]
             require(to > from) { "Ring $ring is empty" }
+            if (to - from > longest) longest = to - from
             var minLon = lon[from]
             var maxLon = lon[from]
             var minLat = lat[from]
@@ -80,6 +91,7 @@ class WorldOutline(
             ringMinLat[ring] = minLat
             ringMaxLat[ring] = maxLat
         }
+        maxRingPoints = longest
     }
 
     companion object {

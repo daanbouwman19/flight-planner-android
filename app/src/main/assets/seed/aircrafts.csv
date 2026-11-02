@@ -113,7 +113,9 @@ Textron Aviation,Cessna Citation CJ4,C25C,0,2165,Business,451,,1000
 Textron Aviation,Cessna Citation Longitude,C700,0,3500,Business,483,,1000
 Textron Aviation,Cessna Citation X,C750,0,3200,Business,525,,1567
 Textron Aviation,Cessna Citation X Winglets,C750,0,3200,Business,525,,1567
-Grumman Corporation,F-14 Tomcat,F14,0,950,Military,480,,480
+Grumman Corporation,F-14A Tomcat,F14,0,950,Military,480,,480
+Grumman Corporation,F-14A Tomcat (early),F14,0,950,Military,480,,480
+Grumman Corporation,F-14B Tomcat,F14,0,950,Military,480,,480
 Northrop,B-2 Spirit,B2,0,6000,Military,488,,2000
 Top Rudder Aircraft,103 Solo,TR03,0,87,Light,47,,200
 Viking Air Limited,DHC-2 Beaver,DHC2,0,395,Utility,109,,300

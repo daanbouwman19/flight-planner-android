@@ -1,0 +1,5 @@
+# Northrop B-2 Spirit. Span 52.12 m, length 20.90 m, leading edge swept 33 degrees.
+# Every edge of the planform is parallel to one of the two leading edges, so each
+# segment of the double-W trailing edge runs at +/-33 degrees (slope 0.6494).
+# Right half, metres: x outboard of the centreline, y aft of the nose.
+mirror 0,0 26.06,16.92 26.06,18.52 22.68,20.71 16.50,16.70 11.42,20.00 6.40,16.74 0,20.90

@@ -68,12 +68,13 @@ gets it. It is never committed.
 | Module | Type | Contents |
 | --- | --- | --- |
 | `:app` | Android application | Phone Compose UI, ViewModels, navigation, widgets, DI graph |
-| `:wear` | Android application | The Wear OS app — a second APK, sharing everything below the UI |
+| `:wear` | Android application | The Wear OS app — a second APK, sharing everything below the UI and the route map's drawing |
 | `:core:model` | pure JVM | Domain types |
 | `:core:routing` | pure JVM | Airport index, spatial index, route generator, statistics, map projection |
 | `:core:database` | Android library | Room databases, DAOs, asset bootstrap |
 | `:core:network` | Android library | METAR client, tile HTTP client |
 | `:core:handoff` | pure JVM | What the two apps agree on: the route URI the watch writes, the theme the phone publishes |
+| `:core:mapscene` | Android library | The route map as geometry and draw calls, shared by both apps — Compose graphics, no Material |
 | `:core:designsystem` | Android library | Theme, semantic colours, shared components |
 | `:feature:globe` | Android library | Filament-based 3D globe |
 | `:macrobenchmark` | test-only | Cold start and scroll benchmarks, on the `benchmarkRelease` variant |
@@ -86,9 +87,11 @@ APKs can depend on them.
 
 The watch is not a smaller copy of the phone. Its Material surface is
 `androidx.wear.compose:compose-material3`, a **different library** from the `androidx.compose.material3`
-the phone is built on rather than a subset of it, so `:wear` shares no UI code with `:app` and
-cannot see `:core:designsystem` at all. What it does share is everything below the drawing: route
-generation, the great-circle maths and the map projection are the same code on both devices.
+the phone is built on rather than a subset of it, so `:wear` shares no Material UI with `:app` and
+cannot see `:core:designsystem` at all. What it does share is everything below the UI, and the
+map: route generation, the great-circle maths, the map projection and the drawing of the route
+map are the same code on both devices — the last through `:core:mapscene`, which is Compose
+graphics with no Material in it, so the watch takes none of the phone's.
 
 The 3D globe uses [Filament](https://github.com/google/filament) on its Vulkan backend. Filament
 ships prebuilt native libraries, so this project contains no C or C++ and needs no NDK.

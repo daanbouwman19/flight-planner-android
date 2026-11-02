@@ -29,9 +29,9 @@ class Ring(val lon: DoubleArray, val lat: DoubleArray) {
 /**
  * Reads land rings out of a Natural Earth GeoJSON snapshot.
  *
- * Only the geometry is read. `ne_110m_land` carries three properties —
- * `featurecla`, `scalerank`, `min_zoom` — and none of them survives to the
- * device: a route card draws one silhouette in one colour, so a per-feature
+ * Only the geometry is read. Natural Earth's land and lake features carry
+ * properties — `featurecla`, `scalerank`, `min_zoom`, a lake's name — and none
+ * of them survives to the device: a route card draws one silhouette in one colour, so a per-feature
  * attribute has nothing to select.
  *
  * **`land`, not `coastline`.** Land is closed polygons, which can be filled;

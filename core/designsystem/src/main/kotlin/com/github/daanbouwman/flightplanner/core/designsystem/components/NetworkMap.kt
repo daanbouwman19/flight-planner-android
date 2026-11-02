@@ -21,6 +21,16 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
+import com.github.daanbouwman.flightplanner.mapscene.ArrowLengthDp
+import com.github.daanbouwman.flightplanner.mapscene.CasingDp
+import com.github.daanbouwman.flightplanner.mapscene.CoastStrokeDp
+import com.github.daanbouwman.flightplanner.mapscene.EndpointRadiusDp
+import com.github.daanbouwman.flightplanner.mapscene.MinArrowChordDp
+import com.github.daanbouwman.flightplanner.mapscene.OutlineMargin
+import com.github.daanbouwman.flightplanner.mapscene.RouteStrokeDp
+import com.github.daanbouwman.flightplanner.mapscene.arrowPath
+import com.github.daanbouwman.flightplanner.mapscene.projectedChord
+import com.github.daanbouwman.flightplanner.mapscene.toPath
 import com.github.daanbouwman.flightplanner.routing.GeoArc
 import com.github.daanbouwman.flightplanner.routing.MapFrame
 import com.github.daanbouwman.flightplanner.routing.NetworkFraming
@@ -55,7 +65,9 @@ class NetworkNode(
  * graticule. Side by side on the Stats screen the two maps read as a sketch of
  * each other. Every stroke here is drawn from the same constants [RouteMap]
  * draws from — the coast, the cased leg, the arrowhead, the endpoint — so the
- * plan card and the network card are one map at two scales.
+ * plan card and the network card are one map at two scales. Those constants
+ * live in `:core:mapscene`, beside the scene the route card and the watch face
+ * both draw, so retuning one moves every map on both devices.
  *
  * ### What a network adds
  *
@@ -63,7 +75,7 @@ class NetworkNode(
  *   *first* one way, and that is the way its [GeoArc] runs; the arrowhead at
  *   its midpoint says so. A leg whose projected chord is shorter than
  *   [MinArrowChordDp] drops the head rather than stacking it on its own
- *   endpoints — the one threshold, declared beside [RouteMap], below which
+ *   endpoints — the one threshold, declared in `:core:mapscene`, below which
  *   the route card collapses a hop to a single ring.
  * - **Size means count.** A dot's radius runs from [NodeMinRadiusDp] — the
  *   route card's own endpoint — to [NodeMaxRadiusDp] by [nodeSizeFraction],

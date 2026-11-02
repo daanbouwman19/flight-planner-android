@@ -1,5 +1,6 @@
 package com.github.daanbouwman.flightplanner.ui.logbook
 
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.model.FlightRecord
 import com.github.daanbouwman.flightplanner.routing.GreatCircle
@@ -35,6 +36,7 @@ fun FlightRecord.toLogbookRowOrNull(aircraftById: Map<Int, AircraftSpec>): Logbo
         flightTime = distanceNm?.let {
             GreatCircle.flightTime(distanceNm = it.toDouble(), cruiseSpeedKt = aircraft?.cruiseSpeedKt ?: 0)
         },
+        shape = aircraft?.let(AircraftArt::shapeFor),
     )
 }
 
