@@ -43,6 +43,7 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.github.daanbouwman.flightplanner.MainActivity
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
 import com.github.daanbouwman.flightplanner.core.designsystem.components.renderRouteMapLayers
 import com.github.daanbouwman.flightplanner.launch.LaunchIntents.putLaunchRequest
 import com.github.daanbouwman.flightplanner.launch.LaunchRequest
@@ -87,7 +88,19 @@ import java.time.format.DateTimeFormatter
  */
 class ChallengeWidget : GlanceAppWidget() {
 
-    override val sizeMode: SizeMode = SizeMode.Responsive(setOf(COMPACT, WIDE))
+    /**
+     * Exact, not responsive: **the map is a bitmap, and a bitmap must be
+     * rendered at the size it is shown.** Responsive mode composes each bucket
+     * once at the bucket's own size — 250 × 100 dp for the wide one — and the
+     * launcher then stretches that layout over the real grant. Text and chips
+     * reflow; the map, shown `FillBounds`, was simply scaled: on the reference
+     * phone's default 4 × 2 grant (376 × 204 dp) by 1.5 across and 2 down, which
+     * read on the home screen as a blurred, squashed map. Exact composes at the
+     * size the launcher reports for each orientation, so [renderChallengeMap]
+     * draws at the card's own pixels and a 1 dp coast is one device pixel wide.
+     * The layouts still choose by width, against [WidgetWideThreshold].
+     */
+    override val sizeMode: SizeMode = SizeMode.Exact
 
     /**
      * The picker draws the preview at the widget's default 4×2 cells, but
@@ -144,16 +157,19 @@ class ChallengeWidget : GlanceAppWidget() {
             date = LocalDate.of(2026, 9, 16),
             departureIcao = "EHAM",
             destinationIcao = "KJFK",
-            aircraftName = "Boeing 787-9",
+            // The seed fleet's own 787, as the aircraft widget's preview names it,
+            // so the outline drawn on the leg is the airframe the card names.
+            aircraftName = "Boeing 787-10 Dreamliner",
             distanceText = "3,162 NM",
             eteText = "6:33",
             arc = RouteArc.sampleGeographic(52.3086, 4.7639, 40.6398, -73.7789, samples = RouteArc.CARD_SAMPLES),
             route = Destination.RouteDetail("EHAM", "KJFK", aircraftId = 0, distanceNm = 3_162),
+            shape = AircraftArt.byId("b78x"),
         )
     }
 }
 
-/** The map, as Android bitmaps Glance can show. One per [com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMapLayer]. */
+/** The map, as Android bitmaps Glance can show. One per `RouteMapLayer` (`:core:mapscene`). */
 class ChallengeMap(val land: Bitmap, val casing: Bitmap, val route: Bitmap)
 
 /**
@@ -174,6 +190,7 @@ fun renderChallengeMap(state: ChallengeState, outline: WorldOutline, size: DpSiz
             // The band the airframe line is printed across; the route is framed
             // below it, exactly as on the route card.
             topInsetPx = (WidgetPadding + TITLE_LINE).toPx(),
+            aircraft = ready.shape,
         )
     } ?: return null
     return ChallengeMap(

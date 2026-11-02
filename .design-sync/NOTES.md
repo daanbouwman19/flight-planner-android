@@ -584,6 +584,14 @@ re-write them.
 - **Not reproduced:** the pager and `AnimatedPage`, the bezel input, the haptic, and
   the two-second lifetime of the flash. A still frame has none of them, so the flash
   is a prop.
+- **Behind the app since the shared map — owed at the next re-sync.** The watch now
+  draws its map through `:core:mapscene`, the phone's scene and draw, and its
+  constants moved from `WatchRouteMap.kt` to `wear/.../map/WatchMapScene.kt`. The
+  port still has the old face: `OUTLINE_MARGIN = 0.08` where the app has `0.01`, a
+  round-joined, round-capped coast where the app strokes the phone's bevel joins and
+  butt caps, and no aircraft on the leg (Phase I's plane, which predates the shared
+  map). Re-port `WatchRouteMap` from `WatchMapScene.kt` and `RouteMapScene.kt`
+  through the usual recipe rather than patching the constants in place.
 
 ### A finding about the watch
 

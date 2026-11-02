@@ -36,7 +36,7 @@ interface WidgetEntryPoint {
     fun fleetRepository(): FleetRepository
     fun widgetPreviewStamp(): WidgetPreviewStamp
 
-    /** The coastline under the challenge's route — the same 19 kB asset the route cards draw. */
+    /** The coastline under the challenge's route — the same asset the route cards draw. */
     fun worldOutlineLoader(): WorldOutlineLoader
 
     companion object {

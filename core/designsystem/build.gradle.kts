@@ -21,6 +21,20 @@ dependencies {
     // module is not allowed to cross.
     api(projects.core.routing)
 
+    // AircraftSilhouette and the route map's plane draw an AircraftShape, and a
+    // caller resolves one through AircraftArt. :core:aircraftart is pure JVM — a
+    // generated table of path strings and the rule that picks one — so this is
+    // data the design system draws, not data it fetches.
+    api(projects.core.aircraftart)
+
+    // The route map's scene — its paths, widths, markers and draw order — and
+    // the parsed aircraft outlines. They live below this module, in Compose
+    // graphics with no Material, so the watch can draw the same map without the
+    // phone's alpha-pinned material3. `implementation`, not `api`: RouteMap,
+    // NetworkMap and the widget's masks take routing and aircraft types in their
+    // signatures and never a scene, so no caller of this module names one.
+    implementation(projects.core.mapscene)
+
     api(libs.compose.material3.adaptive)
     api(libs.compose.material3.adaptive.layout)
     api(libs.compose.material3.adaptive.navigation)

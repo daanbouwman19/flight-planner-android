@@ -77,20 +77,33 @@ class MapFrame(
     /**
      * Projects the land this window shows, clipped to it.
      *
-     * **This is the expensive call.** It is called from `RouteMap`'s
-     * `drawWithCache`, which is the UI thread — once per card per size, not per
-     * frame, but on the thread that has to produce the next frame. It was
-     * designed to run beside `RouteArc.sampleGeographic` on a background
-     * dispatcher, and it cannot yet, because the window it projects through
-     * depends on a canvas aspect ratio nobody knows until the card is measured.
-     * Moving it off the main thread needs that plan, not a comment; until then
-     * this KDoc says where it actually runs.
+     * **This is the expensive call**, and where it runs differs by surface. All
+     * three reach it through `:core:mapscene`'s `routeMapScene`.
+     *
+     *  - **The phone's `RouteMap`** calls it from `drawWithCache`, on the UI
+     *    thread — once per card per size, not per frame, but on the thread that
+     *    has to produce the next frame. It was designed to run beside
+     *    `RouteArc.sampleGeographic` on a background dispatcher, and on the phone
+     *    it cannot yet, because the window it projects through depends on a
+     *    canvas aspect ratio nobody knows until the card is measured. Moving it
+     *    off the main thread there needs that plan, not a comment.
+     *  - **The home-screen widget** calls it while composing its Glance session,
+     *    which Glance runs on the main dispatcher too (`SessionWorker`'s default),
+     *    though with no Activity frame waiting on it.
+     *  - **The watch** does move it off: a page fills the face, so the canvas is
+     *    known from the first layout, before any page is drawn, and
+     *    `WatchSceneCache` builds the pages around the settled one on
+     *    `Dispatchers.Default`. Its draw runs this on the UI thread only when a
+     *    flick outruns that prefetch.
+     *
+     * Until the phone has its plan, this KDoc says where it actually runs.
      *
      * Three things it does that a naive loop would not:
      *
-     *  - **A ring is rejected by its bounding box first.** The outline holds 122
-     *    rings and a card typically shows three, so 119 rejections cost four
-     *    comparisons each rather than a thousand projections.
+     *  - **A ring is rejected by its bounding box first.** The 1:50m outline
+     *    holds 1,865 rings, a short hop's card keeps a few dozen and an ocean
+     *    crossing a few hundred, so the rest cost four comparisons each rather
+     *    than a projection per point.
      *  - **A ring is drawn at every whole turn that reaches the window.** A
      *    window centred at 242°E has to be met by rings stored around −118°, and
      *    one just west of the seam by rings stored at +179°. Usually exactly one
@@ -114,6 +127,17 @@ class MapFrame(
      * window and left open, so the stroke stops at the edge instead of turning
      * along it.
      *
+     * ### What it allocates
+     *
+     * Its output — each layer's columns, grown as rings are committed and copied
+     * to size at the end — and, once per call, the working memory in
+     * [OutlineClipper]: a scratch ring sized from [WorldOutline.maxRingPoints],
+     * the two buffers Sutherland–Hodgman alternates between, and the coast's run
+     * in progress. Nothing per ring and nothing per segment; the clips used to
+     * allocate both. On a desktop JVM that took an EGLL–KJFK watch face from
+     * 5.1 MB a call to 1.9 MB, most of it now the output and its growth, and a
+     * short hop from 1.1 MB to 0.3 MB, with the output unchanged to the bit.
+     *
      * @param margin extra window, as a fraction of each span, so a coast just off
      *   the card still contributes the segment that enters it, and a stroked end
      *   is trimmed outside the visible area rather than inside it.
@@ -133,19 +157,36 @@ class MapFrame(
 
         val fill = RingBuilder()
         val coast = RingBuilder()
-        val scratch = FloatArrayList()
+        // All of the call's working memory, allocated here once. The loop below
+        // allocates nothing per ring or per segment; see "What it allocates".
+        val clipper = OutlineClipper(low, high, maxRingPoints = outline.maxRingPoints)
+        val scratch = clipper.ring
+        val shifts = DoubleArray(MAX_LON_SHIFTS)
+
+        // Below this in both directions a ring is a speck in *this* window — a
+        // Siberian lake on a Eurasia-wide card is a fraction of a pixel, and
+        // stroked it is a dot of coast that reads as noise. The same ring at the
+        // closest zoom is a recognisable island and stays. See MIN_RING_FRACTION.
+        val minRingSpanLon = MIN_RING_FRACTION * spanLon
+        val minRingSpanLat = MIN_RING_FRACTION * spanLat
 
         for (ring in 0 until outline.ringCount) {
             if (outline.ringMaxLat[ring] < windowMinLat) continue
             if (outline.ringMinLat[ring] > windowMaxLat) continue
+            if (outline.ringMaxLon[ring] - outline.ringMinLon[ring] < minRingSpanLon &&
+                outline.ringMaxLat[ring] - outline.ringMinLat[ring] < minRingSpanLat
+            ) {
+                continue
+            }
 
-            val shifts = lonShiftsFor(
+            val shiftCount = lonShiftsInto(
                 ringMinLon = outline.ringMinLon[ring].toDouble(),
                 ringMaxLon = outline.ringMaxLon[ring].toDouble(),
                 windowMinLon = windowMinLon,
                 windowMaxLon = windowMaxLon,
+                found = shifts,
             )
-            if (shifts.isEmpty()) continue
+            if (shiftCount == 0) continue
 
             val from = outline.ringStart[ring]
             val to = outline.ringStart[ring + 1]
@@ -155,14 +196,15 @@ class MapFrame(
             // spans the whole range by itself, and a wide long-haul window can do
             // it with Eurasia — and taking only the first drops everything the
             // other one would have drawn.
-            for (shift in shifts) {
+            for (s in 0 until shiftCount) {
+                val shift = shifts[s]
                 scratch.clear()
                 for (i in from until to) {
                     scratch.add(x(outline.lon[i].toDouble() + shift))
                     scratch.add(y(outline.lat[i].toDouble()))
                 }
-                clipPolygonInto(scratch, low, high, fill)
-                clipPolylineInto(scratch, low, high, coast)
+                clipper.clipPolygonInto(fill)
+                clipper.clipPolylineInto(coast)
             }
         }
 
@@ -235,24 +277,27 @@ class MapFrame(
      * different shifts and needs both drawn. The same holds for any ring wide
      * enough that `ringWidth + windowWidth >= 360`.
      *
-     * @return the shifts in degrees, empty when the ring misses the window at
+     * Writes the shifts, in degrees and ascending, into the first slots of
+     * [found] — the caller's, so a ring costs no array — and returns how many.
+     *
+     * @return the number of shifts written, 0 when the ring misses the window at
      *   every offset.
      */
-    private fun lonShiftsFor(
+    private fun lonShiftsInto(
         ringMinLon: Double,
         ringMaxLon: Double,
         windowMinLon: Double,
         windowMaxLon: Double,
-    ): DoubleArray {
+        found: DoubleArray,
+    ): Int {
         var count = 0
-        val found = DoubleArray(3)
         for (turns in -1..1) {
             val shift = turns * 360.0
             if (ringMaxLon + shift >= windowMinLon && ringMinLon + shift <= windowMaxLon) {
                 found[count++] = shift
             }
         }
-        return if (count == found.size) found else found.copyOf(count)
+        return count
     }
 
     companion object {
@@ -262,11 +307,30 @@ class MapFrame(
          *
          * Without a floor, a Rotterdam–Amsterdam hop frames 0.4° of the world and
          * the card fills with a piece of the Dutch coast magnified past
-         * recognition — technically correct and useless. At 25° a short European
-         * hop still shows the North Sea, the Channel and enough mainland to say
-         * where it is.
+         * recognition — technically correct and useless. At 15° a short European
+         * hop still shows the southern North Sea, the Channel coast and enough
+         * mainland to say where it is.
+         *
+         * It was 25°, and with an aircraft drawn on the leg that proved too wide:
+         * a 120 NM hop was a stub the 24 dp outline all but covered, on a map
+         * mostly about somewhere else. 15° gives the same hop two-thirds more
+         * card; the coast is coarser for it, since the outline is drawn from a
+         * few thousand points for the whole world.
          */
-        const val MIN_SPAN_DEGREES: Double = 25.0
+        const val MIN_SPAN_DEGREES: Double = 15.0
+
+        /**
+         * The smallest ring [projectOutline] draws, as a fraction of the window
+         * in each direction: 0.3 %, about three pixels across a 328 dp card.
+         *
+         * The outline carries every lake and islet down to 0.05° (see
+         * `:tools:worldmap`), which is what the closest window needs — the
+         * Wadden islands, the IJsselmeer. A continent-wide window shows the
+         * same rings at a fraction of a pixel, and their coast strokes came out
+         * as specks scattered over Siberia and Canada. Relative to the window,
+         * so the close map keeps every island and the wide one sheds the dust.
+         */
+        const val MIN_RING_FRACTION: Double = 0.003
 
         /**
          * Fraction of the window kept clear around the route, per side.
@@ -285,6 +349,9 @@ class MapFrame(
          * frame most of the hemisphere to show two airports an hour apart.
          */
         private const val MIN_LON_SCALE: Double = 0.2588 // cos(75°)
+
+        /** The whole turns [lonShiftsInto] tries: −360°, 0° and +360°. */
+        private const val MAX_LON_SHIFTS: Int = 3
 
         /**
          * A window around a sampled route, sized to the canvas it will be drawn on.
@@ -461,8 +528,20 @@ internal class FloatArrayList(initialCapacity: Int = 64) {
     operator fun get(index: Int): Float = data[index]
 
     fun add(value: Float) {
-        if (size == data.size) data = data.copyOf(data.size * 2)
+        if (size == data.size) grow(size + 1)
         data[size++] = value
+    }
+
+    /** Appends everything [other] holds, in order, growing at most once. */
+    fun addAll(other: FloatArrayList) {
+        ensureCapacity(size + other.size)
+        other.data.copyInto(data, destinationOffset = size, startIndex = 0, endIndex = other.size)
+        size += other.size
+    }
+
+    /** Makes room for [capacity] values in all, keeping what is already held. */
+    fun ensureCapacity(capacity: Int) {
+        if (capacity > data.size) grow(capacity)
     }
 
     fun clear() {
@@ -470,6 +549,29 @@ internal class FloatArrayList(initialCapacity: Int = 64) {
     }
 
     fun toFloatArray(): FloatArray = data.copyOf(size)
+
+    /** To at least [minimum] and at least double, so a run of [add]s stays amortised O(1). */
+    private fun grow(minimum: Int) {
+        data = data.copyOf(max(minimum, data.size * 2))
+    }
+}
+
+/**
+ * [FloatArrayList]'s twin for ring tables, which an `ArrayList<Int>` would box
+ * one offset at a time.
+ */
+internal class IntArrayList(initialCapacity: Int = 64) {
+    private var data = IntArray(initialCapacity)
+
+    var size: Int = 0
+        private set
+
+    fun add(value: Int) {
+        if (size == data.size) data = data.copyOf(max(size + 1, data.size * 2))
+        data[size++] = value
+    }
+
+    fun toIntArray(): IntArray = data.copyOf(size)
 }
 
 /**
@@ -481,13 +583,13 @@ internal class FloatArrayList(initialCapacity: Int = 64) {
  */
 internal class RingBuilder {
     private val points = FloatArrayList(256)
-    private val starts = ArrayList<Int>().apply { add(0) }
+    private val starts = IntArrayList().apply { add(0) }
 
     /** Appends one ring from [source], which holds interleaved `x, y`. */
     fun addRing(source: FloatArrayList, minimumPoints: Int) {
         if (source.size < minimumPoints * 2) return
-        for (i in 0 until source.size) points.add(source[i])
-        starts += points.size / 2
+        points.addAll(source)
+        starts.add(points.size / 2)
     }
 
     fun build(): ProjectedRings =
@@ -495,35 +597,115 @@ internal class RingBuilder {
 }
 
 /**
- * Sutherland–Hodgman: clips a closed ring to the box `[low, high]` on both axes.
+ * The working memory of one [MapFrame.projectOutline] call, and the two clips
+ * that share it.
  *
- * Four passes, one per edge, each keeping the points inside that half-plane and
- * inserting a point where the boundary is crossed. The result is a closed
- * polygon whose boundary partly runs along the box — which is correct for a fill
- * and is why the coastline is clipped separately, by [clipPolylineInto].
+ * Everything here is allocated once per call and reused for every ring, which
+ * is why it is a class. The clips were free functions that allocated per ring —
+ * two lists for each polygon clip, one for each polyline clip — and per
+ * *segment*: two four-float arrays and a boxed pair for every Liang–Barsky test,
+ * which on the 1:50m outline came to megabytes for one long-haul card. Their
+ * arithmetic is unchanged, expression for expression and in the same order;
+ * `ProjectOutlineRegressionTest` pins the output to the bit.
  *
- * The classic caveat applies and does not matter here: a ring that leaves and
- * re-enters the box comes back joined by a zero-width sliver along the edge
- * rather than as two polygons. Filled, that is invisible; it is only stroking
- * such a boundary that would show it.
+ * @param low the box's lower bound, on both axes.
+ * @param high its upper bound.
+ * @param maxRingPoints the longest ring the caller will put in [ring], which is
+ *   therefore sized once and never grows.
  */
-internal fun clipPolygonInto(ring: FloatArrayList, low: Float, high: Float, into: RingBuilder) {
-    var source = ring
-    var target = FloatArrayList(ring.size)
-    // axis 0 is x, axis 1 is y; the two `false` passes keep what is below the
-    // upper bound, the two `true` passes what is above the lower one.
-    for (edge in 0 until 4) {
-        val axis = edge % 2
-        val keepAbove = edge < 2
-        val bound = if (keepAbove) low else high
-        target.clear()
-        clipHalfPlane(source, axis, bound, keepAbove, target)
-        if (target.size == 0) return
-        val swap = if (source === ring) FloatArrayList(target.size) else source
-        source = target
-        target = swap
+internal class OutlineClipper(private val low: Float, private val high: Float, maxRingPoints: Int) {
+
+    /** The ring to clip, projected, as interleaved `x, y`. The caller fills it and both clips read it. */
+    val ring: FloatArrayList = FloatArrayList(maxRingPoints * 2)
+
+    // Sutherland–Hodgman's four passes alternate between these two.
+    private val ping = FloatArrayList()
+    private val pong = FloatArrayList()
+
+    /** The coast polyline in progress. Empty between calls: every clip ends by flushing it. */
+    private val run = FloatArrayList()
+
+    /** Where [clipSegment] reports a segment entering the box and leaving it. */
+    private val span = FloatArray(2)
+
+    /**
+     * Sutherland–Hodgman: clips [ring], a closed ring, to the box on both axes.
+     *
+     * Four passes, one per edge, each keeping the points inside that half-plane and
+     * inserting a point where the boundary is crossed. The result is a closed
+     * polygon whose boundary partly runs along the box — which is correct for a fill
+     * and is why the coastline is clipped separately, by [clipPolylineInto].
+     *
+     * The classic caveat applies and does not matter here: a ring that leaves and
+     * re-enters the box comes back joined by a zero-width sliver along the edge
+     * rather than as two polygons. Filled, that is invisible; it is only stroking
+     * such a boundary that would show it.
+     */
+    fun clipPolygonInto(into: RingBuilder) {
+        ping.ensureCapacity(ring.size)
+        pong.ensureCapacity(ring.size)
+        var source = ring
+        var target = ping
+        // axis 0 is x, axis 1 is y; the two `false` passes keep what is below the
+        // upper bound, the two `true` passes what is above the lower one.
+        for (edge in 0 until 4) {
+            val axis = edge % 2
+            val keepAbove = edge < 2
+            val bound = if (keepAbove) low else high
+            target.clear()
+            clipHalfPlane(source, axis, bound, keepAbove, target)
+            if (target.size == 0) return
+            val swap = if (source === ring) pong else source
+            source = target
+            target = swap
+        }
+        into.addRing(source, minimumPoints = 3)
     }
-    into.addRing(source, minimumPoints = 3)
+
+    /**
+     * Trims [ring]'s segments to the box and emits what is left as **open**
+     * polylines.
+     *
+     * Liang–Barsky per segment. A segment wholly outside ends the run in progress; a
+     * segment that enters part way starts a new one; a segment that leaves part way
+     * closes the current one at the boundary. The result follows the real coast and
+     * never contains an edge of the box, so stroking it cannot draw a frame around
+     * the card.
+     */
+    fun clipPolylineInto(into: RingBuilder) {
+        val count = ring.size / 2
+        if (count < 2) return
+
+        for (i in 0 until count - 1) {
+            val x1 = ring[i * 2]
+            val y1 = ring[i * 2 + 1]
+            val x2 = ring[(i + 1) * 2]
+            val y2 = ring[(i + 1) * 2 + 1]
+
+            if (!clipSegment(x1, y1, x2, y2, low, high, span)) {
+                flushRun(into)
+                continue
+            }
+
+            val enter = span[ENTER]
+            val exit = span[EXIT]
+            if (run.size == 0 || enter > 0f) {
+                flushRun(into)
+                run.add(x1 + (x2 - x1) * enter)
+                run.add(y1 + (y2 - y1) * enter)
+            }
+            run.add(x1 + (x2 - x1) * exit)
+            run.add(y1 + (y2 - y1) * exit)
+            if (exit < 1f) flushRun(into)
+        }
+        flushRun(into)
+    }
+
+    /** Commits the run in progress, when it has a segment's worth, and starts the next. */
+    private fun flushRun(into: RingBuilder) {
+        into.addRing(run, minimumPoints = 2)
+        run.clear()
+    }
 }
 
 private fun clipHalfPlane(
@@ -568,54 +750,16 @@ private fun inside(x: Float, y: Float, axis: Int, bound: Float, keepAbove: Boole
     return if (keepAbove) value >= bound else value <= bound
 }
 
+/** Slots of the span [clipSegment] writes. */
+private const val ENTER = 0
+private const val EXIT = 1
+
 /**
- * Trims a ring's segments to the box and emits what is left as **open**
- * polylines.
+ * The portion of a segment inside the box, as the parameters `t` where it enters
+ * and leaves, written to `span[ENTER]` and `span[EXIT]`.
  *
- * Liang–Barsky per segment. A segment wholly outside ends the run in progress; a
- * segment that enters part way starts a new one; a segment that leaves part way
- * closes the current one at the boundary. The result follows the real coast and
- * never contains an edge of the box, so stroking it cannot draw a frame around
- * the card.
- */
-internal fun clipPolylineInto(ring: FloatArrayList, low: Float, high: Float, into: RingBuilder) {
-    val count = ring.size / 2
-    if (count < 2) return
-
-    val run = FloatArrayList(64)
-    fun flush() {
-        into.addRing(run, minimumPoints = 2)
-        run.clear()
-    }
-
-    for (i in 0 until count - 1) {
-        val x1 = ring[i * 2]
-        val y1 = ring[i * 2 + 1]
-        val x2 = ring[(i + 1) * 2]
-        val y2 = ring[(i + 1) * 2 + 1]
-
-        val span = clipSegment(x1, y1, x2, y2, low, high)
-        if (span == null) {
-            flush()
-            continue
-        }
-
-        val (enter, exit) = span
-        if (run.size == 0 || enter > 0f) {
-            flush()
-            run.add(x1 + (x2 - x1) * enter)
-            run.add(y1 + (y2 - y1) * enter)
-        }
-        run.add(x1 + (x2 - x1) * exit)
-        run.add(y1 + (y2 - y1) * exit)
-        if (exit < 1f) flush()
-    }
-    flush()
-}
-
-/**
- * The portion of a segment inside the box, as the pair of parameters `t` where it
- * enters and leaves, or null when none of it is inside.
+ * @return false when none of it is inside, in which case [span] holds nothing
+ *   meaningful.
  */
 private fun clipSegment(
     x1: Float,
@@ -624,32 +768,43 @@ private fun clipSegment(
     y2: Float,
     low: Float,
     high: Float,
-): Pair<Float, Float>? {
+    span: FloatArray,
+): Boolean {
     val dx = x2 - x1
     val dy = y2 - y1
     var enter = 0f
     var exit = 1f
 
-    // One (direction, distance-to-edge) pair per side of the box.
-    val directions = floatArrayOf(-dx, dx, -dy, dy)
-    val distances = floatArrayOf(x1 - low, high - x1, y1 - low, high - y1)
-
+    // One (direction, distance-to-edge) pair per side of the box, picked per side
+    // rather than read from two four-float arrays built for every segment.
     for (side in 0 until 4) {
-        val direction = directions[side]
-        val distance = distances[side]
+        val direction = when (side) {
+            0 -> -dx
+            1 -> dx
+            2 -> -dy
+            else -> dy
+        }
+        val distance = when (side) {
+            0 -> x1 - low
+            1 -> high - x1
+            2 -> y1 - low
+            else -> high - y1
+        }
         if (direction == 0f) {
             // Parallel to this edge: inside or outside for its whole length.
-            if (distance < 0f) return null
+            if (distance < 0f) return false
             continue
         }
         val t = distance / direction
         if (direction < 0f) {
-            if (t > exit) return null
+            if (t > exit) return false
             if (t > enter) enter = t
         } else {
-            if (t < enter) return null
+            if (t < enter) return false
             if (t < exit) exit = t
         }
     }
-    return enter to exit
+    span[ENTER] = enter
+    span[EXIT] = exit
+    return true
 }

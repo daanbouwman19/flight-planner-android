@@ -1,0 +1,5 @@
+# Kitfox Series 5. Span 9.75 m (32 ft), length 5.61 m (18 ft 5 in) - GlobalAir, Kitplanes.
+# Constant-chord strut-braced high wing with Junkers flaperons; 1.83 m propeller.
+# Right half, metres: x outboard of the centreline, y aft of the nose.
+mirror 0,0 0.15,0.10 0.42,0.45 0.50,0.95 0.50,1.10 4.875,1.10 4.875,2.65 0.50,2.65 0.42,3.10 0.22,4.45 0.18,4.60 1.35,4.80 1.35,5.35 0.14,5.48 0.06,5.61 0,5.61
+prop 0,0.06,1.83

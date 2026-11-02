@@ -8,11 +8,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,6 +26,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
+import com.github.daanbouwman.flightplanner.core.designsystem.components.AircraftSilhouette
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.asChartFigure
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.ui.distanceText
@@ -84,9 +88,17 @@ fun TopAircraftCard(
                             .semantics(mergeDescendants = true) { contentDescription = description }
                             .clickable { onAircraftClick(stat.aircraft) }
                             .padding(vertical = 8.dp, horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // The type from above in the caption colour: every row
+                        // here has been flown, so there is no status to carry,
+                        // only the shape to tell a 737 from a Cessna at a glance.
+                        AircraftSilhouette(
+                            shape = remember(stat.aircraft) { AircraftArt.shapeFor(stat.aircraft) },
+                            modifier = Modifier.size(28.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Text(
                             text = rank,
                             style = MaterialTheme.typography.bodyMedium,

@@ -304,8 +304,12 @@ data class StatTile(val label: String, val value: Int,
                                        modifier: Modifier = Modifier)
 
 
+@Composable fun AircraftSilhouette(shape: AircraftShape, modifier: Modifier = Modifier,
+                                   color: Color = LocalContentColor.current)
+
 @Composable fun RouteMap(arc: GeoArc, outline: WorldOutline, modifier: Modifier = Modifier,
                          topInset: Dp = 0.dp,
+                         aircraft: AircraftShape? = null,
                          landColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                          coastColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
                          routeColor: Color = MaterialTheme.colorScheme.primary,
@@ -410,7 +414,38 @@ Notes that are easy to get wrong:
   projected ends, the departure ring, destination dot and arrowhead collapsed into
   a blob — a 66 NM hop on a phone. Such a leg is drawn as its cased line under a
   single hollow ring at the arc's midpoint, and no head. The threshold is the one
-  `NetworkMap` uses to drop a leg's arrowhead, declared once in `RouteMap.kt`.
+  `NetworkMap` uses to drop a leg's arrowhead, declared once in `:core:mapscene`.
+  **The aircraft flies the leg.** Given an `aircraft`, the map draws its outline
+  at the arc's midpoint, nose along the track, `PlaneLengthDp` (24 dp) along its
+  longer side, cased like the line, **in place of the arrowhead**. A nose states
+  the direction as plainly as a head and names the type besides. It needs room: below
+  `MinPlaneChords` (1.6) plane lengths of projected chord — the plane plus both
+  end markers clear of its wings — the ends would sit under the wings, so the
+  arrowhead stays, and below `MinArrowChordDp` the ring stays. On a route card at
+  European latitudes, with the map's 15° floor, that is roughly 60 NM: Amsterdam to
+  Brussels carries the plane, Amsterdam to Eindhoven keeps its head. (It was 3.6 first, which hid the plane on
+  every leg under about 250 NM and read on the phone as aircraft with no icon.) The outline is the parsed, shared path
+  `AircraftSilhouette` draws, placed by turning the canvas rather than the path.
+  The widget's challenge map goes through the same scene, so it gets the plane too.
+  **The scene is not in this module.** `routeMapScene`, `drawRouteMap`, the ink
+  constants and the outline cache live in `:core:mapscene`, which is Compose
+  graphics with no Material, so the watch face draws the same map without this
+  module's alpha-pinned `material3`. `RouteMap` is the phone's binding of it — the
+  colour roles, the `clipRect` and `RouteMapStyle.Card`, the default; the watch
+  passes its own `RouteMapStyle` (a frame padded for a circle, two filled dots, no
+  arrowhead or graticule). A width retuned there moves both devices.
+  `NetworkMap` keeps arrowheads: its legs are many airframes, not one.
+- **`AircraftSilhouette` is a measurement, drawn flat.** The outline is traced from
+  the simulator's model of the type (`:core:aircraftart`), seen from above, nose up,
+  in one fill with no outline, shadow or gradient. It is fitted to the slot it is
+  given and keeps its proportions; it is never drawn to a scale shared with other
+  aircraft, because a Cessna beside a 777 at true scale is a speck. **Its tint
+  follows the line it sits on** (`LocalContentColor`) — the logbook and the
+  statistics use it so — and only where flown status varies down a list (the fleet,
+  the aircraft widget) does a caller pass `primary` for a type that has been flown.
+  It has no semantics: every host already names the aircraft in text. Each outline
+  is parsed once per process and shared, which is why a caller transforms the
+  canvas and never the path.
 - **`RunwayDiagram` and `SkyProfile` take a required `contentDescription`.**
   Both are one childless canvas node, and both used to be silent to a screen
   reader — the diagram cleared its semantics and set nothing, the scene set
@@ -425,8 +460,8 @@ Notes that are easy to get wrong:
   `:app` from its own numbers — a 1.5 dp leg beside the route card's 2.5 dp, a
   casing half as wide, legs at 80 % alpha under opaque dots, twice the margin,
   no arrowhead, no graticule — and the two maps read as sketches of each other.
-  The stroke, casing, endpoint, arrowhead and margin constants in `RouteMap.kt`
-  are `internal` so this component draws from the same figures (`RouteStrokeDp`,
+  The stroke, casing, endpoint, arrowhead and margin constants in `:core:mapscene`
+  are public so this component draws from the same figures (`RouteStrokeDp`,
   `CasingDp`, `EndpointRadiusDp`, `ArrowLengthDp`, `OutlineMargin`, `arrowPath`);
   retune one and both maps move. What a network adds: an arrowhead per leg in
   the direction the leg was **first** flown (the `GeoArc` is sampled that way by

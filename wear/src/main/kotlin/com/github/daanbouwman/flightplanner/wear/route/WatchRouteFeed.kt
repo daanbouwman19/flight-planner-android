@@ -2,12 +2,14 @@ package com.github.daanbouwman.flightplanner.wear.route
 
 import com.github.daanbouwman.flightplanner.model.AircraftSpec
 import com.github.daanbouwman.flightplanner.routing.AirportIndex
+import com.github.daanbouwman.flightplanner.routing.GeneratedRoute
 import com.github.daanbouwman.flightplanner.routing.RouteGenerator
 import com.github.daanbouwman.flightplanner.routing.RouteMode
 import com.github.daanbouwman.flightplanner.routing.RouteRequest
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * An endless supply of routes to swipe through.
@@ -27,12 +29,21 @@ import kotlinx.coroutines.Dispatchers
  *
  * Pure, and free of Android: the ViewModel owns the state and this owns the
  * rules, so the rules can be tested in milliseconds against a two-airport index.
+ * The primary constructor also takes the wording as a function, so a test can
+ * see which thread it runs on; the public one fixes it to [toCard].
  */
-class WatchRouteFeed(
+class WatchRouteFeed internal constructor(
     private val index: AirportIndex,
     private val fleet: List<AircraftSpec>,
-    dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val dispatcher: CoroutineDispatcher,
+    private val word: (GeneratedRoute, AirportIndex) -> WatchRouteCard,
 ) {
+
+    constructor(
+        index: AirportIndex,
+        fleet: List<AircraftSpec>,
+        dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    ) : this(index, fleet, dispatcher, GeneratedRoute::toCard)
 
     private val generator = RouteGenerator(index, dispatcher = dispatcher)
 
@@ -45,10 +56,16 @@ class WatchRouteFeed(
      * phone leaves the choice to the user; the watch does not have the room to
      * ask, so it takes the stricter reading.
      *
+     * All of it runs on [dispatcher], the wording included. The generator
+     * switches to it on its own, but [toCard] — sampling each great circle,
+     * resolving each airframe's outline, and on the first batch initialising the
+     * whole generated outline table — used to run after it returned, on the
+     * caller's context, which is the ViewModel's main thread.
+     *
      * Empty when the fleet is empty or no route could be built, which the caller
      * treats as "nothing to show" rather than retrying forever.
      */
-    suspend fun nextBatch(): List<WatchRouteCard> =
+    suspend fun nextBatch(): List<WatchRouteCard> = withContext(dispatcher) {
         generator.generate(
             RouteRequest(
                 mode = RouteMode.AllAircraft,
@@ -56,7 +73,8 @@ class WatchRouteFeed(
                 amount = BATCH_SIZE,
                 icaoOnly = true,
             ),
-        ).map { it.toCard(index) }
+        ).map { word(it, index) }
+    }
 
     companion object {
         /** Routes per batch. See the class KDoc for why it is not 50. */

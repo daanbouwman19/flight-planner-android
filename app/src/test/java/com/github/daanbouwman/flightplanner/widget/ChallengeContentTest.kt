@@ -32,7 +32,7 @@ class ChallengeContentTest {
         setAppWidgetSize(ChallengeWidget.WIDE)
         provideComposable { GlanceTheme(colors = colors) { ChallengeContent(ready, map = null, palette = palette) } }
 
-        onNode(hasText("Boeing 787-9")).assertExists()
+        onNode(hasText("Boeing 787-10 Dreamliner")).assertExists()
         onNode(hasText("Wed 16 Sep")).assertExists()
         onNode(hasText("EHAM")).assertExists()
         onNode(hasText("KJFK")).assertExists()
@@ -49,7 +49,7 @@ class ChallengeContentTest {
         onNode(hasText("EHAM")).assertExists()
         onNode(hasText("KJFK")).assertExists()
         onNode(hasText("Wed 16 Sep")).assertExists()
-        onNode(hasText("Boeing 787-9")).assertDoesNotExist()
+        onNode(hasText("Boeing 787-10 Dreamliner")).assertDoesNotExist()
     }
 
     @Test

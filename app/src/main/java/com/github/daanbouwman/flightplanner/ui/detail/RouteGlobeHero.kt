@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftShape
 import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMap
 import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeAttribution
 import com.github.daanbouwman.flightplanner.feature.globe.ui.GlobeCameraControls
@@ -74,6 +75,8 @@ fun DeepGlobeHero(
     /** Completes the shared key the plan card carries. See the [RouteMap] below. */
     aircraftId: Int,
     modifier: Modifier = Modifier,
+    /** Flown along the flat map under the sphere, as on the card that flies here. */
+    aircraft: AircraftShape? = null,
     /**
      * How much of the hero the screen’s own app bar sits over.
      *
@@ -169,6 +172,7 @@ fun DeepGlobeHero(
                             SharedRouteKeys.face(departureIcao, destinationIcao, aircraftId),
                             remeasure = false,
                         ),
+                    aircraft = aircraft,
                 )
             },
             overlay = {

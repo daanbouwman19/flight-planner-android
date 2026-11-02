@@ -17,9 +17,9 @@ import kotlin.math.roundToInt
  *
  * A longitude quantised to a signed 16-bit fraction of 180° lands on a
  * 0.0055° grid, or ~610 m at the equator; latitude, over 90°, lands on ~305 m.
- * At the closest a route card ever zooms — a window floor of about 25° across a
- * 360 dp card — that grid step is under a twentieth of a pixel, so the
- * quantisation is invisible and the file halves.
+ * At the closest a route card ever zooms — a window floor of about 15° across a
+ * 360 dp card — that grid step is about a tenth of a dp, under half a pixel at
+ * 3×, so the quantisation is invisible and the file halves.
  *
  * ### Rings carry explicit lengths
  *

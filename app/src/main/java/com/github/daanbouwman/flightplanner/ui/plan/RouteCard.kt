@@ -247,6 +247,9 @@ fun RouteCard(
                 topInset = CardPadding + with(LocalDensity.current) {
                     MaterialTheme.typography.titleSmall.lineHeight.toDp()
                 },
+                // The airframe flies the leg in place of the arrowhead, where the
+                // leg is long enough to carry it; see RouteMap.
+                aircraft = row.shape,
             )
             Column(
                 modifier = Modifier

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -70,6 +71,8 @@ import androidx.graphics.shapes.Morph
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
+import com.github.daanbouwman.flightplanner.core.designsystem.components.AircraftSilhouette
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
@@ -575,13 +578,28 @@ internal fun LogbookRowCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = aircraftName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // The airframe line leads with its outline, small and in the
+                // line's own colour: the leg is this row's subject, so the type
+                // is a glyph beside its name rather than a picture beside the row.
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    row.shape?.let { shape ->
+                        AircraftSilhouette(
+                            shape = shape,
+                            modifier = Modifier.size(16.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        text = aircraftName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -667,6 +685,7 @@ internal val previewRows = listOf(
         aircraftDisplayName = "Boeing 737-800",
         distanceNm = 226,
         flightTime = FlightTime(0, 40, 450.0),
+        shape = AircraftArt.byId("b738"),
     ),
     LogbookRow(
         id = 2,
@@ -687,6 +706,7 @@ internal val previewRows = listOf(
         aircraftDisplayName = "Boeing 737-800",
         distanceNm = 3159,
         flightTime = FlightTime(7, 1, 450.0),
+        shape = AircraftArt.byId("b738"),
     ),
 )
 

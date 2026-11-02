@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
 import com.github.daanbouwman.flightplanner.core.designsystem.components.FlightRulesBadge
 import com.github.daanbouwman.flightplanner.core.designsystem.components.RouteMap
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SkyProfile
@@ -316,10 +317,14 @@ private fun ColumnScope.StillRouteHero(state: RouteDetailUiState, faceKey: Strin
             .sharedRouteElement(faceKey, remeasure = false, clipShape = heroShape),
     ) {
         state.arc?.let { arc ->
+            // The card's map flies here, airframe and all, so the hero carries
+            // the same outline the card did.
+            val shape = remember(state.aircraft) { state.aircraft?.let(AircraftArt::shapeFor) }
             RouteMap(
                 arc = arc,
                 outline = state.outline,
                 modifier = Modifier.fillMaxSize(),
+                aircraft = shape,
             )
         }
     }

@@ -10,16 +10,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlin.math.hypot
-import kotlin.math.sqrt
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftShape
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
+import com.github.daanbouwman.flightplanner.mapscene.drawRouteMap
+import com.github.daanbouwman.flightplanner.mapscene.routeMapScene
 import com.github.daanbouwman.flightplanner.routing.GeoArc
-import com.github.daanbouwman.flightplanner.routing.ProjectedRings
 import com.github.daanbouwman.flightplanner.routing.RouteArc
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 
@@ -66,12 +65,30 @@ import com.github.daanbouwman.flightplanner.routing.WorldOutline
  *
  * ### A short hop is a ring, not a smudge
  *
- * Below [MinArrowChordDp] between the projected ends, the two markers and the
+ * Below `MinArrowChordDp` between the projected ends, the two markers and the
  * arrowhead would overlap into one blob that reads as a rendering fault. A hop
  * that short is drawn as its cased line — which is all the direction it has
  * room to state — under one hollow ring at its midpoint: the chart mark for "a
  * place", standing for both ends at once. The same threshold decides whether
  * a network leg carries an arrowhead, so the two maps agree on what "short" is.
+ *
+ * ### The aircraft flies the leg
+ *
+ * Given an [aircraft], the map draws its outline at the arc's midpoint, nose
+ * along the track, `PlaneLengthDp` long and cased like the line — in place of
+ * the arrowhead, which it makes redundant: a nose states direction as plainly
+ * as a head does, and names the type besides. It needs room. Below
+ * `MinPlaneChords` plane lengths between the projected ends the two markers
+ * would sit under its wings, so the arrowhead stays; below `MinArrowChordDp`
+ * the ring stays, exactly as without an aircraft.
+ *
+ * ### The drawing is shared with the watch
+ *
+ * The scene this draws — every path, width, marker and threshold named above —
+ * is built and drawn by `:core:mapscene`, which is Compose graphics with no
+ * Material in it, so the watch face can draw the same map without taking this
+ * module's alpha-pinned `material3`. This composable is the phone's binding of
+ * it: the colour roles, the `clipRect`, and `RouteMapStyle.Card`, the default.
  *
  * The map carries no information the card does not state in text, so it is
  * hidden from accessibility services outright.
@@ -82,6 +99,7 @@ fun RouteMap(
     outline: WorldOutline,
     modifier: Modifier = Modifier,
     topInset: Dp = 0.dp,
+    aircraft: AircraftShape? = null,
     landColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = WorldMapLandAlpha),
     coastColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = WorldMapCoastAlpha),
     routeColor: Color = MaterialTheme.colorScheme.primary,
@@ -93,8 +111,9 @@ fun RouteMap(
             .drawWithCache {
                 // The geometry — frame, paths, markers, widths — is one object,
                 // built here and drawn below; `routeMapScene` and `drawRouteMap`
-                // are what the home-screen widget shares with this card, so the
-                // two cannot drift. See RouteMapScene.kt.
+                // are what the home-screen widget and the watch face share with
+                // this card, so the three cannot drift. See RouteMapScene.kt in
+                // `:core:mapscene`.
                 val scene = routeMapScene(
                     arc = arc,
                     outline = outline,
@@ -102,6 +121,7 @@ fun RouteMap(
                     height = size.height,
                     density = this,
                     topInsetPx = topInset.toPx(),
+                    aircraft = aircraft,
                 ) ?: return@drawWithCache onDrawBehind { }
 
                 onDrawBehind {
@@ -146,47 +166,16 @@ fun RouteMap(
  * Chosen against a mid-contrast map that reads unmistakably as a map — and needs
  * a scrim under every figure on the card to stay legible. Text keeps essentially
  * its full contrast against this. Shared with any other composable drawing a
- * world outline (see [ProjectedRings.toPath]) so every map in the app reads as
- * one system rather than several independently-tuned ones.
+ * world outline — `NetworkMap`, the widget's masks — so every map in the app
+ * reads as one system rather than several independently-tuned ones. The strokes,
+ * casing and markers those maps draw with are `:core:mapscene`'s, shared with
+ * the watch; these two alphas are the phone's own, because the watch's map
+ * takes its inks from its own theme's roles.
  */
 const val WorldMapLandAlpha = 0.08f
 
 /** The coast, at twice the fill, which is what makes a silhouette recognisable. */
 const val WorldMapCoastAlpha = 0.16f
-
-// The ink every map in this module draws with. Internal rather than private
-// because [NetworkMap] is the same map with more legs on it, and it used to
-// re-literalise these numbers in `:app` — where they drifted: a 1.5 dp leg under
-// a 2.5 dp route, a casing half as wide, a margin twice as wide. One set of
-// figures, one place to retune them.
-internal const val CoastStrokeDp = 1f
-internal const val RouteStrokeDp = 2.5f
-
-/** Half-width of the casing under each line, per side. */
-internal const val CasingDp = 1.5f
-
-/** Half-length of the direction arrowhead. */
-internal const val ArrowLengthDp = 5f
-
-/** The arrowhead's half-width as a fraction of its length: a narrow, chart-like head. */
-internal const val ArrowHalfWidth = 0.62f
-
-internal const val EndpointRadiusDp = 4f
-internal const val EndpointStrokeDp = 2f
-
-/** Extra window projected around the card, as a fraction of each span. */
-internal const val OutlineMargin = 0.05
-
-/**
- * Below this projected chord between a leg's two ends, the ends are one place.
- *
- * At 24 dp the arrowhead, its casing and the two endpoint markers overlap into
- * a mark that cannot be read, and a mark that cannot be read is worse than a
- * leg with no stated direction. [RouteMap] draws such a hop as a single ring;
- * [NetworkMap] keeps its per-node dots and drops the head. One threshold, so
- * the plan card and the network card agree on what "short" is.
- */
-internal const val MinArrowChordDp = 24f
 
 @LightDarkPreview
 @Composable
@@ -215,92 +204,3 @@ private val PreviewOutline = WorldOutline(
     lat = floatArrayOf(20f, 25f, 60f, 65f, 20f),
     ringStart = intArrayOf(0, 5),
 )
-
-/**
- * Walks projected rings into a `Path`, scaling the fractions to pixels.
- *
- * Public so any composable drawing a [WorldOutline] — [RouteMap] included —
- * shares this conversion rather than reimplementing it.
- *
- * @param close true for the filled polygons, false for the coastline: an open
- *   polyline that gets closed grows a straight segment from its last point back
- *   to its first, straight across the card.
- */
-fun ProjectedRings.toPath(width: Float, height: Float, close: Boolean): Path {
-    val path = Path()
-    for (ring in 0 until ringCount) {
-        val from = ringStart[ring]
-        val to = ringStart[ring + 1]
-        if (to - from < 2) continue
-        path.moveTo(points[from * 2] * width, points[from * 2 + 1] * height)
-        for (i in from + 1 until to) {
-            path.lineTo(points[i * 2] * width, points[i * 2 + 1] * height)
-        }
-        if (close) path.close()
-    }
-    return path
-}
-
-/**
- * A filled arrowhead sitting on the arc at [index], pointing the way the route
- * runs there.
- *
- * Drawn as a triangle rather than as `MaterialShapes.Arrow`: at eight pixels a
- * side, a rounded polygon's corner radii eat most of the tip, and the tip is the
- * entire signal. The direction comes from the samples *either side* of the
- * midpoint, so it follows the curve rather than the chord between the ends.
- *
- * Internal: [NetworkMap] puts the same head on every leg of the visited network.
- *
- * @return null when the arc is too short to have a direction at all.
- */
-internal fun arrowPath(
-    projected: FloatArray,
-    index: Int,
-    width: Float,
-    height: Float,
-    length: Float,
-): Path? {
-    val count = projected.size / 2
-    if (count < 3 || index <= 0 || index >= count - 1) return null
-
-    val x = projected[index * 2] * width
-    val y = projected[index * 2 + 1] * height
-    val dx = (projected[(index + 1) * 2] - projected[(index - 1) * 2]) * width
-    val dy = (projected[(index + 1) * 2 + 1] - projected[(index - 1) * 2 + 1]) * height
-    val magnitude = sqrt(dx * dx + dy * dy)
-    // A route whose midpoint samples coincide has no heading to draw — a
-    // departure and destination at the same airport, which the generator can
-    // produce with a locked departure.
-    if (magnitude < 1e-3f) return null
-
-    val ux = dx / magnitude
-    val uy = dy / magnitude
-    // Perpendicular, for the two trailing corners.
-    val px = -uy
-    val py = ux
-    val half = length * ArrowHalfWidth
-
-    return Path().apply {
-        moveTo(x + ux * length, y + uy * length)
-        lineTo(x - ux * length * 0.4f + px * half, y - uy * length * 0.4f + py * half)
-        lineTo(x - ux * length * 0.4f - px * half, y - uy * length * 0.4f - py * half)
-        close()
-    }
-}
-
-/**
- * The straight-line distance in pixels between a projected leg's two ends.
- *
- * The chord, not the arc's length: what decides whether two markers and a
- * head collide is how far apart the *ends* land on the canvas, and a bowed
- * arc between two close ends is still two close ends. Compared against
- * [MinArrowChordDp] by both maps.
- */
-internal fun projectedChord(projected: FloatArray, width: Float, height: Float): Float {
-    if (projected.size < 4) return 0f
-    return hypot(
-        (projected[projected.size - 2] - projected[0]) * width,
-        (projected[projected.size - 1] - projected[1]) * height,
-    )
-}

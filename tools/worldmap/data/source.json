@@ -1,5 +1,15 @@
 {
-  "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson",
-  "sha256": "9e0729ee253ca7d7a5c4ae9395fb1902264c5377c52e224d13dd85010e2835d9",
+  "files": [
+    {
+      "name": "ne_50m_land.geojson",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_land.geojson",
+      "sha256": "e874b27a51d146452be360cafb3cc50c86001074a67d534113e6534682f9826b"
+    },
+    {
+      "name": "ne_50m_lakes.geojson",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_lakes.geojson",
+      "sha256": "d350b75978b26fe839b797c2c529b2fb8f47fb3983c03f4964e36d5df9378a52"
+    }
+  ],
   "licence": "public domain (Natural Earth)"
 }

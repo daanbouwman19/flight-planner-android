@@ -124,6 +124,22 @@ class MapFrameTest {
         land.fill.ringCount shouldBe 1
     }
 
+    @Test
+    fun `an islet is drawn at the closest window and dropped from a continent-wide one`() {
+        // 0.1° across: a Wadden island, near the coast of both windows.
+        val islet = square("Texel", centreLon = 4.8, centreLat = 53.1, halfSize = 0.05)
+        val mainland = square("Europe", centreLon = 4.0, centreLat = 51.0, halfSize = 6.0)
+        val outline = outlineOf(mainland, islet)
+
+        val hop = arc(amsterdam, london)
+        val close = MapFrame.forRoute(hop.lats, hop.lons, aspect = 2.0)
+        close.projectOutline(outline).fill.ringCount shouldBe 2
+
+        val longHaul = arc(amsterdam, 35.55 to 139.78)
+        val wide = MapFrame.forRoute(longHaul.lats, longHaul.lons, aspect = 2.0)
+        wide.projectOutline(outline).fill.ringCount shouldBe 1
+    }
+
     /**
      * The point of clipping. Before it, a card showing a European hop still filled
      * and stroked every point of the ring it sits on, and trusted the canvas to

@@ -1,11 +1,14 @@
 package com.github.daanbouwman.flightplanner.ui.fleet
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
@@ -17,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -24,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
+import com.github.daanbouwman.flightplanner.core.designsystem.components.AircraftSilhouette
 import com.github.daanbouwman.flightplanner.core.designsystem.components.EmptyState
 import com.github.daanbouwman.flightplanner.core.designsystem.components.SkeletonCard
 import com.github.daanbouwman.flightplanner.core.designsystem.motion.FlightMotion
@@ -137,6 +143,21 @@ private fun EnvelopeHero(aircraft: AircraftSpec, modifier: Modifier = Modifier) 
         modifier = modifier,
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
+            // The type from above, as large as the card allows: the full width,
+            // or 220 dp tall for one longer than it is wide, centred either way.
+            // No dimensions beside it — the drawing states the shape, the
+            // figures below state the envelope.
+            val shape = remember(aircraft) { AircraftArt.shapeFor(aircraft) }
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                AircraftSilhouette(
+                    shape = shape,
+                    modifier = Modifier
+                        .heightIn(max = HeroSilhouetteMaxHeight)
+                        .aspectRatio(shape.aspectRatio),
+                    color = if (aircraft.flown) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
             Text(
                 text = "${aircraft.category} · ${aircraft.icaoCode}",
                 style = MaterialTheme.typography.labelSmall,
@@ -216,3 +237,11 @@ private fun FlownRow(aircraft: AircraftSpec, onToggleFlown: () -> Unit, modifier
         }
     }
 }
+
+/**
+ * The tallest the Fleet detail hero draws an airframe that is longer than it is
+ * wide; one wider than it is long takes the card's width instead. Chosen on the
+ * design canvas: a 777 at this height is a recognisable 777 and still leaves the
+ * envelope figures on a phone's first screen.
+ */
+private val HeroSilhouetteMaxHeight = 220.dp

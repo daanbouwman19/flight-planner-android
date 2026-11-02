@@ -596,6 +596,8 @@ canvas's aspect ratio, so the projection is uniform and land keeps its shape.
 **Minimum span, not the whole world.** A world map makes every European route a
 two-pixel squiggle. The window is bounded by the route with padding and a floor
 of roughly 25°, so a short hop still shows recognisable coast around it.
+(Lowered to 15° in Phase I, when the aircraft outline began flying the leg and
+a 120 NM hop at 25° was a stub the outline all but covered.)
 
 ### Anti-aliasing
 
@@ -619,6 +621,15 @@ sampling and joins, not a flag:
 | **B14** | Card recomposition | ✅ Looked at in both themes on an emulator and on a phone, at font scale 1.0 and 2.0. Map to the card's background layer, content over it, chips translucent, height raised to fit a map |
 
 ### Findings for B11, so the next session does not rediscover them
+
+**Phase I update (2026-11-01).** The source is now Natural Earth **1:50m** land, with
+the 1:50m **lakes** cut out as holes (each only where the land still reads as land,
+so the Caspian — already a hole — is not cut twice): 1,865 rings, 59,690 points,
+240 KB, at a 0.01° tolerance and a 0.05° minimum ring span. It moved when the map's
+minimum window went from 25° to 15° for the aircraft outline's sake: at 15° the
+1:110m coast drew the Low Countries as eight straight strokes and the Netherlands
+with no IJsselmeer. The verifier probes the IJsselmeer and the Caspian as water.
+The figures below are the original 1:110m build.
 
 **Source.** `https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_land.geojson`
 — reachable, returns 200. Natural Earth is **public domain**: no attribution
@@ -2748,6 +2759,50 @@ provider info keeps that info's resize constraints until it is removed and re-ad
 which is why the first resize attempt on the phone looked like a bug and was not.
 Recorded in the design system's brand book as *the reference device*, so widget
 concepts are drawn at real grants rather than the 100 dp mock convention.
+
+
+## 10a. Phase I — Aircraft silhouettes 🚧 IN PROGRESS (branch `feature/aircraft-silhouettes`)
+
+Every airframe drawn from directly above, traced from the simulator's own model
+of it, on every surface that names an aircraft. Design canvas:
+<https://claude.ai/artifact/7ffPYfHpo6BJgAoGHPUJfS>; review sheet of every outline:
+<https://claude.ai/artifact/RRh5nDekhtFMptuq45WqeV>.
+
+| ID | Task | Status |
+| --- | --- | --- |
+| **I1** | Survey and manifest | ✅ `tools/aircraftart/data/shapes.ini`: 124 outlines for the 135 seed rows, each naming its glTF, its node excludes and pose fixes, its published span and length and a tolerance where the model differs |
+| **I2** | The tracer, `:tools:aircraftart` | ✅ glTF reader (ASOBO primitives, skins in bind pose, rest-pose skinning opt-in, MergeModel attach), two-pass raster at 3,200 px, morphological close then open, propellers as bars sized from the still blades, marching squares, Douglas–Peucker, integer centimetres |
+| **I3** | The gaps | ✅ Drawn from published three-views where the model is encrypted or absent: B-2, F-14, HondaJet, Kitfox, MB-339, DHC-6; the An-225's wing over its traced fuselage; the 737-600 derived from the -700 by fuselage plugs |
+| **I4** | Review | ✅ Every outline built and checked by eye one by one, `verified = yes` on all 124 |
+| **I5** | `:core:aircraftart` | ✅ Generated table plus `AircraftArt.shapeFor` (seed row → ICAO → category → generic single); coverage test: every seed row resolves to an outline of its own |
+| **I6** | Design system | ✅ `AircraftSilhouette`; the route map's plane, 24 dp, in place of the arrowhead where the leg is at least 1.6 plane lengths; `renderSilhouetteMask` for Glance |
+| **I7** | Phone surfaces | ✅ Fleet rows (48 dp, `primary` once flown), Fleet detail hero (planform alone, no dimensions), Plan cards and both route-detail heroes, Stats "Most flown" (28 dp), Logbook (16 dp glyph before the airframe) |
+| **I8** | Widget and watch | ✅ The aircraft widget's two-row band; the challenge map's plane; the watch face's plane. The one-row widgets are unchanged: the four-cell row is full |
+| **I9** | Docs, goldens, performance | 🚧 |
+
+What the device found:
+
+- **The plane hid on short legs.** It first needed 3.6 plane lengths of chord, which
+  left anything under about 250 NM with its arrowhead, and read on the phone as
+  "some aircraft have no icon". It now needs room for itself and both end markers,
+  1.6 lengths.
+- **The map was too wide for the plane.** The route map's minimum window went from
+  25° to 15° of longitude; a 120 NM hop at 25° was a stub the outline all but
+  covered.
+- **And then too coarse for the zoom.** At 15° the 1:110m coast drew the Low
+  Countries as eight straight strokes. The outline is now Natural Earth 1:50m with
+  the lakes cut out — the IJsselmeer, the Great Lakes — at 240 KB (see B11).
+  Its lakes and islets then speckled the continent-wide maps — a Siberian lake is a
+  fraction of a pixel on a Eurasia-wide card — so `MapFrame.projectOutline` drops a
+  ring under 0.3 % of the window in both directions: the close map keeps every
+  island, the wide one sheds the dust.
+- **The challenge widget was blurry, and always had been.** Glance's responsive mode
+  composes each bucket at the bucket's size, so the map bitmap was drawn at
+  250 × 100 dp and stretched over the default 376 × 204 dp grant. It is
+  `SizeMode.Exact` now, and renders at the card's own pixels.
+
+The F-14's three simulator variants — the A, the early A and the B — are three seed
+rows again, sharing one outline and the figures the sim reports for all three.
 
 
 ## 11. Sequencing

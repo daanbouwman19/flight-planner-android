@@ -34,6 +34,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -51,6 +53,8 @@ import androidx.wear.compose.material3.Text
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.wear.R
 import com.github.daanbouwman.flightplanner.wear.handoff.HandoffResult
+import com.github.daanbouwman.flightplanner.wear.map.WatchFace
+import com.github.daanbouwman.flightplanner.wear.map.WatchSceneSource
 import com.github.daanbouwman.flightplanner.wear.route.WatchRouteCard
 import com.github.daanbouwman.flightplanner.wear.route.WatchRouteFeedState
 import com.github.daanbouwman.flightplanner.wear.ui.theme.WearRouteType
@@ -63,6 +67,16 @@ import kotlinx.coroutines.flow.Flow
  *
  * Stateless in the usual sense — everything it needs arrives as arguments — so
  * a preview or a test can compose it without Hilt, an asset or a paired phone.
+ *
+ * @param scenes where each face's map comes from. The app passes the
+ *   ViewModel's cache, which builds the pages around the settled one ahead of
+ *   time; the default builds each map as it is drawn, which looks identical and
+ *   costs the UI thread the build. See [WatchRouteMap].
+ * @param onFaceMeasured told the face's size and density once they are known —
+ *   on the first layout, while the feed is still loading — so the maps can be
+ *   built before the first page is shown. Measured here rather than on a page
+ *   because this box exists in every state, and the pager and each of its pages
+ *   fill it exactly, so it is the map's own size.
  */
 @Composable
 internal fun RouteFeedScreen(
@@ -71,8 +85,15 @@ internal fun RouteFeedScreen(
     onPageSettled: (Int) -> Unit,
     onOpenOnPhone: (WatchRouteCard) -> Unit,
     modifier: Modifier = Modifier,
+    scenes: WatchSceneSource = WatchSceneSource.Direct,
+    onFaceMeasured: (WatchFace) -> Unit = {},
 ) {
-    Box(modifier = modifier.fillMaxSize()) {
+    val density = LocalDensity.current.density
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onSizeChanged { size -> onFaceMeasured(WatchFace(extentPx = minOf(size.width, size.height), density = density)) },
+    ) {
         when (state) {
             WatchRouteFeedState.Loading -> CentredMessage(stringResource(R.string.route_loading))
 
@@ -84,6 +105,7 @@ internal fun RouteFeedScreen(
             is WatchRouteFeedState.Ready -> RoutePager(
                 routes = state.routes,
                 outline = state.outline,
+                scenes = scenes,
                 onPageSettled = onPageSettled,
                 onOpenOnPhone = onOpenOnPhone,
             )
@@ -96,6 +118,7 @@ internal fun RouteFeedScreen(
 private fun RoutePager(
     routes: List<WatchRouteCard>,
     outline: WorldOutline,
+    scenes: WatchSceneSource,
     onPageSettled: (Int) -> Unit,
     onOpenOnPhone: (WatchRouteCard) -> Unit,
 ) {
@@ -140,7 +163,7 @@ private fun RoutePager(
         // of the raw `spring()` the invariants forbid outside
         // `:core:designsystem` — a facade `:wear` deliberately cannot reach.
         AnimatedPage(pageIndex = page, pagerState = pager) {
-            RouteFace(route = routes[page], outline = outline, onOpenOnPhone = onOpenOnPhone)
+            RouteFace(route = routes[page], outline = outline, scenes = scenes, onOpenOnPhone = onOpenOnPhone)
         }
     }
 }
@@ -171,6 +194,7 @@ private fun RoutePager(
 private fun RouteFace(
     route: WatchRouteCard,
     outline: WorldOutline,
+    scenes: WatchSceneSource,
     onOpenOnPhone: (WatchRouteCard) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -201,9 +225,10 @@ private fun RouteFace(
         val face = maxHeight
 
         WatchRouteMap(
-            arc = route.arc,
+            route = route,
             outline = outline,
             palette = rememberWatchMapPalette(),
+            scenes = scenes,
             modifier = Modifier.fillMaxSize(),
         )
 

@@ -13,6 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * The aircraft card's face, composed through Glance's own unit-test host —
@@ -25,9 +26,14 @@ import org.robolectric.annotation.Config
  * it carries, whether the range is labelled, and that the flown status is
  * stated on every one of them — in words on the wide cards, and on the compact
  * ones as a described mark rather than as colour alone.
+ *
+ * Native graphics, as [ChallengeMapTest] runs: the two-row cards render the
+ * airframe's outline into a bitmap, and Robolectric's legacy graphics cannot
+ * create one, so every tall layout failed before it said anything.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AircraftContentTest {
 
     private val ready = AircraftWidget.PREVIEW_STATE
@@ -45,13 +51,13 @@ class AircraftContentTest {
         runGlanceAppWidgetUnitTest {
             compose(AircraftWidget.WIDE_TALL)
 
-            onNode(hasText("Boeing 787-9")).assertExists()
+            onNode(hasText("Boeing 787-10 Dreamliner")).assertExists()
             onNode(hasText("16 Sep")).assertExists()
-            onNode(hasText("B789")).assertExists()
+            onNode(hasText("B78X")).assertExists()
             onNode(hasText("RNG")).assertExists()
-            onNode(hasText("7,355 NM")).assertExists()
+            onNode(hasText("6,430 NM")).assertExists()
             onNode(hasText("RWY")).assertExists()
-            onNode(hasText("9,800 ft")).assertExists()
+            onNode(hasText("10,597 ft")).assertExists()
             onNode(hasText("FLOWN")).assertExists()
         }
 
@@ -59,13 +65,13 @@ class AircraftContentTest {
     fun `wide and short, the same facts on two lines`() = runGlanceAppWidgetUnitTest {
         compose(AircraftWidget.WIDE)
 
-        onNode(hasText("Boeing 787-9")).assertExists()
+        onNode(hasText("Boeing 787-10 Dreamliner")).assertExists()
         onNode(hasText("16 Sep")).assertExists()
-        onNode(hasText("B789")).assertExists()
+        onNode(hasText("B78X")).assertExists()
         onNode(hasText("RNG")).assertExists()
-        onNode(hasText("7,355 NM")).assertExists()
+        onNode(hasText("6,430 NM")).assertExists()
         onNode(hasText("RWY")).assertExists()
-        onNode(hasText("9,800 ft")).assertExists()
+        onNode(hasText("10,597 ft")).assertExists()
         onNode(hasText("FLOWN")).assertExists()
     }
 
@@ -81,12 +87,12 @@ class AircraftContentTest {
         runGlanceAppWidgetUnitTest {
             compose(AircraftWidget.COMPACT_TALL)
 
-            onNode(hasText("B789")).assertExists()
+            onNode(hasText("B78X")).assertExists()
             onNode(hasText("16 Sep")).assertExists()
             onNode(hasText("RNG")).assertExists()
-            onNode(hasText("7,355 NM")).assertExists()
+            onNode(hasText("6,430 NM")).assertExists()
             onNode(hasText("RWY")).assertDoesNotExist()
-            onNode(hasText("9,800 ft")).assertDoesNotExist()
+            onNode(hasText("10,597 ft")).assertDoesNotExist()
         }
 
     /**
@@ -97,8 +103,8 @@ class AircraftContentTest {
     fun `compact and short, the range keeps its unit and loses its label`() = runGlanceAppWidgetUnitTest {
         compose(AircraftWidget.COMPACT)
 
-        onNode(hasText("B789")).assertExists()
-        onNode(hasText("7,355 NM")).assertExists()
+        onNode(hasText("B78X")).assertExists()
+        onNode(hasText("6,430 NM")).assertExists()
         onNode(hasText("RNG")).assertDoesNotExist()
         onNode(hasText("RWY")).assertDoesNotExist()
     }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -62,6 +63,8 @@ import androidx.graphics.shapes.Morph
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
+import com.github.daanbouwman.flightplanner.core.designsystem.components.AircraftSilhouette
 import com.github.daanbouwman.flightplanner.core.designsystem.components.CompactWidthPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.components.ConfirmationDialog
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
@@ -482,13 +485,25 @@ internal fun FleetRowCard(
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
+        val shape = remember(aircraft) { AircraftArt.shapeFor(aircraft) }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                // 12 dp top and bottom rather than 16: the outline sets the row's
+                // height now, and 48 dp plus the full padding made every row 10 dp
+                // taller than the two lines of text beside it need.
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // The type, seen from above. Primary once it has been flown, the
+            // caption colour until then: down a list where status varies the
+            // outline carries it too, beside the chip that states it.
+            AircraftSilhouette(
+                shape = shape,
+                modifier = Modifier.size(48.dp),
+                color = if (aircraft.flown) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = aircraft.displayName,

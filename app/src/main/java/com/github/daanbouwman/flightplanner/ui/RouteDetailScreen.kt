@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.daanbouwman.flightplanner.R
+import com.github.daanbouwman.flightplanner.aircraftart.AircraftArt
 import com.github.daanbouwman.flightplanner.core.designsystem.components.DevicePreviews
 import com.github.daanbouwman.flightplanner.core.designsystem.components.LightDarkPreview
 import com.github.daanbouwman.flightplanner.core.designsystem.theme.FlightPlannerTheme
@@ -365,6 +366,7 @@ fun RouteDetailScreen(
                     arc = state.arc,
                     outline = state.outline,
                     aircraftId = route.aircraftId,
+                    aircraft = remember(state.aircraft) { state.aircraft?.let(AircraftArt::shapeFor) },
                     // The bar sits over the hero, and the Scaffold has already
                     // worked out how tall it plus the status bar is.
                     topChromeInset = contentPadding.calculateTopPadding(),

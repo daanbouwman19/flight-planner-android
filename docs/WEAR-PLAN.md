@@ -44,6 +44,7 @@ published anything the face takes the default dark look.
 | Piece | Where |
 | --- | --- |
 | The route face, pager and map | `wear/…/ui/` |
+| The map's scenes, its style and their cache | `wear/…/map/`, drawn through `:core:mapscene` |
 | The endless batch feed | `wear/…/route/WatchRouteFeed.kt` |
 | Assets — index, seed fleet, coastline | `wear/…/data/WearAirportData.kt` |
 | The tap to the phone | `wear/…/handoff/PhoneHandoff.kt` |
@@ -137,6 +138,16 @@ directory to `sourceSets` instead is refused outright by AGP 9. The database car
 names, municipalities, elevations and runway detail; route generation reads none
 of them and this app shows codes rather than names.
 
+**The airframe flies the route (Phase I).** The face draws the route's aircraft
+from above at the leg's midpoint, nose along the track, 24 dp long and cased in
+the face's ground: the phone's route-card rule, and since *Swipe performance*
+below literally the phone's code, from `:core:mapscene`. (It was first written
+again in `WatchRouteMap` as `planeOnLeg`, because `:wear` cannot see
+`:core:designsystem`.) It draws only where the leg is at least 1.6 plane lengths
+end to end, so a short hop keeps its two dots. The outlines come from `:core:aircraftart`, which is pure JVM and so a
+plain dependency here. The world outline the watch copies is the 1:50m one, at
+about 240 KB.
+
 ## What the device found
 
 Five defects, none of which a green build could have reported. Four are the same
@@ -157,7 +168,8 @@ never wired.
 rectangle past the face — the route's own extremes mapped to −2.4 % and 102.4 %
 of the face, so one or both endpoint dots were drawn off the glass. The zoom
 existed only to push the world outline's clip seam off-screen, which
-`OUTLINE_MARGIN`'s 8 % already does, so it is now 1.0. The padding that makes a
+`OUTLINE_MARGIN`'s 8 % already does, so it is now 1.0. (The margin has since
+come down to 1 % as well — see *Swipe performance*.) The padding that makes a
 route fit the *inscribed circle* rather than the square solves to 0.284 at the
 worst corner, against the 0.12 default — verified across six route geometries
 including a 2,944 NM diagonal, which is the case that clipped.
@@ -192,13 +204,222 @@ unplanned:
   has no motion-token layer of its own, so every animation it wants must either
   come from Wear's defaults or motivate one.
 
+## Swipe performance
+
+**The symptom.** Swiping lagged, worst on routes between continents and across
+oceans. Measured on the watch from a **release** build: a median frame of 34 ms,
+about 30 fps against the display's 60 Hz. The UI thread recorded a frame in
+~0.5 ms, with ~20 ms spikes on the frame a page was first drawn; RenderThread's
+issue-draw ran at a 13.5 ms median and 60–120 ms in the first frames of every
+swipe; the GPU at a 19 ms median (gfxinfo's *50th gpu percentile*, which HWUI
+takes per frame as GpuCompleted − SwapBuffers). That GPU figure is of the tree
+before any of this work. On the tree with the first four causes below in,
+framestats put the same interval at ~6–8 ms on zoomed-out faces while
+RenderThread's issue-draw ran at a 36 ms median: by then a page turn waited on
+RenderThread, not on the GPU — see the fifth cause below.
+
+**The cause** was the world outline, plus what the face did with it. The outline
+went from Natural Earth 1:110m to 1:50m — 4,601 points to 59,690, 18.9 KB to
+246 KB — so a long-haul face projects and draws some 40,000 fill and coast
+vertices where it drew 3,000. Five things then made each of those vertices dear:
+
+1. **The map was built in its draw.** `WatchRouteMap` framed, projected, clipped
+   and walked the outline into paths inside its `Canvas` lambda, which runs the
+   first time a page is drawn — the first frame of a swipe. Wear's pager
+   composes and measures the next page ahead but never draws it, so nothing
+   built the map early. One `projectOutline` allocated 1–5 MB.
+2. **The cards were worded on the main thread.** The generator returns on the
+   caller's context, and `toCard` — sampling each great circle, resolving each
+   outline, initialising the generated outline table — ran after it, on the
+   ViewModel's main thread.
+3. **An 8 % margin nobody can see.** It hid a clip seam when the map was zoomed
+   1.3×; at 1.0 on a round face, everything past the square is off the glass.
+4. **Round coast joins.** The phone moved its coast to bevel joins and butt caps
+   in Phase P3, measured as visually free at 1 dp; the watch's copy of the
+   drawing never followed.
+5. **Both maps are re-converted every frame of a turn.** `AnimatedPage` scales
+   the outgoing and incoming pages through a `graphicsLayer`, and RenderThread
+   converted both maps' dense paths again at every new scale.
+
+**What shipped** addresses all five — the fifth in a second pass, once the first
+four had been measured — and changes the face's look in exactly three declared
+ways:
+
+- **`:core:mapscene`.** The phone's scene builder and draw — `routeMapScene`,
+  `drawRouteMap`, the ink, the plane rule, the outline cache — moved out of
+  `:core:designsystem` into a module that is Compose graphics and no Material, so
+  the watch draws through the phone's code instead of a copy of it. What the face
+  does differently is `WatchMapStyle`: a frame padded 0.284 for a circle, a 1 %
+  margin, two filled dots of 3 dp radius, no arrowhead, no short-hop ring, no
+  graticule.
+  The phone is byte-identical: its 161 goldens verify without re-recording.
+- **`MapFrame.projectOutline` stopped allocating per ring and per segment**, with
+  bit-identical output, pinned by `ProjectOutlineRegressionTest` across eight
+  routes and three frames: 5,066 KB to 1,870 KB per call on EGLL–KJFK at the old
+  watch margin, measured on a desktop JVM.
+- **The map is built before the swipe.** `WatchSceneCache`, owned by the
+  ViewModel, holds six scenes keyed by route, airframe outline and face, and is
+  filled on the generator's dispatcher: the first page before the feed is shown
+  (the face is measured on the loading screen), then the settled page, the next,
+  the previous and the one after next on every settle. The map draws with
+  `drawWithCache` from it; a flick that outruns it builds the scene there and
+  then with the same function, so the face never pops in late and never looks
+  different. A theme change redraws a scene and never rebuilds it. A prefetch
+  skips a page another thread is still building: a newer settle cancels the
+  older prefetch only between builds, and start-up and every top-up relaunch it
+  on the same page, so without that skip the long-haul build already running
+  was started a second time beside it.
+- **`nextBatch` words its cards on the generator's dispatcher.**
+- **The map draws into an offscreen layer of its own**, so a page turn scales a
+  finished image instead of converting the coast again every frame — the fifth
+  cause, taken on its own below.
+- **Declared visual change 1: the coast strokes bevel/butt**, the phone's
+  Phase P3 stroke, now shared rather than copied.
+- **Declared visual change 2: the outline margin is 1 %, down from 8 %.** It
+  removes 22–36 % of a long-haul face's fill and coast points — EGLL–KJFK,
+  RJAA–KLAX and PHNL–NZAA, from the counts `ProjectOutlineRegressionTest` pins
+  at both margins — and nothing visible: see `OUTLINE_MARGIN`'s KDoc.
+- **Declared visual change 3: mid-turn, the map is a resample.** While a page is
+  scaled, everything the map draws — land, coast, the route line, its dots and
+  the airframe — is resampled from the layer's 1:1 image; on the watch that
+  shows as a faint softening of the route line's edge and the coast, gone when
+  the page settles. The text is drawn as vectors on the page and is unaffected.
+  At rest the map is within 5/255 of drawing straight to the page. Figures
+  below.
+
+Nothing else on the face changes. The one numerical difference: the top inset now
+reaches the frame through the scene's pixel parameter, so it is `0.22f` rather
+than `0.22` — a shift under a millionth of a pixel.
+
+**Measured after.** The first four alone left the zoomed-out faces slow. On the
+seeded pass described under *How it was measured*,
+a turn across faces under 15,000 vertices ran at 56–60 fps; 15,000–30,000 at
+35–36 dragged and 41–45 flicked; past 30,000 at 20–26, with 28–36 % of frames on
+time. Unseeded, over 40 flicks and 20 drags, janky frames went from 40 % of a
+drag and 25 % of a flick before any of this work to 10–12 % and 17–21 %. With the
+fifth cause addressed — variant E below — every zoom turns at 60 fps, dragged or
+flicked, with 98–100 % of frames on time.
+
+**The fifth cause, and the layer that took it.** What the first four left was
+RenderThread's. Framestats over four zoomed-out drags (40,000–64,000 vertices),
+on the tree with the first four in: issue-draw at a 36 ms median and 58 ms at
+p90, the UI thread then waiting ~33 ms for RenderThread, GPU time
+(GpuCompleted − SwapBuffers, the interval gfxinfo's gpu percentiles are built
+from) ~6 ms — 23–30 fps, 75 % of frames late.
+`AnimatedPage` gives each page a new scale every frame of a turn, and
+RenderThread converted the fill and coast paths again at each one. At rest
+nothing changes, so only a swipe paid, and the bill tracked how far out the face
+is zoomed: ~200–2,000 vertices on a short hop, 15,000–64,000 on a long haul —
+64,122 on OPMI–KELP, 40,260 on UBBQ–YMML, 32,682 on LFLV–CYRQ.
+
+`WatchRouteMap` now puts `graphicsLayer(compositingStrategy =
+CompositingStrategy.Offscreen)` ahead of its `drawWithCache`. The map is drawn
+into that layer at 1:1 when its page is first drawn, and again only when the
+map's own drawing changes — a new scene, a new palette; a turn scales the
+finished image.
+It covers the map and not the page, so the text stays vectors, and it is always
+on rather than only while the pager scrolls. It is bounded by the canvas, which
+cuts the scene's 1 % overshoot off at the face's square; that is invisible,
+because `AnimatedPage` clips each page to the circle inscribed in it, inside its
+scale.
+
+Six builds were measured — the tree before the layer (B) and five alternatives
+to it, D and D2 sharing a row — each gesture grouped by the largest vertex count
+among the faces it crossed:
+
+| Variant | Under 15k | 15k–30k | 30k and over | RenderThread a frame, 30k+ |
+| --- | --- | --- | --- | --- |
+| **B** — before the layer | 56–60 fps | drag 35–36, flick 41–45 | drag 20–21, flick 24–26; 28–36 % on time | 44–48 ms |
+| **C** — coast thinned at 0.5 px, no layer | ~57–60 | drag 43, flick 44–47 | drag 28–29, flick 31–39 | 21–32 ms |
+| **D, D2** — whole page in a layer, while scrolling / always | 60 | 60 | 60, 98–100 % on time | ~2 ms |
+| **E** — map only in a layer, always (**shipped**) | 60 | 60 | 60 dragged and flicked, 98–100 % on time | ~4.7 ms |
+| **Es** — map only, only while the pager scrolls | 60 | 60 | 60, 100 % on time; a flick's slowest frame 61 ms at p90, to E's 37 | ~5–5.5 ms |
+
+C on top of D added nothing measurable.
+
+**What it costs to look at**, from on-device screenshots of the same seeded
+route and page, diffed against B by largest channel difference. At rest, E is
+within 5/255 everywhere and more than 4 levels off on at most one pixel a face —
+invisible; D and Es, which have no layer at rest, are identical to B. Mid-drag,
+with a finger held 200 px in, D and D2 differ on 8,000–12,000 pixels by more than
+4 levels and on 900–1,300 by more than 48: they resample the text, and its glyph
+edges go visibly softer. E and Es differ on 3,100–5,800 by more than 4, 390–740
+by more than 16 and only 14–80 by more than 48 — the text is drawn as vectors and
+untouched, and what remains is a faint softening of the route line's edge and
+the coast while the page is scaled. C differs on 650–2,100 by more than 4 and on
+0–1 by more than 48.
+
+**Why E.** Over D and D2: the same 60 fps, but they resample the text mid-turn,
+and text is cheap to redraw — only the map needed caching. Over Es: the same
+60 fps, but Es makes its layer at each swipe's start and drops it at the end.
+Both draw the incoming page's map into a new layer when that page first
+appears, since the pager never draws a page ahead; Es must also draw the map
+already on screen into one again at every swipe's start — the slower p90 above
+— and it needs the pager's state threaded down into the map. E keeps the
+settled page's layer from rest, and pays at most 5/255 on one pixel a face at
+rest for that. Over C: 28–39 fps on the zoomed-out faces on its own, and nothing
+on top of D's layer. The standing rule is that image quality beats a marginal
+frame, and that a change which resamples the map is offered with screenshots
+rather than shipped silently. This one was offered: Daan swiped E, in the
+measurement build, on the watch on 2026-11-02, found it smooth, and chose it.
+
+**How it was measured.** Release builds (R8), AOT-compiled with `cmd package
+compile -f -m speed`, on the SM-L350 — 60 Hz only, a 16.7 ms budget — on its
+charger, at thermal status 0 throughout. Full `speed` compilation is not the
+state an install from a store is in, and `:wear` has no baseline profile; what
+the layer took away is RenderThread's, which is native code ART compilation does
+not touch, but the UI thread's share was not measured uncompiled. A measurement
+build of the tree seeded the route generator so that every variant swiped
+through the same 31 pages, picked the variant at launch, and logged every page
+settle with that face's unthinned vertex count. Each run was a cold start and then 30 slow drags
+(`input swipe` over 700 ms) or 30 flicks (over 120 ms), with framestats dumped
+after every gesture and joined to the settle log; fps is from display-present
+intervals. Two rounds per variant in alternating order, and a third for the
+map-only variants (a fourth was stopped after its first run, which agreed).
+That measurement build is not in the repo — it was a throwaway — and only its
+numbers are kept here. The tree's own release build, with the layer, was then
+measured the same way on the watch, on random routes since it has no seed and
+no logs: 30 drags and 30 flicks, all at 60 fps, 99–100 % of frames on time,
+~4–5 ms of RenderThread a frame.
+
+**The phone's baseline profile, regenerated.** The phone draws no differently,
+but its hottest map methods moved or changed signature — `toPath` and
+`arrowPath` from `RouteMapKt` in `:core:designsystem` to `RouteMapGeometryKt` in
+`:core:mapscene`, the clipper's `clipPolygonInto`, `clipPolylineInto` and
+`clipSegment` into `OutlineClipper`, `lonShiftsFor` into `lonShiftsInto` — and
+the profile still named the old ones, so the loops behind every route card's
+first draw were no longer compiled ahead of time on install. It was regenerated
+on the SM-S942B on 2026-11-02 with `./gradlew :app:generateBaselineProfile`:
+every one of those methods is now named under its new home (77 `:core:mapscene`
+rules, none before), and the startup profile grew from 22,467 to 31,149 rules,
+since it also caught up with everything added since it was last generated.
+`StartupBenchmark` (`startupBaselineProfile`) then read a 152 ms median
+`timeToInitialDisplayMs` — see CLAUDE.md for that figure and its caveats.
+
+**Not taken.** Two other levers were on the list. Neither is needed now that a
+turn holds 60 fps, and each would change how the face looks or moves:
+
+- **Coastline thinning — measured, as C above.** Thinning the coast at 0.5 px
+  took a turn across a 30,000-plus face from 20–26 fps to 28–39, and RenderThread
+  from 44–48 ms a frame to 21–32: real, and well short of 60 on its own. On top of
+  D's whole-page layer it added nothing measurable; it was not tried on top of
+  E's, which holds the same coast. A coarser outline, or a level of detail
+  per frame span, has no frame left to win.
+- **A stiffer snap spring.** A shorter turn is fewer doubly-drawn frames, and
+  with the layer those frames are already on time. The curve stays Wear's own,
+  and `:wear` still has no motion tokens to put a new one in.
+
 ## Not yet done
 
-- **The release build has not been looked at.** `:wear:assembleRelease` passes —
-  R8 and resource shrinking both run — but the app has only ever been *watched*
-  as a debug build, which is largely interpreted. Whether the page turn is
-  smoother minified is an open question, and per CLAUDE.md a debug timing is not
-  evidence either way.
+- **The release build has been measured for swiping, and for little else.**
+  `:wear:assembleRelease` passes — R8 and resource shrinking both run — and the
+  swipe figures in *Swipe performance* come from release builds, measured per
+  zoom across six builds of the face; Daan swiped variant E of the measurement
+  build — the layer this tree ships — on the watch on 2026-11-02 and found it
+  smooth, and the tree's own release build then measured 60 fps on every drag
+  and flick. Everything else about the app has
+  still been watched mostly as a debug build, which is largely interpreted, and
+  per CLAUDE.md a debug timing is not evidence either way.
 - **The handoff was verified one way only.** A tap on the watch opened the right
   route on the phone, codes, distance, ETE and airframe all matching. What has
   still never been watched is the *theme* crossing — though the phone's light

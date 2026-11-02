@@ -300,7 +300,7 @@ class PlanViewModel @Inject constructor(
     /**
      * The coastline every card draws on.
      *
-     * Kept out of [PlanUiState] on purpose. It is the same 122 rings for the
+     * Kept out of [PlanUiState] on purpose. It is the same outline for the
      * whole session and it changes exactly once — from empty to loaded — so
      * folding it into the state would make every route batch, every status change
      * and every mode flip carry a copy of it. Collected separately, the screen

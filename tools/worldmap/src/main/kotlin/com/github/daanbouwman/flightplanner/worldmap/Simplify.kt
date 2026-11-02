@@ -6,11 +6,12 @@ import kotlin.math.sqrt
 /**
  * Thins a ring until it is no finer than a route card can draw.
  *
- * Natural Earth's 1:110m land is already the coarsest of the three scales it
- * publishes, and it is still far finer than needed here: its coordinates carry
- * six decimal places — about 11 cm — and a card 180 dp tall showing a 25° window
- * resolves roughly 0.06° per pixel at 3×. Simplification is therefore about
- * segment count, which is what costs per frame, not about fidelity.
+ * Natural Earth's 1:50m land carries six decimal places — about 11 cm — and a
+ * card 328 dp wide showing its closest window, 15°, resolves roughly 0.015° per
+ * pixel at 3×. Simplifying to a tolerance under that pixel drops what the screen
+ * could never show and nothing it could; at 1:50m that is little, since the
+ * source is already drawn near that scale. (Over the 1:110m source this step did
+ * most of the work, and the coast it left was too coarse to name a country by.)
  *
  * Distances are in **degrees, treated as a plane**. That is wrong as geography —
  * a degree of longitude at 70°N is a third of one at the equator — and right as a

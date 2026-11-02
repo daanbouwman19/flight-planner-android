@@ -3,6 +3,7 @@ package com.github.daanbouwman.flightplanner.worldmap
 import com.github.daanbouwman.flightplanner.routing.WorldOutline
 import com.github.daanbouwman.flightplanner.routing.WorldOutlineCodec
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
@@ -42,19 +43,30 @@ fun main(args: Array<String>) {
         if (!condition) failures += message
     }
 
+    // Every snapshot the outline is built from — the land and the lakes cut out
+    // of it — against the hash `source.json` declares for it.
     val sourceJson = File(opts.input.parentFile, "source.json")
     if (sourceJson.isFile) {
-        val declared = Json.parseToJsonElement(sourceJson.readText())
-            .jsonObject["sha256"]?.jsonPrimitive?.content
-        val actual = sha256(opts.input)
-        check(
-            declared == null || declared == actual,
-            "Source snapshot does not match source.json.\n" +
-                "  declared: $declared\n" +
-                "  actual  : $actual\n" +
-                "  Either the snapshot was refreshed without updating source.json,\n" +
-                "  or source.json was updated without refreshing the snapshot.",
-        )
+        val files = Json.parseToJsonElement(sourceJson.readText()).jsonObject["files"]?.jsonArray.orEmpty()
+        check(files.isNotEmpty(), "source.json names no snapshot files")
+        for (entry in files) {
+            val name = entry.jsonObject["name"]?.jsonPrimitive?.content ?: continue
+            val declared = entry.jsonObject["sha256"]?.jsonPrimitive?.content
+            val snapshot = File(opts.input.parentFile, name)
+            if (!snapshot.isFile) {
+                failures += "Source snapshot missing: $snapshot"
+                continue
+            }
+            val actual = sha256(snapshot)
+            check(
+                declared == actual,
+                "Source snapshot $name does not match source.json.\n" +
+                    "  declared: $declared\n" +
+                    "  actual  : $actual\n" +
+                    "  Either the snapshot was refreshed without updating source.json,\n" +
+                    "  or source.json was updated without refreshing the snapshot.",
+            )
+        }
     }
 
     val outline = WorldOutlineCodec.decode(opts.output.readBytes())
@@ -150,6 +162,14 @@ private val PROBES = listOf(
     Probe("the southern Indian Ocean", -40.0, 80.0, land = false),
     Probe("the Arctic Ocean north of Siberia", 84.0, 100.0, land = false),
     Probe("the Gulf of Guinea", 0.0, 0.0, land = false),
+    // The lakes cut out of the land. The IJsselmeer is the reason they are
+    // there; the Caspian is the trap — already a hole in the land polygons, so
+    // cut a second time it would fill back in as land.
+    Probe("the IJsselmeer", 52.80, 5.40, land = false),
+    Probe("the Caspian Sea", 42.0, 50.5, land = false),
+    Probe("Lake Victoria", -1.0, 33.0, land = false),
+    Probe("Lake Superior", 47.7, -87.5, land = false),
+    Probe("Utrecht", 52.09, 5.12, land = true),
 )
 
 /**

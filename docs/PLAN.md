@@ -190,8 +190,12 @@ place.
 | `:core:database` | Android lib | Two Room DBs, DAOs, asset opening, seeding. Isolated because Room's KSP round-trip is the slowest thing in the build. Has an `androidTest` source set: the `UserDatabase` 1→2→3 migration runs on a device against the committed schema JSONs |
 | `:core:network` | Android lib | METAR client, tile HTTP client, OkHttp `Cache` config |
 | `:core:designsystem` | Android lib | Theme, semantic flight-rules colours, shared atoms |
+| `:core:mapscene` | Android lib | The route map as geometry and draw calls — scene builder, draw order, ink constants, the shared aircraft-outline cache. Compose graphics with **no Material**, so the phone (through `:core:designsystem`) and the watch draw one map without the watch taking the phone's alpha-pinned `material3` |
 | `:feature:globe` | Android lib | Filament renderer + Compose host — a different toolset and failure mode from the rest of the UI, and its math half is unit-testable |
+| `:core:aircraftart` | **pure JVM** | Phase I. The aircraft outlines — a generated `AircraftShapes.kt` of SVG path strings in centimetres — and `AircraftArt`, which picks one for an airframe (seed row, then ICAO code, then category, then a generic single). Pure JVM so the phone and the watch draw the same table, and its coverage test (every seed row has an outline of its own) runs in milliseconds |
 | `:tools:airportdb` | **pure JVM, not shipped** | The ETL. Never on the app classpath |
+| `:tools:aircraftart` | **pure JVM, not shipped** | Phase I. Traces each outline from the simulator's own glTF models on the sim machine — projection, raster, morphology, marching squares, Douglas–Peucker — validates span and length against published figures, and writes `AircraftShapes.kt` and a review contact sheet. Run by hand; CI checks the generated table, not the tracer |
+| `:tools:worldmap` | **pure JVM, not shipped** | Builds `maps/land.outline` from Natural Earth 1:50m land, with the lakes cut out. Run by hand; `verifyWorldOutline` is part of `check` |
 | `:macrobenchmark` | benchmark | Standard androidx.benchmark layout: cold start, the list fling, the globe spin, and the baseline-profile generator. There is no `:microbench` module and no JMH source set; the algorithms are covered by `:core:routing`'s unit tests and the device by `:macrobenchmark` |
 
 **Deliberately not split**: the six screens. Feature-per-module buys enforced boundaries, but with
